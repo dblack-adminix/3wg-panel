@@ -8,9 +8,18 @@ END = '# === 3WG SUPPLIED LOGO END ==='
 
 BLOCK = r'''
 # === 3WG SUPPLIED LOGO START ===
-# Размещаем готовый PNG логотип пользователя только в основном интерфейсе.
-# Login-страницу не трогаем, чтобы вход не зависел от logo/css.
+# Размещаем готовый PNG логотип пользователя в панели и на странице входа.
 LOGO_PATH_SUPPLIED = APP_DIR / 'static' / 'logogrin.png'
+
+
+def supplied_logo_src() -> str:
+    import base64
+    try:
+        if LOGO_PATH_SUPPLIED.exists():
+            return 'data:image/png;base64,' + base64.b64encode(LOGO_PATH_SUPPLIED.read_bytes()).decode('ascii')
+    except Exception:
+        pass
+    return '/static/logogrin.png'
 
 
 @app.get('/static/logogrin.png')
@@ -21,39 +30,62 @@ def static_logogrin_supplied():
 
 
 try:
+    _login_html_before_supplied_logo = login_html
+
+    def login_html(*args, **kwargs) -> str:
+        doc = _login_html_before_supplied_logo(*args, **kwargs)
+        src = supplied_logo_src()
+        logo_html = f'<div class="logo supplied-login-logo-wrap"><img class="supplied-login-logo" src="{src}" alt="3WG"></div>'
+        doc = re.sub(r'<div class="logo">.*?</div>', logo_html, doc, count=1, flags=re.S)
+        css = '''
+<style id="supplied-login-logo-css">
+.supplied-login-logo-wrap {
+  min-height: 54px !important;
+  margin-bottom: 8px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  background: transparent !important;
+  color: transparent !important;
+}
+.supplied-login-logo {
+  display: block !important;
+  width: 195px !important;
+  max-width: 195px !important;
+  height: auto !important;
+  max-height: 50px !important;
+  object-fit: contain !important;
+  filter: drop-shadow(0 0 12px rgba(151,216,18,.18));
+}
+</style>
+'''
+        if 'supplied-login-logo-css' not in doc:
+            doc = doc.replace('</head>', css + '\n</head>')
+        return doc
+except NameError:
+    pass
+
+
+try:
     _page_before_supplied_logo = page
 
     def page(title: str, body: str) -> str:
         doc = _page_before_supplied_logo(title, body)
+        src = supplied_logo_src()
 
-        old_brand = '''
-  <div class="neo-brand">
-    <div class="neo-logo">3</div>
-    <div>
-      <div class="neo-brand-title">3WG</div>
-      <div class="neo-brand-sub">NODE PANEL</div>
-    </div>
-  </div>
-'''
-        new_brand = '''
-  <div class="neo-brand neo-brand-supplied-logo">
-    <img class="supplied-logo-img" src="/static/logogrin.png" alt="3WG" loading="eager">
-  </div>
-'''
-        if old_brand in doc:
-            doc = doc.replace(old_brand, new_brand, 1)
-
+        brand_html = f'<div class="neo-brand neo-brand-supplied-logo"><img class="supplied-logo-img" src="{src}" alt="3WG" loading="eager"></div>'
         doc = re.sub(
             r'<div class="neo-brand">\s*<div class="neo-logo">3</div>\s*<div>\s*<div class="neo-brand-title">3WG</div>\s*<div class="neo-brand-sub">NODE PANEL</div>\s*</div>\s*</div>',
-            '<div class="neo-brand neo-brand-supplied-logo"><img class="supplied-logo-img" src="/static/logogrin.png" alt="3WG" loading="eager"></div>',
+            brand_html,
             doc,
             count=1,
             flags=re.S,
         )
 
-        css = '''
+        title_icon_css_url = src.replace(')', '%29').replace('(', '%28')
+        css = f'''
 <style id="supplied-logo-css">
-.neo-brand-supplied-logo {
+.neo-brand-supplied-logo {{
   display: flex !important;
   align-items: center !important;
   justify-content: flex-start !important;
@@ -61,8 +93,8 @@ try:
   padding: 0 0 18px !important;
   margin: 0 0 18px !important;
   border-bottom: 1px dashed rgba(64,82,106,.55) !important;
-}
-.supplied-logo-img {
+}}
+.supplied-logo-img {{
   display: block !important;
   width: 178px !important;
   max-width: 178px !important;
@@ -70,9 +102,9 @@ try:
   max-height: 46px !important;
   object-fit: contain !important;
   filter: drop-shadow(0 0 12px rgba(151,216,18,.16));
-}
-.neo-title-icon {
-  background-image: url('/static/logogrin.png') !important;
+}}
+.neo-title-icon {{
+  background-image: url('{title_icon_css_url}') !important;
   background-size: contain !important;
   background-repeat: no-repeat !important;
   background-position: center !important;
@@ -82,13 +114,12 @@ try:
   width: 54px !important;
   border: 0 !important;
   background-color: transparent !important;
-}
+}}
 </style>
 '''
         if 'supplied-logo-css' not in doc:
             doc = doc.replace('</head>', css + '\n</head>')
         return doc
-
 except NameError:
     pass
 # === 3WG SUPPLIED LOGO END ===
