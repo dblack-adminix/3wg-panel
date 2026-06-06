@@ -41,6 +41,10 @@ else:
 PY
 
 echo
+echo "===== React API patch ====="
+python3 "$BASE/scripts/apply_api_patch.py"
+
+echo
 echo "===== Syntax check ====="
 python3 -m py_compile "$APP"
 echo "app.py syntax OK"
