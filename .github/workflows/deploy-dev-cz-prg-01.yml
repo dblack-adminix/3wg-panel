@@ -4,10 +4,6 @@ on:
   push:
     branches:
       - dev
-    paths:
-      - "app/**"
-      - "scripts/**"
-      - ".github/workflows/deploy-dev-cz-prg-01.yml"
 
   workflow_dispatch:
 
