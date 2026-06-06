@@ -9,6 +9,16 @@ END = '# === 3WG VISUAL UI V13 END ==='
 BLOCK = r'''
 # === 3WG VISUAL UI V13 START ===
 # Видимое улучшение текущего красивого интерфейса / без отдельного /ui.
+LOGO_PATH_V13 = APP_DIR / 'static' / 'logogrin.png'
+
+
+@app.get('/static/logogrin.png')
+def static_logogrin_v13():
+    if not LOGO_PATH_V13.exists():
+        raise HTTPException(status_code=404, detail='Logo not found')
+    return FileResponse(LOGO_PATH_V13)
+
+
 try:
     _page_before_visual_ui_v13 = page
 
@@ -17,8 +27,11 @@ try:
 
         hero = f'''
 <div class="neo-hero">
-  <div>
-    <div class="neo-eyebrow">3WG NODE CONTROL</div>
+  <div class="neo-hero-logo-wrap">
+    <img class="neo-logo-v13" src="/static/logogrin.png" alt="3WG" loading="eager">
+  </div>
+  <div class="neo-hero-main">
+    <div class="neo-eyebrow">NODE CONTROL</div>
     <h1>3WG Panel</h1>
     <p>Управление клиентами WireGuard / AmneziaWG на <code>{html.escape(ENDPOINT_HOST)}</code></p>
   </div>
@@ -52,14 +65,31 @@ body {
   display:flex;
   justify-content:space-between;
   gap:18px;
-  align-items:flex-start;
+  align-items:center;
   margin: 0 0 18px;
-  padding: 20px 22px;
+  padding: 18px 22px;
   border: 1px solid var(--v13-line);
   border-radius: 18px;
   background: linear-gradient(135deg, rgba(20,240,160,.075), rgba(37,217,255,.045)), rgba(10,16,25,.72);
   box-shadow: 0 24px 90px rgba(0,0,0,.32);
 }
+.neo-hero-logo-wrap {
+  flex: 0 0 auto;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  min-width: 205px;
+}
+.neo-logo-v13 {
+  display:block;
+  width: 195px;
+  height: auto;
+  max-height: 50px;
+  object-fit: contain;
+  image-rendering: auto;
+  filter: drop-shadow(0 0 16px rgba(151, 216, 18, .16));
+}
+.neo-hero-main { flex: 1 1 auto; min-width: 220px; }
 .neo-hero h1 { margin: 4px 0 7px !important; letter-spacing: -.03em; }
 .neo-hero p { margin:0 !important; color: var(--v13-muted) !important; }
 .neo-eyebrow { color: var(--v13-green); font-size: 11px; font-weight: 900; letter-spacing: .18em; }
@@ -137,7 +167,7 @@ td { background: rgba(8,15,24,.76) !important; }
   font-size:12px;
   line-height:1.5;
 }
-@media(max-width:900px){ .neo-hero{display:block}.neo-hero-right{justify-content:flex-start;margin-top:12px} }
+@media(max-width:900px){ .neo-hero{display:block}.neo-hero-logo-wrap{justify-content:flex-start;margin-bottom:12px}.neo-hero-right{justify-content:flex-start;margin-top:12px} }
 </style>
 '''
 
