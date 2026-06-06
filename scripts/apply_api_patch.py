@@ -1,0 +1,167 @@
+#!/usr/bin/env python3
+from pathlib import Path
+import re
+
+APP_PATH = Path('/srv/3wg-panel/app/app.py')
+START = '# === 3WG REACT API START ==='
+END = '# === 3WG REACT API END ==='
+
+API_BLOCK = '''
+# === 3WG REACT API START ===
+# Read-only JSON API for the future React frontend.
+from fastapi.responses import JSONResponse
+
+
+def api_is_authenticated(request: Request) -> bool:
+    cookie_token = request.cookies.get(SESSION_COOKIE)
+    return bool(cookie_token and secrets.compare_digest(cookie_token, make_session_token()))
+
+
+def api_require_auth(request: Request):
+    if api_is_authenticated(request):
+        return PANEL_USER
+    raise HTTPException(status_code=401, detail='Unauthorized')
+
+
+def api_protocol_state(protocol: str, include_raw: bool = False) -> dict:
+    p = proto(protocol)
+    item = {
+        'protocol': protocol,
+        'title': p['title'],
+        'container': p['container'],
+        'interface': p['interface'],
+        'tool': p['tool'],
+        'port': int(str(p['port'])),
+        'endpoint_host': ENDPOINT_HOST,
+        'endpoint': f"{ENDPOINT_HOST}:{p['port']}",
+        'network': p['network'],
+        'available': False,
+        'container_status': 'unknown',
+        'reason': 'not checked',
+    }
+    try:
+        container = dc().containers.get(p['container'])
+        item['container_status'] = getattr(container, 'status', 'unknown') or 'unknown'
+    except Exception as e:
+        item['reason'] = 'container unavailable: ' + str(e)
+        return item
+    try:
+        raw = exec_c(p['container'], [p['tool'], 'show', p['interface']], check=True)
+        item['available'] = True
+        item['reason'] = 'ok'
+        if include_raw:
+            item['raw'] = raw
+    except Exception as e:
+        item['reason'] = str(e)
+    return item
+
+
+def api_live_maps() -> tuple[dict, dict]:
+    live = {}
+    errors = {}
+    for protocol in PROTOCOLS:
+        try:
+            live[protocol] = {x['public_key']: x for x in live_peers(protocol)}
+        except Exception as e:
+            live[protocol] = {}
+            errors[protocol] = str(e)
+    return live, errors
+
+
+def api_peer_payload(c, live: dict | None = None, include_config: bool = False) -> dict:
+    protocol = c['protocol']
+    p = PROTOCOLS[protocol]
+    lp = live.get(protocol, {}).get(c['public_key']) if live else None
+    active = bool(lp and lp.get('endpoint') and lp.get('endpoint') != '(none)')
+    payload = {
+        'id': int(c['id']),
+        'name': c['name'],
+        'protocol': protocol,
+        'protocol_title': p['title'],
+        'ip_cidr': c['ip_cidr'],
+        'public_key': c['public_key'],
+        'enabled': bool(c['enabled']),
+        'created_at': int(c['created_at']),
+        'endpoint': f"{ENDPOINT_HOST}:{p['port']}",
+        'status': 'active' if active else 'offline',
+        'live': lp or None,
+        'links': {
+            'html': f"/client/{c['id']}",
+            'download': f"/client/{c['id']}/download",
+            'download_vpn': f"/client/{c['id']}/download-vpn" if protocol == 'amneziawg' else None,
+            'qr_native': f"/client/{c['id']}/qr/native",
+            'qr_native_png': f"/client/{c['id']}/qr/native/download",
+            'qr_amnezia_vpn': f"/client/{c['id']}/qr/amnezia-vpn" if protocol == 'amneziawg' else None,
+            'qr_amnezia_vpn_png': f"/client/{c['id']}/qr/amnezia-vpn/download" if protocol == 'amneziawg' else None,
+        },
+    }
+    if include_config:
+        payload['config'] = read_conf(c)
+    return payload
+
+
+@app.get('/api/auth/me')
+def api_auth_me(request: Request):
+    if not api_is_authenticated(request):
+        return JSONResponse({'ok': False, 'authenticated': False}, status_code=401)
+    return {'ok': True, 'authenticated': True, 'user': PANEL_USER}
+
+
+@app.get('/api/node/protocols')
+def api_node_protocols(user=Depends(api_require_auth)):
+    return {
+        'ok': True,
+        'endpoint_host': ENDPOINT_HOST,
+        'protocols': {protocol: api_protocol_state(protocol) for protocol in PROTOCOLS},
+    }
+
+
+@app.get('/api/node/status')
+def api_node_status(user=Depends(api_require_auth)):
+    live, errors = api_live_maps()
+    with db() as conn:
+        total = conn.execute('SELECT COUNT(*) AS n FROM clients WHERE COALESCE(deleted_at, 0) = 0').fetchone()['n']
+    return {
+        'ok': True,
+        'endpoint_host': ENDPOINT_HOST,
+        'dns_servers': DNS_SERVERS,
+        'clients_total': int(total),
+        'peers_total': sum(len(pm) for pm in live.values()),
+        'peers_online': sum(1 for pm in live.values() for x in pm.values() if x.get('endpoint') != '(none)'),
+        'protocols': {protocol: api_protocol_state(protocol, include_raw=True) for protocol in PROTOCOLS},
+        'errors': errors,
+    }
+
+
+@app.get('/api/peers')
+def api_peers(user=Depends(api_require_auth)):
+    live, errors = api_live_maps()
+    with db() as conn:
+        rows = conn.execute('SELECT * FROM clients WHERE COALESCE(deleted_at, 0) = 0 ORDER BY id DESC').fetchall()
+    return {'ok': True, 'peers': [api_peer_payload(c, live=live) for c in rows], 'errors': errors}
+
+
+@app.get('/api/peers/{client_id}')
+def api_peer_get(client_id: int, user=Depends(api_require_auth)):
+    live, _ = api_live_maps()
+    c = load_client(client_id)
+    return {'ok': True, 'peer': api_peer_payload(c, live=live, include_config=True)}
+
+
+@app.get('/api/peers/{client_id}/config')
+def api_peer_config(client_id: int, user=Depends(api_require_auth)):
+    c = load_client(client_id)
+    return PlainTextResponse(read_conf(c))
+# === 3WG REACT API END ===
+'''.strip() + '\n'
+
+text = APP_PATH.read_text(encoding='utf-8')
+block_re = re.compile(re.escape(START) + r'.*?' + re.escape(END) + r'\n?', flags=re.S)
+cleaned = block_re.sub('', text).rstrip() + '\n\n'
+patched = cleaned + API_BLOCK
+
+if patched != text:
+    APP_PATH.write_text(patched, encoding='utf-8')
+    print('read-only React API routes patched into app.py')
+else:
+    print('read-only React API routes already up to date')
