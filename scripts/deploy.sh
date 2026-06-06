@@ -65,6 +65,17 @@ echo "===== Standard PNG logo patch ====="
 python3 "$BASE/scripts/apply_standard_logo_patch.py"
 
 echo
+echo "===== Restore bundled logo PNG ====="
+mkdir -p "$BASE/app/static"
+if [ -f "$BASE/app/static/logogrin.png.b64" ]; then
+  base64 -d "$BASE/app/static/logogrin.png.b64" > "$BASE/app/static/logogrin.png"
+  file "$BASE/app/static/logogrin.png" || true
+  sha256sum "$BASE/app/static/logogrin.png"
+else
+  echo "WARNING: $BASE/app/static/logogrin.png.b64 not found"
+fi
+
+echo
 echo "===== Restore classic Dockerfile ====="
 cat > "$BASE/app/Dockerfile" <<'EOF'
 FROM python:3.12-slim
@@ -132,11 +143,12 @@ PY
 echo
 echo "===== Logo check ====="
 python3 - <<'PY'
+import hashlib
 import urllib.request
 for url in ['http://127.0.0.1:18080/logogrin.png', 'http://127.0.0.1:18080/login', 'http://127.0.0.1:18080/']:
     data = urllib.request.urlopen(url, timeout=10).read()
     if url.endswith('.png'):
-        print(url, data[:8])
+        print(url, data[:8], hashlib.sha256(data).hexdigest())
     else:
         text = data.decode('utf-8', errors='replace')
         print(url, '/logogrin.png' in text, 'standard-title-logo' in text)
