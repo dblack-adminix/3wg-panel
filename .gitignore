@@ -1,0 +1,9 @@
+.env
+data/
+clients/
+backups/
+*.backup
+*.deleted.*
+__pycache__/
+*.pyc
+.DS_Store

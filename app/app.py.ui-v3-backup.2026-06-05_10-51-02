@@ -1,0 +1,1476 @@
+import base64
+import html
+import hashlib
+import hmac
+import io
+import ipaddress
+import json
+import os
+import re
+import secrets
+import shlex
+import sqlite3
+import struct
+import time
+import zlib
+from pathlib import Path
+
+import docker
+import qrcode
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+
+
+APP_DIR = Path("/app")
+DATA_DIR = APP_DIR / "data"
+CLIENTS_DIR = APP_DIR / "clients"
+BACKUPS_DIR = APP_DIR / "backups"
+DB_PATH = DATA_DIR / "panel.db"
+
+PANEL_USER = os.getenv("PANEL_USER", "admin")
+PANEL_PASSWORD = os.getenv("PANEL_PASSWORD", "admin")
+ENDPOINT_HOST = os.getenv("ENDPOINT_HOST", "cz-prg-01.nodax.eu")
+DNS_SERVERS = os.getenv("DNS_SERVERS", "1.1.1.1, 1.0.0.1")
+SESSION_SECRET = os.getenv("SESSION_SECRET", PANEL_PASSWORD + ENDPOINT_HOST)
+SESSION_COOKIE = "3wg_session"
+
+PROTOCOLS = {
+    "wireguard": {
+        "title": "WireGuard",
+        "container": os.getenv("WG_CONTAINER", "amnezia-wireguard"),
+        "interface": os.getenv("WG_INTERFACE", "wg0"),
+        "tool": "wg",
+        "port": os.getenv("WG_PORT", "38129"),
+        "config_path": os.getenv("WG_CONFIG_PATH", "/opt/amnezia/wireguard/wg0.conf"),
+        "network": os.getenv("WG_NETWORK", "10.8.1.0/24"),
+        "client_dir": CLIENTS_DIR / "wireguard",
+        "backup_dir": BACKUPS_DIR / "wireguard",
+    },
+    "amneziawg": {
+        "title": "AmneziaWG",
+        "container": os.getenv("AWG_CONTAINER", "amnezia-awg2"),
+        "interface": os.getenv("AWG_INTERFACE", "awg0"),
+        "tool": "awg",
+        "port": os.getenv("AWG_PORT", "42300"),
+        "config_path": os.getenv("AWG_CONFIG_PATH", "/opt/amnezia/awg/awg0.conf"),
+        "network": os.getenv("AWG_NETWORK", "10.8.1.0/24"),
+        "client_dir": CLIENTS_DIR / "amneziawg",
+        "backup_dir": BACKUPS_DIR / "amneziawg",
+    },
+}
+
+AWG_MASK = {
+    "Jc": "5",
+    "Jmin": "10",
+    "Jmax": "50",
+    "S1": "19",
+    "S2": "68",
+    "S3": "45",
+    "S4": "5",
+    "H1": "19739311-1855633582",
+    "H2": "2039341897-2052921390",
+    "H3": "2097137237-2108606057",
+    "H4": "2135860310-2139015251",
+}
+
+# Важно: для мобильного AmneziaWG убираем <r 2>, оставляем чистый <b ...>
+AWG_I1_NATIVE = "<b 0x858000010001000000000669636c6f756403636f6d0000010001c00c000100010000105a00044d583737>"
+
+app = FastAPI(title="3WG Panel")
+security = HTTPBasic(auto_error=False)
+
+
+
+def make_session_token() -> str:
+    msg = f"{PANEL_USER}:{PANEL_PASSWORD}".encode("utf-8")
+    key = SESSION_SECRET.encode("utf-8")
+    return hmac.new(key, msg, hashlib.sha256).hexdigest()
+
+
+def auth(request: Request, credentials: HTTPBasicCredentials = Depends(security)):
+    cookie_token = request.cookies.get(SESSION_COOKIE)
+
+    if cookie_token and secrets.compare_digest(cookie_token, make_session_token()):
+        return PANEL_USER
+
+    if credentials is not None:
+        ok_user = secrets.compare_digest(credentials.username, PANEL_USER)
+        ok_pass = secrets.compare_digest(credentials.password, PANEL_PASSWORD)
+        if ok_user and ok_pass:
+            return credentials.username
+
+    raise HTTPException(
+        status_code=303,
+        detail="Login required",
+        headers={"Location": "/login"},
+    )
+
+
+def login_html(error: str = "") -> str:
+    err = ""
+    if error:
+        err = f'<div class="login-error">{html.escape(error)}</div>'
+
+    return f"""<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>3WG Panel Login</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root {{
+  --bg:#070b12;
+  --card:#101827;
+  --line:#283247;
+  --text:#e9eefc;
+  --muted:#8d9ab0;
+  --orange:#f4a340;
+  --green:#14f0a0;
+  --red:#ff5b6c;
+}}
+*{{box-sizing:border-box}}
+body{{
+  margin:0;
+  min-height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(39,217,255,.12), transparent 28%),
+    radial-gradient(circle at 80% 70%, rgba(20,240,160,.09), transparent 28%),
+    var(--bg);
+  color:var(--text);
+  font-family:Inter,Arial,sans-serif;
+}}
+.login-card{{
+  width:100%;
+  max-width:430px;
+  background:linear-gradient(180deg,#121b2a,#0d141f);
+  border:1px solid var(--line);
+  border-radius:24px;
+  padding:30px;
+  box-shadow:0 30px 120px rgba(0,0,0,.55);
+}}
+.logo{{
+  font-size:30px;
+  font-weight:900;
+  letter-spacing:.08em;
+  margin-bottom:8px;
+}}
+.sub{{
+  color:var(--muted);
+  margin-bottom:26px;
+}}
+label{{
+  display:block;
+  color:#b8c4d6;
+  margin:16px 0 8px;
+  font-weight:700;
+}}
+input{{
+  width:100%;
+  padding:14px 15px;
+  border-radius:14px;
+  border:1px solid #344052;
+  background:#080e17;
+  color:#fff;
+  font-size:16px;
+  outline:none;
+}}
+input:focus{{
+  border-color:var(--orange);
+}}
+button{{
+  width:100%;
+  margin-top:22px;
+  padding:14px 16px;
+  border:0;
+  border-radius:14px;
+  background:var(--orange);
+  color:#111;
+  font-weight:900;
+  font-size:16px;
+  cursor:pointer;
+}}
+.login-error{{
+  background:rgba(255,91,108,.1);
+  border:1px solid rgba(255,91,108,.45);
+  color:#ff9aa5;
+  border-radius:14px;
+  padding:12px;
+  margin-bottom:16px;
+}}
+.footer{{
+  margin-top:20px;
+  color:var(--muted);
+  font-size:13px;
+  text-align:center;
+}}
+.badge{{
+  display:inline-block;
+  color:var(--green);
+  border:1px solid rgba(20,240,160,.4);
+  background:rgba(20,240,160,.08);
+  padding:5px 9px;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:900;
+  margin-bottom:18px;
+}}
+</style>
+</head>
+<body>
+  <form class="login-card" method="post" action="/login">
+    <div class="badge">SECURE NODE PANEL</div>
+    <div class="logo">3WG Panel</div>
+    <div class="sub">Управление WireGuard / AmneziaWG peer'ами</div>
+    {err}
+    <label>Логин</label>
+    <input name="username" autocomplete="username" autofocus required>
+    <label>Пароль</label>
+    <input name="password" type="password" autocomplete="current-password" required>
+    <button type="submit">Войти</button>
+    <div class="footer">cz-prg-01.nodax.eu</div>
+  </form>
+</body>
+</html>"""
+
+
+@app.get("/login", response_class=HTMLResponse)
+def login_page():
+    return HTMLResponse(login_html())
+
+
+@app.post("/login")
+async def login_submit(request: Request):
+    form = await request.form()
+    username = str(form.get("username", ""))
+    password = str(form.get("password", ""))
+
+    ok_user = secrets.compare_digest(username, PANEL_USER)
+    ok_pass = secrets.compare_digest(password, PANEL_PASSWORD)
+
+    if not (ok_user and ok_pass):
+        return HTMLResponse(login_html("Неверный логин или пароль"), status_code=401)
+
+    resp = RedirectResponse("/", status_code=303)
+    resp.set_cookie(
+        SESSION_COOKIE,
+        make_session_token(),
+        max_age=60 * 60 * 24 * 30,
+        httponly=True,
+        samesite="lax",
+    )
+    return resp
+
+
+@app.get("/logout")
+def logout():
+    resp = RedirectResponse("/login", status_code=303)
+    resp.delete_cookie(SESSION_COOKIE)
+    return resp
+
+def dc():
+    return docker.from_env()
+
+
+def proto(protocol: str):
+    if protocol not in PROTOCOLS:
+        raise HTTPException(status_code=404, detail="Unknown protocol")
+    return PROTOCOLS[protocol]
+
+
+def exec_c(container_name: str, cmd, check=True) -> str:
+    c = dc().containers.get(container_name)
+    res = c.exec_run(cmd, demux=True)
+
+    out = b""
+    err = b""
+
+    if isinstance(res.output, tuple):
+        out = res.output[0] or b""
+        err = res.output[1] or b""
+    else:
+        out = res.output or b""
+
+    stdout = out.decode("utf-8", errors="replace")
+    stderr = err.decode("utf-8", errors="replace")
+
+    if check and res.exit_code != 0:
+        raise RuntimeError(
+            f"Container: {container_name}\n"
+            f"CMD: {cmd}\n"
+            f"EXIT: {res.exit_code}\n\n"
+            f"STDOUT:\n{stdout}\n\n"
+            f"STDERR:\n{stderr}"
+        )
+
+    return stdout.strip()
+
+
+def sh(container_name: str, script: str, check=True) -> str:
+    return exec_c(container_name, ["sh", "-lc", script], check=check)
+
+
+def db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def init_db():
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+    for p in PROTOCOLS.values():
+        p["client_dir"].mkdir(parents=True, exist_ok=True)
+        p["backup_dir"].mkdir(parents=True, exist_ok=True)
+
+    with db() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS clients (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                protocol TEXT NOT NULL,
+                ip_cidr TEXT NOT NULL,
+                private_key TEXT NOT NULL,
+                public_key TEXT NOT NULL,
+                preshared_key TEXT NOT NULL,
+                config_path TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                created_at INTEGER NOT NULL,
+                UNIQUE(protocol, ip_cidr),
+                UNIQUE(protocol, public_key)
+            )
+        """)
+        cols = [r["name"] for r in conn.execute("PRAGMA table_info(clients)").fetchall()]
+        if "deleted_at" not in cols:
+            conn.execute("ALTER TABLE clients ADD COLUMN deleted_at INTEGER NOT NULL DEFAULT 0")
+        conn.commit()
+
+
+@app.on_event("startup")
+def startup():
+    init_db()
+
+
+def slugify(value: str) -> str:
+    value = value.strip()
+    value = re.sub(r"[^a-zA-Z0-9а-яА-ЯёЁ._-]+", "_", value)
+    value = value.strip("._-")
+    return value or "client"
+
+
+def genkey(protocol: str) -> str:
+    p = proto(protocol)
+    return exec_c(p["container"], [p["tool"], "genkey"])
+
+
+def pubkey(protocol: str, private_key: str) -> str:
+    p = proto(protocol)
+    return sh(p["container"], f"printf '%s\\n' {shlex.quote(private_key)} | {p['tool']} pubkey")
+
+
+def genpsk(protocol: str) -> str:
+    p = proto(protocol)
+    return exec_c(p["container"], [p["tool"], "genpsk"])
+
+
+def server_pubkey(protocol: str) -> str:
+    p = proto(protocol)
+    return exec_c(p["container"], [p["tool"], "show", p["interface"], "public-key"])
+
+
+def live_peers(protocol: str):
+    p = proto(protocol)
+    out = exec_c(p["container"], [p["tool"], "show", "all", "dump"])
+    peers = []
+
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) < 8:
+            continue
+        if parts[0] != p["interface"]:
+            continue
+
+        allowed = parts[4]
+        if "/" not in allowed:
+            continue
+
+        peers.append({
+            "public_key": parts[1],
+            "endpoint": parts[3],
+            "allowed_ips": allowed,
+            "latest_handshake": parts[5],
+            "rx": parts[6],
+            "tx": parts[7],
+        })
+
+    return peers
+
+
+def used_ips(protocol: str):
+    used = set()
+
+    for peer in live_peers(protocol):
+        allowed = peer["allowed_ips"].split(",")[0].strip()
+        try:
+            used.add(str(ipaddress.ip_interface(allowed).ip))
+        except Exception:
+            pass
+
+    with db() as conn:
+        rows = conn.execute("SELECT ip_cidr FROM clients WHERE protocol = ?", (protocol,)).fetchall()
+
+    for row in rows:
+        try:
+            used.add(str(ipaddress.ip_interface(row["ip_cidr"]).ip))
+        except Exception:
+            pass
+
+    return used
+
+
+def next_ip(protocol: str) -> str:
+    p = proto(protocol)
+    net = ipaddress.ip_network(p["network"], strict=False)
+    used = used_ips(protocol)
+
+    for host in net.hosts():
+        ip = str(host)
+        if ip not in used:
+            return f"{ip}/32"
+
+    raise RuntimeError(f"No free IP in {p['network']}")
+
+
+def backup_config(protocol: str):
+    p = proto(protocol)
+    content = sh(p["container"], f"cat {shlex.quote(p['config_path'])}")
+
+    ts = time.strftime("%Y%m%d_%H%M%S")
+    path = p["backup_dir"] / f"{p['interface']}.conf.{ts}.backup"
+    path.write_text(content + "\n", encoding="utf-8")
+    path.chmod(0o600)
+
+
+def add_peer_live(protocol: str, public_key: str, psk: str, ip_cidr: str):
+    p = proto(protocol)
+    script = (
+        f"printf '%s\\n' {shlex.quote(psk)} > /tmp/3wg-peer.psk && "
+        f"{p['tool']} set {shlex.quote(p['interface'])} "
+        f"peer {shlex.quote(public_key)} "
+        f"preshared-key /tmp/3wg-peer.psk "
+        f"allowed-ips {shlex.quote(ip_cidr)}; "
+        f"RC=$?; rm -f /tmp/3wg-peer.psk; exit $RC"
+    )
+    sh(p["container"], script)
+
+
+def append_peer(protocol: str, name: str, public_key: str, psk: str, ip_cidr: str):
+    p = proto(protocol)
+    safe_name = name.replace("\n", " ").replace("\r", " ").strip()
+
+    block = f"""
+
+# 3WG-PANEL: {safe_name}
+# created_at = {time.strftime('%Y-%m-%d %H:%M:%S')}
+[Peer]
+PublicKey = {public_key}
+PresharedKey = {psk}
+AllowedIPs = {ip_cidr}
+"""
+
+    script = f"cat >> {shlex.quote(p['config_path'])} <<'EOF_3WG_PEER'\n{block}\nEOF_3WG_PEER"
+    sh(p["container"], script)
+
+
+
+
+# =========================
+# 3WG V2: dynamic AWG params + peer delete
+# =========================
+
+AWG_KEYS = ["Jc", "Jmin", "Jmax", "S1", "S2", "S3", "S4", "H1", "H2", "H3", "H4"]
+AWG_I_KEYS = ["I1", "I2", "I3", "I4", "I5"]
+
+
+def read_server_config(protocol: str) -> str:
+    p = proto(protocol)
+    return sh(p["container"], f"cat {shlex.quote(p['config_path'])}")
+
+
+def write_server_config(protocol: str, text: str):
+    p = proto(protocol)
+    tmp = "/tmp/3wg-panel-new-config.conf"
+    script = (
+        f"cat > {shlex.quote(tmp)} <<'EOF_3WG_CONFIG'\n"
+        f"{text.rstrip()}\n"
+        f"EOF_3WG_CONFIG\n"
+        f"cat {shlex.quote(tmp)} > {shlex.quote(p['config_path'])}\n"
+        f"rm -f {shlex.quote(tmp)}\n"
+    )
+    sh(p["container"], script)
+
+
+def awg_params_from_server():
+    cfg = read_server_config("amneziawg")
+
+    mask = {}
+    for k in AWG_KEYS:
+        m = re.search(rf"^{re.escape(k)}\s*=\s*(.+?)\s*$", cfg, flags=re.M)
+        if not m:
+            raise RuntimeError(f"{k} not found in AWG server config")
+        mask[k] = m.group(1).strip()
+
+    i_values = {}
+    for k in AWG_I_KEYS:
+        m = re.search(rf"^{re.escape(k)}\s*=\s*(.*?)\s*$", cfg, flags=re.M)
+        if m and m.group(1).strip():
+            i_values[k] = m.group(1).strip()
+
+    return mask, i_values
+
+
+def remove_peer_from_config_text(text: str, public_key: str) -> str:
+    lines = text.splitlines()
+    out = []
+    i = 0
+    removed = False
+
+    while i < len(lines):
+        if lines[i].strip() == "[Peer]":
+            j = i + 1
+            while j < len(lines) and lines[j].strip() != "[Peer]":
+                j += 1
+
+            block = "\n".join(lines[i:j])
+
+            if re.search(r"^PublicKey\s*=\s*" + re.escape(public_key) + r"\s*$", block, flags=re.M):
+                # Убираем наши служебные комментарии прямо перед peer-блоком
+                while out and out[-1].strip().startswith("# 3WG-PANEL"):
+                    out.pop()
+                removed = True
+                i = j
+                continue
+
+        out.append(lines[i])
+        i += 1
+
+    if not removed:
+        return text
+
+    return "\n".join(out).rstrip() + "\n"
+
+
+def remove_peer(protocol: str, public_key: str):
+    p = proto(protocol)
+
+    backup_config(protocol)
+
+    # Удаляем из live-интерфейса
+    sh(
+        p["container"],
+        f"{p['tool']} set {shlex.quote(p['interface'])} peer {shlex.quote(public_key)} remove",
+        check=False,
+    )
+
+    # Удаляем из server config
+    old = read_server_config(protocol)
+    new = remove_peer_from_config_text(old, public_key)
+
+    if new != old:
+        write_server_config(protocol, new)
+
+
+def build_client_conf(protocol: str, private_key: str, ip_cidr: str, psk: str) -> str:
+    p = proto(protocol)
+    srv_pub = server_pubkey(protocol)
+
+    text = f"""[Interface]
+Address = {ip_cidr}
+DNS = {DNS_SERVERS}
+PrivateKey = {private_key}
+"""
+
+    if protocol == "amneziawg":
+        mask, i_values = awg_params_from_server()
+
+        for k in AWG_KEYS:
+            text += f"{k} = {mask[k]}\n"
+
+        for k in AWG_I_KEYS:
+            v = i_values.get(k, "").strip()
+            if v:
+                text += f"{k} = {v}\n"
+
+    text += f"""
+[Peer]
+PublicKey = {srv_pub}
+PresharedKey = {psk}
+AllowedIPs = 0.0.0.0/0, ::/0
+Endpoint = {ENDPOINT_HOST}:{p["port"]}
+PersistentKeepalive = 25
+"""
+
+    return text
+
+
+def create_client(name: str, protocol: str) -> int:
+    p = proto(protocol)
+
+    ip_cidr = next_ip(protocol)
+    private_key = genkey(protocol)
+    public_key = pubkey(protocol, private_key)
+    psk = genpsk(protocol)
+
+    backup_config(protocol)
+    add_peer_live(protocol, public_key, psk, ip_cidr)
+    append_peer(protocol, name, public_key, psk, ip_cidr)
+
+    conf = build_client_conf(protocol, private_key, ip_cidr, psk)
+
+    ts = int(time.time())
+    path = p["client_dir"] / f"{ts}_{slugify(name)}_{protocol}.conf"
+    path.write_text(conf, encoding="utf-8")
+    path.chmod(0o600)
+
+    with db() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO clients
+            (name, protocol, ip_cidr, private_key, public_key, preshared_key, config_path, enabled, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
+            """,
+            (name, protocol, ip_cidr, private_key, public_key, psk, str(path), ts),
+        )
+        conn.commit()
+        return int(cur.lastrowid)
+
+
+def human_bytes(v):
+    try:
+        n = int(v)
+    except Exception:
+        return v
+
+    units = ["B", "KiB", "MiB", "GiB", "TiB"]
+    x = float(n)
+
+    for u in units:
+        if x < 1024:
+            return f"{x:.2f} {u}"
+        x /= 1024
+
+    return f"{x:.2f} PiB"
+
+
+def human_time(v):
+    try:
+        ts = int(v)
+    except Exception:
+        return "-"
+
+    if ts <= 0:
+        return "-"
+
+    return time.strftime("%d/%m/%Y, %H:%M", time.localtime(ts))
+
+
+def load_client(client_id: int):
+    with db() as conn:
+        c = conn.execute("SELECT * FROM clients WHERE id = ? AND COALESCE(deleted_at, 0) = 0", (client_id,)).fetchone()
+
+    if not c:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    return c
+
+
+def read_conf(c) -> str:
+    return Path(c["config_path"]).read_text(encoding="utf-8")
+
+
+def dns_pair():
+    parts = [x.strip() for x in DNS_SERVERS.split(",") if x.strip()]
+    return parts[0] if len(parts) > 0 else "", parts[1] if len(parts) > 1 else ""
+
+
+def build_amnezia_vpn_payload(c) -> str:
+    if c["protocol"] != "amneziawg":
+        raise HTTPException(status_code=400, detail="AmneziaVPN QR is only for AmneziaWG")
+
+    p = proto("amneziawg")
+    conf_text = read_conf(c)
+    ip_clean = str(ipaddress.ip_interface(c["ip_cidr"]).ip)
+    dns1, dns2 = dns_pair()
+    srv_pub = server_pubkey("amneziawg")
+    mask, _ = awg_params_from_server()
+
+    last_config_obj = {
+        **mask,
+        "client_ip": ip_clean,
+        "client_priv_key": c["private_key"],
+        "client_pub_key": "0",
+        "psk_key": c["preshared_key"],
+        "server_pub_key": srv_pub,
+        "hostName": ENDPOINT_HOST,
+        "port": int(p["port"]),
+        "config": conf_text,
+    }
+
+    amnezia_config = {
+        "containers": [
+            {
+                "container": "amnezia-awg",
+                "awg": {
+                    "isThirdPartyConfig": True,
+                    "transport_proto": "udp",
+                    "port": str(p["port"]),
+                    **mask,
+                    "last_config": json.dumps(last_config_obj, ensure_ascii=False),
+                },
+            }
+        ],
+        "defaultContainer": "amnezia-awg",
+        "description": c["name"],
+        "hostName": ENDPOINT_HOST,
+        "dns1": dns1,
+        "dns2": dns2,
+    }
+
+    plain = json.dumps(amnezia_config, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    compressed = zlib.compress(plain, level=9)
+
+    header = struct.pack(">III", 0x07C00100, len(compressed) + 4, len(plain))
+    packed = header + compressed
+
+    return base64.urlsafe_b64encode(packed).decode("ascii").rstrip("=")
+
+
+def png_qr(payload: str):
+    img = qrcode.make(payload)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return Response(content=buf.getvalue(), media_type="image/png")
+
+
+def page(title: str, body: str) -> str:
+    return f"""<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>{html.escape(title)}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root {{
+  --bg:#080d14;
+  --card:#111822;
+  --card2:#0d131c;
+  --line:#2a3441;
+  --text:#dce7f5;
+  --muted:#7e8ba0;
+  --green:#14f0a0;
+  --cyan:#27d9ff;
+  --red:#ff5b6c;
+  --yellow:#f8b62d;
+  --orange:#f4a340;
+}}
+*{{box-sizing:border-box}}
+body{{margin:0;background:var(--bg);color:var(--text);font-family:Inter,Arial,sans-serif}}
+.wrap{{max-width:1600px;margin:0 auto;padding:28px}}
+h1{{font-size:28px;margin:0 0 20px;font-weight:800;letter-spacing:.03em}}
+.card{{background:linear-gradient(180deg,#121b28,#0e1520);border:1px solid var(--line);border-radius:18px;padding:20px;margin-bottom:18px;box-shadow:0 16px 50px rgba(0,0,0,.25)}}
+.grid{{display:grid;grid-template-columns:repeat(4,minmax(170px,1fr));gap:14px;margin-bottom:18px}}
+.stat{{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px}}
+.stat .n{{font-size:24px;font-weight:800;color:var(--green)}}
+.stat .l{{font-size:13px;color:var(--muted);margin-top:6px}}
+input[type=text]{{width:100%;max-width:460px;padding:13px 14px;border-radius:12px;border:1px solid #344052;background:#090f18;color:#fff;font-size:15px;outline:none}}
+label{{margin-right:20px;color:#c9d4e5}}
+button,.btn{{display:inline-block;padding:10px 15px;border-radius:12px;border:0;background:var(--orange);color:#111;font-weight:800;text-decoration:none;cursor:pointer;margin:4px 6px 4px 0}}
+.btn2{{background:#1c2736;color:#dce7f5;border:1px solid #334056}}
+.btn3{{background:#122d35;color:#45e6ff;border:1px solid #245260}} .btn-danger{{background:#3a1118;color:#ffb6be;border:1px solid #7a2630}}
+table{{width:100%;border-collapse:collapse;font-size:14px}}
+th,td{{border-bottom:1px solid var(--line);padding:13px 10px;text-align:left;vertical-align:middle;white-space:nowrap}}
+th{{color:#98a6b9;font-weight:800}}
+tr:hover{{background:#101927}}
+code,pre{{background:#070c13;color:#e9eefc;border:1px solid var(--line);border-radius:12px}}
+code{{padding:3px 7px}}
+pre{{padding:16px;overflow-x:auto;white-space:pre-wrap;line-height:1.45}}
+.muted{{color:var(--muted)}}
+.ok{{color:var(--green);font-weight:900}}
+.bad{{color:var(--red);font-weight:900}}
+.dot{{display:inline-block;width:12px;height:12px;border-radius:50%;background:var(--yellow);box-shadow:0 0 16px rgba(248,182,45,.5);margin-right:8px}}
+.dot-green{{background:var(--green)}}
+.dot-red{{background:var(--red)}}
+.proto{{padding:5px 10px;border-radius:999px;background:#1d2a3b;color:#eaf4ff;font-weight:900}}
+.proto-awg{{background:#102d39;color:#30dfff}}
+.proto-wg{{background:#1b2d20;color:#4cff94}}
+.qrgrid{{display:grid;grid-template-columns:repeat(2,minmax(280px,1fr));gap:18px}}
+.qrbox{{background:#0c131d;border:1px solid var(--line);border-radius:18px;padding:18px}}
+.qrbox img{{background:#fff;padding:14px;border-radius:14px;max-width:360px;width:100%}}
+@media(max-width:900px){{.grid,.qrgrid{{grid-template-columns:1fr}} table{{font-size:12px}}}}
+</style>
+</head>
+<body><div class="wrap">{body}</div></body></html>"""
+
+
+@app.get("/", response_class=HTMLResponse)
+def index(user=Depends(auth)):
+    with db() as conn:
+        rows_db = conn.execute("SELECT * FROM clients WHERE COALESCE(deleted_at, 0) = 0 ORDER BY id DESC").fetchall()
+
+    live = {}
+    errors = {}
+
+    for protocol in PROTOCOLS:
+        try:
+            live[protocol] = {x["public_key"]: x for x in live_peers(protocol)}
+        except Exception as e:
+            live[protocol] = {}
+            errors[protocol] = str(e)
+
+    known = set()
+    rows = ""
+
+    for c in rows_db:
+        known.add((c["protocol"], c["public_key"]))
+        p = PROTOCOLS[c["protocol"]]
+        lp = live.get(c["protocol"], {}).get(c["public_key"])
+
+        proto_class = "proto-awg" if c["protocol"] == "amneziawg" else "proto-wg"
+
+        if lp:
+            status = '<span class="dot dot-green"></span><span class="ok">ACTIVE</span>'
+            endpoint = html.escape(lp["endpoint"])
+            handshake = human_time(lp["latest_handshake"])
+            rx = human_bytes(lp["rx"])
+            tx = human_bytes(lp["tx"])
+        else:
+            status = '<span class="dot"></span><span class="muted">не подключался</span>'
+            endpoint = "-"
+            handshake = "-"
+            rx = "0 B"
+            tx = "0 B"
+
+        rows += f"""
+<tr>
+<td>{c["id"]}</td>
+<td><b>{html.escape(c["name"])}</b><br><span class="muted">создан панелью</span></td>
+<td><span class="proto {proto_class}">{html.escape(p["title"])}</span></td>
+<td><code>{html.escape(c["ip_cidr"])}</code></td>
+<td>{status}</td>
+<td>{endpoint}</td>
+<td>{handshake}</td>
+<td>{rx}</td>
+<td>{tx}</td>
+<td>
+<a class="btn" href="/client/{c["id"]}">Открыть</a>
+<form style="display:inline" method="post" action="/client/{c["id"]}/delete" onsubmit="return confirm('Удалить peer?')">
+<button class="btn btn-danger" type="submit">Удалить</button>
+</form>
+</td>
+</tr>
+"""
+
+    # Показываем уже существующие peer'ы в контейнерах.
+    for protocol, peer_map in live.items():
+        p = PROTOCOLS[protocol]
+        proto_class = "proto-awg" if protocol == "amneziawg" else "proto-wg"
+        for pub, lp in peer_map.items():
+            if (protocol, pub) in known:
+                continue
+
+            pub_short = html.escape(pub[:12] + "..." + pub[-8:])
+            endpoint = html.escape(lp["endpoint"])
+            handshake = human_time(lp["latest_handshake"])
+            rx = human_bytes(lp["rx"])
+            tx = human_bytes(lp["tx"])
+
+            if lp["endpoint"] != "(none)":
+                status = '<span class="dot dot-green"></span><span class="ok">ACTIVE</span>'
+            else:
+                status = '<span class="dot"></span><span class="muted">не подключался</span>'
+
+            rows += f"""
+<tr>
+<td>-</td>
+<td><b>existing peer</b><br><code>{pub_short}</code></td>
+<td><span class="proto {proto_class}">{html.escape(p["title"])}</span></td>
+<td><code>{html.escape(lp["allowed_ips"])}</code></td>
+<td>{status}</td>
+<td>{endpoint}</td>
+<td>{handshake}</td>
+<td>{rx}</td>
+<td>{tx}</td>
+<td>
+<form style="display:inline" method="post" action="/peer/delete" onsubmit="return confirm('Удалить existing peer?')">
+<input type="hidden" name="protocol" value="{html.escape(protocol)}">
+<input type="hidden" name="public_key" value="{html.escape(pub)}">
+<button class="btn btn-danger" type="submit">Удалить</button>
+</form>
+</td>
+</tr>
+"""
+
+    err_html = ""
+    for k, v in errors.items():
+        err_html += f"<p class='bad'>{html.escape(k)}: {html.escape(v)}</p>"
+
+    total = len(rows_db)
+    live_count = sum(1 for pm in live.values() for x in pm.values() if x["endpoint"] != "(none)")
+    existing_count = sum(len(pm) for pm in live.values())
+
+    body = f"""
+<h1>3WG Panel</h1>
+
+<div class="grid">
+  <div class="stat"><div class="n">{total}</div><div class="l">клиентов в панели</div></div>
+  <div class="stat"><div class="n">{existing_count}</div><div class="l">peer'ов в контейнерах</div></div>
+  <div class="stat"><div class="n">{live_count}</div><div class="l">сейчас в сети</div></div>
+  <div class="stat"><div class="n">2</div><div class="l">протокола: WG / AWG</div></div>
+</div>
+
+<div class="card">
+<h2>Создать клиента</h2>
+<form method="post" action="/clients">
+<p><input type="text" name="name" placeholder="Например: Ivan iPhone" required></p>
+<p>
+<label><input type="checkbox" name="protocol" value="wireguard" checked> WireGuard</label>
+<label><input type="checkbox" name="protocol" value="amneziawg" checked> AmneziaWG с маскировкой</label>
+</p>
+<button type="submit">Создать peer / QR / conf</button>
+</form>
+<p class="muted">Endpoint host: <code>{html.escape(ENDPOINT_HOST)}</code></p>
+{err_html}
+</div>
+
+<div class="card">
+<h2>Клиенты</h2>
+<table>
+<thead>
+<tr>
+<th>ID</th><th>Имя пользователя</th><th>Протокол</th><th>Внутренний IP</th><th>Статус</th><th>Endpoint клиента</th><th>Последнее подключение</th><th>RX</th><th>TX</th><th></th>
+</tr>
+</thead>
+<tbody>{rows if rows else '<tr><td colspan="10" class="muted">Пока нет клиентов</td></tr>'}</tbody>
+</table>
+</div>
+
+<div class="card">
+<h2>Статус</h2>
+<a class="btn btn2" href="/raw/wireguard">wg show</a>
+<a class="btn btn2" href="/raw/amneziawg">awg show</a>
+</div>
+"""
+    return HTMLResponse(page("3WG Panel", body))
+
+
+@app.post("/clients")
+async def create_clients(request: Request, user=Depends(auth)):
+    form = await request.form()
+    name = str(form.get("name", "")).strip()
+    protocols = form.getlist("protocol")
+
+    if not name:
+        return HTMLResponse(page("Ошибка", "<h1>Пустое имя</h1><a class='btn' href='/'>Назад</a>"), status_code=400)
+
+    created = []
+
+    try:
+        for protocol in protocols:
+            if protocol in PROTOCOLS:
+                created.append(create_client(name, protocol))
+    except Exception as e:
+        return HTMLResponse(
+            page("Ошибка", f"<h1>Ошибка создания</h1><pre>{html.escape(str(e))}</pre><a class='btn' href='/'>Назад</a>"),
+            status_code=500,
+        )
+
+    if created:
+        return RedirectResponse(f"/client/{created[-1]}", status_code=303)
+
+    return RedirectResponse("/", status_code=303)
+
+
+@app.get("/client/{client_id}", response_class=HTMLResponse)
+def client_view(client_id: int, user=Depends(auth)):
+    c = load_client(client_id)
+    p = PROTOCOLS[c["protocol"]]
+    conf = read_conf(c)
+
+    qr_block = ""
+
+    if c["protocol"] == "amneziawg":
+        qr_block = f"""
+<div class="qrgrid">
+  <div class="qrbox">
+    <h2>QR для AmneziaWG app</h2>
+    <p class="muted">Native .conf. Если QR не примется — скачай .conf и импортируй файлом.</p>
+    <img src="/client/{client_id}/qr/native">
+    <p>
+      <a class="btn" href="/client/{client_id}/download">Скачать .conf</a>
+      <a class="btn btn2" href="/client/{client_id}/qr/native">Открыть QR</a>
+    </p>
+  </div>
+
+  <div class="qrbox">
+    <h2>QR для AmneziaVPN app</h2>
+    <p class="muted">Специальный payload для AmneziaVPN. Дополнительно можно скачать .vpn ключ.</p>
+    <img src="/client/{client_id}/qr/amnezia-vpn">
+    <p>
+      <a class="btn" href="/client/{client_id}/download-vpn">Скачать .vpn</a>
+      <a class="btn btn2" href="/client/{client_id}/qr/amnezia-vpn">Открыть QR</a>
+    </p>
+  </div>
+</div>
+"""
+    else:
+        qr_block = f"""
+<div class="qrgrid">
+  <div class="qrbox">
+    <h2>QR для WireGuard app</h2>
+    <img src="/client/{client_id}/qr/native">
+    <p>
+      <a class="btn" href="/client/{client_id}/download">Скачать .conf</a>
+      <a class="btn btn2" href="/client/{client_id}/qr/native">Открыть QR</a>
+    </p>
+  </div>
+</div>
+"""
+
+    body = f"""
+<h1>{html.escape(c["name"])} — {html.escape(p["title"])}</h1>
+
+<div class="card">
+<p>IP: <code>{html.escape(c["ip_cidr"])}</code></p>
+<p>Endpoint: <code>{html.escape(ENDPOINT_HOST)}:{html.escape(p["port"])}</code></p>
+<p>
+<a class="btn btn2" href="/">Назад</a>
+<a class="btn btn2" href="/raw/{c["protocol"]}">Статус протокола</a>
+</p>
+</div>
+
+{qr_block}
+
+<div class="card">
+<h2>Конфиг</h2>
+<pre>{html.escape(conf)}</pre>
+</div>
+"""
+    return HTMLResponse(page(f"{c['name']} {p['title']}", body))
+
+
+
+
+@app.post("/client/{client_id}/delete")
+def delete_client_route(client_id: int, user=Depends(auth)):
+    c = load_client(client_id)
+
+    try:
+        remove_peer(c["protocol"], c["public_key"])
+
+        with db() as conn:
+            conn.execute(
+                "UPDATE clients SET enabled = 0, deleted_at = ? WHERE id = ?",
+                (int(time.time()), client_id),
+            )
+            conn.commit()
+
+        conf_path = Path(c["config_path"])
+        if conf_path.exists():
+            conf_path.rename(conf_path.with_suffix(conf_path.suffix + f".deleted.{int(time.time())}"))
+
+    except Exception as e:
+        return HTMLResponse(
+            page("Ошибка удаления", f"<h1>Ошибка удаления</h1><pre>{html.escape(str(e))}</pre><a class='btn' href='/'>Назад</a>"),
+            status_code=500,
+        )
+
+    return RedirectResponse("/", status_code=303)
+
+
+@app.post("/peer/delete")
+async def delete_existing_peer_route(request: Request, user=Depends(auth)):
+    form = await request.form()
+    protocol = str(form.get("protocol", ""))
+    public_key = str(form.get("public_key", ""))
+
+    if protocol not in PROTOCOLS or not public_key:
+        return HTMLResponse(
+            page("Ошибка", "<h1>Неверные данные</h1><a class='btn' href='/'>Назад</a>"),
+            status_code=400,
+        )
+
+    try:
+        remove_peer(protocol, public_key)
+
+        with db() as conn:
+            conn.execute(
+                "UPDATE clients SET enabled = 0, deleted_at = ? WHERE protocol = ? AND public_key = ?",
+                (int(time.time()), protocol, public_key),
+            )
+            conn.commit()
+
+    except Exception as e:
+        return HTMLResponse(
+            page("Ошибка удаления", f"<h1>Ошибка удаления</h1><pre>{html.escape(str(e))}</pre><a class='btn' href='/'>Назад</a>"),
+            status_code=500,
+        )
+
+    return RedirectResponse("/", status_code=303)
+
+
+@app.get("/client/{client_id}/download")
+def download(client_id: int, user=Depends(auth)):
+    c = load_client(client_id)
+    filename = f"{slugify(c['name'])}_{c['protocol']}.conf"
+    return FileResponse(c["config_path"], filename=filename, media_type="application/octet-stream")
+
+
+@app.get("/client/{client_id}/download-vpn")
+def download_vpn(client_id: int, user=Depends(auth)):
+    c = load_client(client_id)
+    payload = build_amnezia_vpn_payload(c)
+    content = "vpn://" + payload + "\n"
+    filename = f"{slugify(c['name'])}_amnezia_config.vpn"
+    return Response(
+        content=content.encode("utf-8"),
+        media_type="text/plain",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/client/{client_id}/qr/native")
+def qr_native(client_id: int, user=Depends(auth)):
+    c = load_client(client_id)
+    return png_qr(read_conf(c))
+
+
+@app.get("/client/{client_id}/qr/amnezia-vpn")
+def qr_amnezia_vpn(client_id: int, user=Depends(auth)):
+    c = load_client(client_id)
+    payload = build_amnezia_vpn_payload(c)
+    return png_qr(payload)
+
+
+@app.get("/raw/{protocol}")
+def raw(protocol: str, user=Depends(auth)):
+    p = proto(protocol)
+    out = exec_c(p["container"], [p["tool"], "show", p["interface"]])
+    return PlainTextResponse(out)
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
+# =========================
+# 3WG PATCH: Pretty status modal
+# =========================
+
+def short_key(value: str) -> str:
+    if not value or value == "-":
+        return "-"
+    if len(value) <= 24:
+        return value
+    return value[:12] + "..." + value[-8:]
+
+
+def parse_show_output(raw: str):
+    iface = {
+        "name": "-",
+        "public_key": "-",
+        "listening_port": "-",
+        "params": {},
+    }
+    peers = []
+    current = None
+
+    for line in raw.splitlines():
+        s = line.strip()
+        if not s:
+            continue
+
+        if s.startswith("interface:"):
+            iface["name"] = s.split(":", 1)[1].strip()
+            current = None
+            continue
+
+        if s.startswith("peer:"):
+            current = {
+                "public_key": s.split(":", 1)[1].strip(),
+                "endpoint": "-",
+                "allowed_ips": "-",
+                "latest_handshake": "-",
+                "transfer": "-",
+            }
+            peers.append(current)
+            continue
+
+        if current is None:
+            if s.startswith("public key:"):
+                iface["public_key"] = s.split(":", 1)[1].strip()
+            elif s.startswith("listening port:"):
+                iface["listening_port"] = s.split(":", 1)[1].strip()
+            elif ":" in s:
+                k, v = s.split(":", 1)
+                k = k.strip()
+                v = v.strip()
+                if k in ["jc", "jmin", "jmax", "s1", "s2", "s3", "s4", "h1", "h2", "h3", "h4"]:
+                    iface["params"][k] = v
+        else:
+            if s.startswith("endpoint:"):
+                current["endpoint"] = s.split(":", 1)[1].strip()
+            elif s.startswith("allowed ips:"):
+                current["allowed_ips"] = s.split(":", 1)[1].strip()
+            elif s.startswith("latest handshake:"):
+                current["latest_handshake"] = s.split(":", 1)[1].strip()
+            elif s.startswith("transfer:"):
+                current["transfer"] = s.split(":", 1)[1].strip()
+
+    return iface, peers
+
+
+def render_pretty_status(protocol: str) -> str:
+    p = proto(protocol)
+    title = p["title"]
+    raw = exec_c(p["container"], [p["tool"], "show", p["interface"]])
+    iface, peers = parse_show_output(raw)
+
+    param_html = ""
+    if iface["params"]:
+        for k, v in iface["params"].items():
+            param_html += f"""
+            <div class="st-mini">
+              <span>{html.escape(k)}</span>
+              <b>{html.escape(v)}</b>
+            </div>
+            """
+
+    peer_rows = ""
+    for peer in peers:
+        active = peer["endpoint"] != "-"
+        dot_class = "dot-green" if active else ""
+        status_text = "ACTIVE" if active else "не подключался"
+
+        peer_rows += f"""
+        <tr>
+          <td>
+            <span class="dot {dot_class}"></span>
+            <b>{status_text}</b>
+          </td>
+          <td><code>{html.escape(short_key(peer["public_key"]))}</code></td>
+          <td><code>{html.escape(peer["allowed_ips"])}</code></td>
+          <td>{html.escape(peer["endpoint"])}</td>
+          <td>{html.escape(peer["latest_handshake"])}</td>
+          <td>{html.escape(peer["transfer"])}</td>
+        </tr>
+        """
+
+    if not peer_rows:
+        peer_rows = '<tr><td colspan="6" class="muted">Peer-ов нет</td></tr>'
+
+    return f"""
+    <div class="modal-title-row">
+      <div>
+        <h2>{html.escape(title)} status</h2>
+        <p class="muted">Команда: <code>{html.escape(p["tool"])} show {html.escape(p["interface"])}</code></p>
+      </div>
+      <div>
+        <a class="btn btn2" target="_blank" href="/raw/{html.escape(protocol)}">Открыть raw</a>
+      </div>
+    </div>
+
+    <div class="status-grid">
+      <div class="st-card">
+        <div class="st-label">Interface</div>
+        <div class="st-value">{html.escape(iface["name"])}</div>
+      </div>
+      <div class="st-card">
+        <div class="st-label">Port</div>
+        <div class="st-value">{html.escape(iface["listening_port"])}</div>
+      </div>
+      <div class="st-card">
+        <div class="st-label">Container</div>
+        <div class="st-value">{html.escape(p["container"])}</div>
+      </div>
+      <div class="st-card">
+        <div class="st-label">Public key</div>
+        <div class="st-value"><code>{html.escape(short_key(iface["public_key"]))}</code></div>
+      </div>
+    </div>
+
+    {"<div class='mask-grid'>" + param_html + "</div>" if param_html else ""}
+
+    <h3>Peer'ы</h3>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Статус</th>
+            <th>Public key</th>
+            <th>Allowed IP</th>
+            <th>Endpoint</th>
+            <th>Handshake</th>
+            <th>Transfer</th>
+          </tr>
+        </thead>
+        <tbody>
+          {peer_rows}
+        </tbody>
+      </table>
+    </div>
+
+    <details class="raw-box">
+      <summary>Показать raw вывод</summary>
+      <pre>{html.escape(raw)}</pre>
+    </details>
+    """
+
+
+@app.get("/status/{protocol}", response_class=HTMLResponse)
+def pretty_status(protocol: str, user=Depends(auth)):
+    try:
+        return HTMLResponse(render_pretty_status(protocol))
+    except Exception as e:
+        return HTMLResponse(
+            f"<h2>Ошибка статуса</h2><pre>{html.escape(str(e))}</pre>",
+            status_code=500,
+        )
+
+
+def page(title: str, body: str) -> str:
+    return f"""<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>{html.escape(title)}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root {{
+  --bg:#080d14;
+  --card:#111822;
+  --card2:#0d131c;
+  --line:#2a3441;
+  --text:#dce7f5;
+  --muted:#7e8ba0;
+  --green:#14f0a0;
+  --cyan:#27d9ff;
+  --red:#ff5b6c;
+  --yellow:#f8b62d;
+  --orange:#f4a340;
+}}
+*{{box-sizing:border-box}}
+body{{margin:0;background:var(--bg);color:var(--text);font-family:Inter,Arial,sans-serif}}
+.wrap{{max-width:1600px;margin:0 auto;padding:28px}}
+h1{{font-size:28px;margin:0 0 20px;font-weight:800;letter-spacing:.03em}}
+.card{{background:linear-gradient(180deg,#121b28,#0e1520);border:1px solid var(--line);border-radius:18px;padding:20px;margin-bottom:18px;box-shadow:0 16px 50px rgba(0,0,0,.25)}}
+.grid{{display:grid;grid-template-columns:repeat(4,minmax(170px,1fr));gap:14px;margin-bottom:18px}}
+.stat{{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px}}
+.stat .n{{font-size:24px;font-weight:800;color:var(--green)}}
+.stat .l{{font-size:13px;color:var(--muted);margin-top:6px}}
+input[type=text]{{width:100%;max-width:460px;padding:13px 14px;border-radius:12px;border:1px solid #344052;background:#090f18;color:#fff;font-size:15px;outline:none}}
+label{{margin-right:20px;color:#c9d4e5}}
+button,.btn{{display:inline-block;padding:10px 15px;border-radius:12px;border:0;background:var(--orange);color:#111;font-weight:800;text-decoration:none;cursor:pointer;margin:4px 6px 4px 0}}
+.btn2{{background:#1c2736;color:#dce7f5;border:1px solid #334056}}
+.btn3{{background:#122d35;color:#45e6ff;border:1px solid #245260}} .btn-danger{{background:#3a1118;color:#ffb6be;border:1px solid #7a2630}}
+table{{width:100%;border-collapse:collapse;font-size:14px}}
+th,td{{border-bottom:1px solid var(--line);padding:13px 10px;text-align:left;vertical-align:middle;white-space:nowrap}}
+th{{color:#98a6b9;font-weight:800}}
+tr:hover{{background:#101927}}
+code,pre{{background:#070c13;color:#e9eefc;border:1px solid var(--line);border-radius:12px}}
+code{{padding:3px 7px}}
+pre{{padding:16px;overflow-x:auto;white-space:pre-wrap;line-height:1.45}}
+.muted{{color:var(--muted)}}
+.ok{{color:var(--green);font-weight:900}}
+.bad{{color:var(--red);font-weight:900}}
+.dot{{display:inline-block;width:12px;height:12px;border-radius:50%;background:var(--yellow);box-shadow:0 0 16px rgba(248,182,45,.5);margin-right:8px}}
+.dot-green{{background:var(--green);box-shadow:0 0 16px rgba(20,240,160,.5)}}
+.dot-red{{background:var(--red)}}
+.proto{{padding:5px 10px;border-radius:999px;background:#1d2a3b;color:#eaf4ff;font-weight:900}}
+.proto-awg{{background:#102d39;color:#30dfff}}
+.proto-wg{{background:#1b2d20;color:#4cff94}}
+.qrgrid{{display:grid;grid-template-columns:repeat(2,minmax(280px,1fr));gap:18px}}
+.qrbox{{background:#0c131d;border:1px solid var(--line);border-radius:18px;padding:18px}}
+.qrbox img{{background:#fff;padding:14px;border-radius:14px;max-width:360px;width:100%}}
+
+.modal-bg{{display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:9999;padding:30px;overflow:auto}}
+.modal-bg.open{{display:block}}
+.modal-window{{max-width:1350px;margin:20px auto;background:#0b111b;border:1px solid #344052;border-radius:22px;box-shadow:0 30px 100px rgba(0,0,0,.65);overflow:hidden}}
+.modal-head{{display:flex;align-items:center;justify-content:space-between;padding:18px 22px;background:#111a28;border-bottom:1px solid var(--line)}}
+.modal-head b{{font-size:18px}}
+.modal-body{{padding:22px}}
+.modal-close{{background:#263149;color:#fff;border:1px solid #3b465f;border-radius:10px;padding:8px 12px;cursor:pointer;font-weight:800}}
+.modal-title-row{{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:16px}}
+.status-grid{{display:grid;grid-template-columns:repeat(4,minmax(180px,1fr));gap:12px;margin-bottom:18px}}
+.st-card{{background:#101827;border:1px solid var(--line);border-radius:16px;padding:15px}}
+.st-label{{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}}
+.st-value{{font-size:17px;font-weight:900;margin-top:7px}}
+.mask-grid{{display:grid;grid-template-columns:repeat(6,minmax(120px,1fr));gap:10px;margin-bottom:18px}}
+.st-mini{{background:#07111a;border:1px solid #263443;border-radius:12px;padding:10px}}
+.st-mini span{{display:block;color:var(--muted);font-size:12px;text-transform:uppercase}}
+.st-mini b{{display:block;margin-top:5px;color:var(--cyan)}}
+.table-scroll{{overflow-x:auto}}
+.raw-box{{margin-top:18px;background:#0a1019;border:1px solid var(--line);border-radius:14px;padding:14px}}
+.raw-box summary{{cursor:pointer;font-weight:900;color:var(--cyan)}}
+@media(max-width:900px){{.grid,.qrgrid,.status-grid,.mask-grid{{grid-template-columns:1fr}} table{{font-size:12px}} .modal-bg{{padding:8px}}}}
+</style>
+</head>
+<body>
+<div class="wrap">{body}</div>
+
+<div id="statusModal" class="modal-bg">
+  <div class="modal-window">
+    <div class="modal-head">
+      <b id="statusModalTitle">Статус</b>
+      <button class="modal-close" onclick="closeStatusModal()">Закрыть</button>
+    </div>
+    <div id="statusModalBody" class="modal-body">
+      Загрузка...
+    </div>
+  </div>
+</div>
+
+<script>
+function closeStatusModal() {{
+  document.getElementById('statusModal').classList.remove('open');
+}}
+
+async function openStatusModal(protocol) {{
+  const modal = document.getElementById('statusModal');
+  const body = document.getElementById('statusModalBody');
+  const title = document.getElementById('statusModalTitle');
+
+  title.textContent = protocol === 'amneziawg' ? 'awg show' : 'wg show';
+  body.innerHTML = '<p class="muted">Загрузка статуса...</p>';
+  modal.classList.add('open');
+
+  try {{
+    const r = await fetch('/status/' + protocol, {{cache: 'no-store'}});
+    body.innerHTML = await r.text();
+  }} catch (e) {{
+    body.innerHTML = '<h2>Ошибка</h2><pre>' + String(e) + '</pre>';
+  }}
+}}
+
+document.addEventListener('click', function(e) {{
+  const a = e.target.closest('a[href^="/raw/"]');
+  if (!a) return;
+
+  e.preventDefault();
+
+  const protocol = a.getAttribute('href').split('/raw/')[1];
+  openStatusModal(protocol);
+}});
+
+document.addEventListener('keydown', function(e) {{
+  if (e.key === 'Escape') closeStatusModal();
+}});
+
+document.getElementById('statusModal').addEventListener('click', function(e) {{
+  if (e.target.id === 'statusModal') closeStatusModal();
+}});
+</script>
+</body></html>"""

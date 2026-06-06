@@ -1,0 +1,60 @@
+name: Deploy DEV to cz-prg-01
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - "app/**"
+      - "scripts/**"
+      - ".github/workflows/deploy-dev-cz-prg-01.yml"
+
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-dev-cz-prg-01
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to cz-prg-01
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Validate Python syntax
+        run: |
+          python3 -m py_compile app/app.py
+
+      - name: Install SSH tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rsync openssh-client
+
+      - name: Prepare SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.DEV_DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "${{ secrets.DEV_DEPLOY_PORT }}" -H "${{ secrets.DEV_DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Upload app and scripts
+        run: |
+          rsync -az --delete \
+            -e "ssh -p ${{ secrets.DEV_DEPLOY_PORT }} -i ~/.ssh/deploy_key" \
+            app/ \
+            "${{ secrets.DEV_DEPLOY_USER }}@${{ secrets.DEV_DEPLOY_HOST }}:/srv/3wg-panel/app/"
+
+          rsync -az \
+            -e "ssh -p ${{ secrets.DEV_DEPLOY_PORT }} -i ~/.ssh/deploy_key" \
+            scripts/ \
+            "${{ secrets.DEV_DEPLOY_USER }}@${{ secrets.DEV_DEPLOY_HOST }}:/srv/3wg-panel/scripts/"
+
+      - name: Run remote deploy
+        run: |
+          ssh -p "${{ secrets.DEV_DEPLOY_PORT }}" \
+            -i ~/.ssh/deploy_key \
+            "${{ secrets.DEV_DEPLOY_USER }}@${{ secrets.DEV_DEPLOY_HOST }}" \
+            "chmod +x /srv/3wg-panel/scripts/deploy.sh && bash /srv/3wg-panel/scripts/deploy.sh"
