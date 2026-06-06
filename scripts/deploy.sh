@@ -150,15 +150,14 @@ try:
             count=1,
             flags=re.S,
         )
-        title_logo = (
-            '<div class="neo-title-icon" id="standard-title-logo" '
-            'style="width:58px!important;background:transparent!important;border:0!important;'
-            'display:flex!important;align-items:center!important;justify-content:center!important;'
-            'overflow:visible!important">'
-            + standard_logo_img('54px', '26px') +
-            '</div>'
+        # Маленький логотип рядом с заголовком 3WG Panel убираем полностью.
+        doc = re.sub(
+            r'<div class="neo-title-icon"[^>]*>.*?</div>\s*',
+            '',
+            doc,
+            count=1,
+            flags=re.S,
         )
-        doc = re.sub(r'<div class="neo-title-icon"[^>]*>.*?</div>', title_logo, doc, count=1, flags=re.S)
         return doc
 except NameError:
     pass
@@ -166,7 +165,7 @@ except NameError:
 '''.strip() + '\n'
 
 app_path.write_text(text.rstrip() + '\n\n' + block, encoding='utf-8')
-print('standard PNG logo route and img tags patched')
+print('standard PNG logo route patched; small header logo removed')
 PY
 
 echo
@@ -244,7 +243,7 @@ for url in ['http://127.0.0.1:18080/logogrin.png', 'http://127.0.0.1:18080/login
         print(url, data[:8])
     else:
         text = data.decode('utf-8', errors='replace')
-        print(url, '/logogrin.png' in text)
+        print(url, '/logogrin.png' in text, 'standard-title-logo' in text)
 PY
 
 echo
