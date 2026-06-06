@@ -11,6 +11,30 @@ echo "======================================================"
 cd "$BASE"
 
 echo
+echo "===== UI cleanup ====="
+python3 - <<'PY'
+from pathlib import Path
+
+app = Path("/srv/3wg-panel/app/app.py")
+text = app.read_text(encoding="utf-8")
+
+needles = [
+    '          <a href="/"><span class="ico">◉</span><span>Клиенты</span></a>\n',
+    '    <a href="/"><span class="ico">◉</span><span>Клиенты</span></a>\n',
+]
+
+new_text = text
+for needle in needles:
+    new_text = new_text.replace(needle, "")
+
+if new_text != text:
+    app.write_text(new_text, encoding="utf-8")
+    print("removed redundant Clients sidebar links")
+else:
+    print("no redundant Clients sidebar links found")
+PY
+
+echo
 echo "===== Syntax check ====="
 python3 -m py_compile "$APP"
 echo "app.py syntax OK"
