@@ -65,6 +65,10 @@ echo "===== Visible classic UI patch ====="
 python3 "$BASE/scripts/apply_visual_ui_patch.py"
 
 echo
+echo "===== Supplied logo patch ====="
+python3 "$BASE/scripts/apply_logo_patch.py"
+
+echo
 echo "===== Restore classic Dockerfile ====="
 cat > "$BASE/app/Dockerfile" <<'EOF'
 FROM python:3.12-slim
@@ -79,8 +83,9 @@ COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
 COPY app.py /app/app.py
+COPY static /app/static
 
-RUN mkdir -p /app/data /app/clients/wireguard /app/clients/amneziawg /app/backups/wireguard /app/backups/amneziawg
+RUN mkdir -p /app/data /app/clients/wireguard /app/clients/amneziawg /app/backups/wireguard /app/backups/amneziawg /app/static
 
 EXPOSE 18080
 
