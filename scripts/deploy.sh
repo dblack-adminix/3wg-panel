@@ -62,124 +62,7 @@ python3 "$BASE/scripts/apply_visual_ui_patch.py"
 
 echo
 echo "===== Standard PNG logo patch ====="
-python3 - <<'PY'
-from pathlib import Path
-import re
-
-app_path = Path('/srv/3wg-panel/app/app.py')
-text = app_path.read_text(encoding='utf-8')
-START = '# === 3WG STANDARD PNG LOGO START ==='
-END = '# === 3WG STANDARD PNG LOGO END ==='
-
-text = re.sub(re.escape(START) + r'.*?' + re.escape(END) + r'\n?', '', text, flags=re.S)
-
-block = r'''
-# === 3WG STANDARD PNG LOGO START ===
-@app.get('/logogrin.png')
-def logogrin_png():
-    logo_path = APP_DIR / 'static' / 'logogrin.png'
-    if not logo_path.exists():
-        raise HTTPException(status_code=404, detail='Logo not found')
-    return FileResponse(
-        logo_path,
-        media_type='image/png',
-        headers={'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0'},
-    )
-
-
-def standard_logo_img(width: str, height: str) -> str:
-    return (
-        '<img src="/logogrin.png" alt="3WG" '
-        'style="display:block!important;'
-        f'width:{width}!important;height:{height}!important;'
-        'max-width:none!important;max-height:none!important;'
-        'object-fit:contain!important;opacity:1!important;visibility:visible!important;'
-        'background:transparent!important">'
-    )
-
-
-try:
-    _login_html_before_standard_logo = login_html
-
-    def login_html(*args, **kwargs) -> str:
-        doc = _login_html_before_standard_logo(*args, **kwargs)
-        login_logo = (
-            '<div id="standard-login-logo" class="logo" style="height:62px;margin:0 0 10px 0;'
-            'display:flex!important;align-items:center!important;justify-content:flex-start!important;'
-            'background:transparent!important;overflow:visible!important">'
-            + standard_logo_img('195px', '50px') +
-            '</div>'
-        )
-        new_doc = re.sub(r'<div class="logo"[^>]*>.*?</div>', login_logo, doc, count=1, flags=re.S)
-        if new_doc == doc and 'standard-login-logo' not in doc:
-            new_doc = doc.replace(
-                '<div class="badge">SECURE NODE PANEL</div>',
-                '<div class="badge">SECURE NODE PANEL</div>' + login_logo,
-                1,
-            )
-        return new_doc
-except NameError:
-    pass
-
-
-try:
-    _page_before_standard_logo = page
-
-    def page(title: str, body: str) -> str:
-        doc = _page_before_standard_logo(title, body)
-        css = '''
-<style id="standard-logo-css">
-.neo-title-icon { display: none !important; }
-#standard-sidebar-logo {
-  display: flex !important;
-  align-items: center !important;
-  justify-content: flex-start !important;
-  min-height: 58px !important;
-  padding: 0 0 18px !important;
-  margin: 0 0 18px !important;
-  border-bottom: 1px dashed rgba(64,82,106,.55) !important;
-  background: transparent !important;
-  overflow: visible !important;
-}
-</style>
-'''
-        js = '''
-<script id="standard-logo-js">
-(function(){
-  function applyLogo(){
-    var sidebar = document.querySelector('.neo-sidebar');
-    if (sidebar) {
-      var brand = sidebar.querySelector('.neo-brand');
-      if (!brand) {
-        brand = document.createElement('div');
-        brand.className = 'neo-brand';
-        sidebar.insertBefore(brand, sidebar.firstChild);
-      }
-      brand.id = 'standard-sidebar-logo';
-      brand.innerHTML = '<img src="/logogrin.png" alt="3WG" style="display:block!important;width:178px!important;height:46px!important;max-width:none!important;max-height:none!important;object-fit:contain!important;opacity:1!important;visibility:visible!important;background:transparent!important">';
-    }
-    document.querySelectorAll('.neo-title-icon').forEach(function(el){ el.remove(); });
-  }
-  document.addEventListener('DOMContentLoaded', applyLogo);
-  applyLogo();
-  setTimeout(applyLogo, 250);
-  setTimeout(applyLogo, 1000);
-})();
-</script>
-'''
-        if 'standard-logo-css' not in doc:
-            doc = doc.replace('</head>', css + '\n</head>')
-        if 'standard-logo-js' not in doc:
-            doc = doc.replace('</body>', js + '\n</body>')
-        return doc
-except NameError:
-    pass
-# === 3WG STANDARD PNG LOGO END ===
-'''.strip() + '\n'
-
-app_path.write_text(text.rstrip() + '\n\n' + block, encoding='utf-8')
-print('standard PNG logo route patched; sidebar restored by JS; title icon hidden')
-PY
+python3 "$BASE/scripts/apply_standard_logo_patch.py"
 
 echo
 echo "===== Restore classic Dockerfile ====="
@@ -256,7 +139,7 @@ for url in ['http://127.0.0.1:18080/logogrin.png', 'http://127.0.0.1:18080/login
         print(url, data[:8])
     else:
         text = data.decode('utf-8', errors='replace')
-        print(url, '/logogrin.png' in text, 'standard-logo-js' in text, 'standard-title-logo' in text)
+        print(url, '/logogrin.png' in text, 'standard-title-logo' in text)
 PY
 
 echo
