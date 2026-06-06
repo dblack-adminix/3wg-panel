@@ -8,7 +8,8 @@ END = '# === 3WG SUPPLIED LOGO END ==='
 
 BLOCK = r'''
 # === 3WG SUPPLIED LOGO START ===
-# Размещаем готовый PNG логотип пользователя в текущем интерфейсе.
+# Размещаем готовый PNG логотип пользователя только в основном интерфейсе.
+# Login-страницу не трогаем, чтобы вход не зависел от logo/css.
 LOGO_PATH_SUPPLIED = APP_DIR / 'static' / 'logogrin.png'
 
 
@@ -42,7 +43,6 @@ try:
         if old_brand in doc:
             doc = doc.replace(old_brand, new_brand, 1)
 
-        # На случай, если старый brand уже чуть поменялся, заменяем через regex.
         doc = re.sub(
             r'<div class="neo-brand">\s*<div class="neo-logo">3</div>\s*<div>\s*<div class="neo-brand-title">3WG</div>\s*<div class="neo-brand-sub">NODE PANEL</div>\s*</div>\s*</div>',
             '<div class="neo-brand neo-brand-supplied-logo"><img class="supplied-logo-img" src="/static/logogrin.png" alt="3WG" loading="eager"></div>',
@@ -82,16 +82,6 @@ try:
   width: 54px !important;
   border: 0 !important;
   background-color: transparent !important;
-}
-.login-card .logo {
-  background-image: url('/static/logogrin.png') !important;
-  background-repeat: no-repeat !important;
-  background-size: contain !important;
-  background-position: left center !important;
-  color: transparent !important;
-  min-height: 50px !important;
-  text-indent: -999px !important;
-  overflow: hidden !important;
 }
 </style>
 '''
