@@ -64,16 +64,6 @@ echo
 echo "===== Standard PNG logo patch ====="
 python3 "$BASE/scripts/apply_standard_logo_patch.py"
 
-echo
-echo "===== Restore bundled logo PNG ====="
-mkdir -p "$BASE/app/static"
-if [ -f "$BASE/app/static/logogrin.png.b64" ]; then
-  base64 -d "$BASE/app/static/logogrin.png.b64" > "$BASE/app/static/logogrin.png"
-  file "$BASE/app/static/logogrin.png" || true
-  sha256sum "$BASE/app/static/logogrin.png"
-else
-  echo "WARNING: $BASE/app/static/logogrin.png.b64 not found"
-fi
 
 echo
 echo "===== Restore classic Dockerfile ====="
