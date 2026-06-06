@@ -20,9 +20,6 @@ app = Path("/srv/3wg-panel/app/app.py")
 text = app.read_text(encoding="utf-8")
 new_text = text
 
-# Удаляем бесполезный пункт бокового меню "Клиенты".
-# В app.py сейчас есть несколько поколений темы, и пункт может быть как в одну строку,
-# так и многострочным HTML-блоком. Поэтому режем именно nav-link, где текст пункта = Клиенты.
 patterns = [
     r'\n[ \t]*<a\s+href="/"\s*>\s*\n[ \t]*<span\s+class="ico">.*?</span>\s*\n[ \t]*<span>Клиенты</span>\s*\n[ \t]*</a>',
     r'\n[ \t]*<a\s+href="/"><span\s+class="ico">.*?</span><span>Клиенты</span></a>',
@@ -33,23 +30,18 @@ for pattern in patterns:
     new_text, count = re.subn(pattern, "", new_text, flags=re.S)
     removed += count
 
-# Если грубый /ui shell уже был добавлен прошлым deploy, вычищаем его.
-react_ui_start = "# === 3WG REACT UI START ==="
-react_ui_end = "# === 3WG REACT UI END ==="
-new_text, ui_removed = re.subn(
-    re.escape(react_ui_start) + r".*?" + re.escape(react_ui_end) + r"\n?",
-    "",
-    new_text,
-    flags=re.S,
-)
+for start, end in [
+    ("# === 3WG REACT UI START ===", "# === 3WG REACT UI END ==="),
+    ("# === 3WG SUPPLIED LOGO START ===", "# === 3WG SUPPLIED LOGO END ==="),
+]:
+    new_text = re.sub(re.escape(start) + r".*?" + re.escape(end) + r"\n?", "", new_text, flags=re.S)
 
 if new_text != text:
     app.write_text(new_text, encoding="utf-8")
     print(f"removed redundant Clients sidebar links: {removed}")
-    if ui_removed:
-        print(f"removed rough React UI shell blocks: {ui_removed}")
+    print("removed generated logo/ui patch blocks if present")
 else:
-    print("no redundant Clients sidebar links found")
+    print("no cleanup changes found")
 PY
 
 echo
@@ -63,10 +55,6 @@ python3 "$BASE/scripts/apply_dashboard_model_patch.py"
 echo
 echo "===== Visible classic UI patch ====="
 python3 "$BASE/scripts/apply_visual_ui_patch.py"
-
-echo
-echo "===== Supplied logo patch ====="
-python3 "$BASE/scripts/apply_logo_patch.py"
 
 echo
 echo "===== Restore classic Dockerfile ====="
