@@ -14,22 +14,28 @@ echo
 echo "===== UI cleanup ====="
 python3 - <<'PY'
 from pathlib import Path
+import re
 
 app = Path("/srv/3wg-panel/app/app.py")
 text = app.read_text(encoding="utf-8")
+new_text = text
 
-needles = [
-    '          <a href="/"><span class="ico">◉</span><span>Клиенты</span></a>\n',
-    '    <a href="/"><span class="ico">◉</span><span>Клиенты</span></a>\n',
+# Удаляем бесполезный пункт бокового меню "Клиенты".
+# В app.py сейчас есть несколько поколений темы, и пункт может быть как в одну строку,
+# так и многострочным HTML-блоком. Поэтому режем именно nav-link, где текст пункта = Клиенты.
+patterns = [
+    r'\n[ \t]*<a\s+href="/"\s*>\s*\n[ \t]*<span\s+class="ico">.*?</span>\s*\n[ \t]*<span>Клиенты</span>\s*\n[ \t]*</a>',
+    r'\n[ \t]*<a\s+href="/"><span\s+class="ico">.*?</span><span>Клиенты</span></a>',
 ]
 
-new_text = text
-for needle in needles:
-    new_text = new_text.replace(needle, "")
+removed = 0
+for pattern in patterns:
+    new_text, count = re.subn(pattern, "", new_text, flags=re.S)
+    removed += count
 
 if new_text != text:
     app.write_text(new_text, encoding="utf-8")
-    print("removed redundant Clients sidebar links")
+    print(f"removed redundant Clients sidebar links: {removed}")
 else:
     print("no redundant Clients sidebar links found")
 PY
