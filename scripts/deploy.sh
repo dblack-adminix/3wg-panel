@@ -33,6 +33,10 @@ for pattern in patterns:
 for start, end in [
     ("# === 3WG REACT UI START ===", "# === 3WG REACT UI END ==="),
     ("# === 3WG SUPPLIED LOGO START ===", "# === 3WG SUPPLIED LOGO END ==="),
+    ("# === 3WG SIMPLE LOGO START ===", "# === 3WG SIMPLE LOGO END ==="),
+    ("# === 3WG DIRECT PNG LOGO START ===", "# === 3WG DIRECT PNG LOGO END ==="),
+    ("# === 3WG ROOT LOGO START ===", "# === 3WG ROOT LOGO END ==="),
+    ("# === 3WG STANDARD PNG LOGO START ===", "# === 3WG STANDARD PNG LOGO END ==="),
 ]:
     new_text = re.sub(re.escape(start) + r".*?" + re.escape(end) + r"\n?", "", new_text, flags=re.S)
 
@@ -55,6 +59,115 @@ python3 "$BASE/scripts/apply_dashboard_model_patch.py"
 echo
 echo "===== Visible classic UI patch ====="
 python3 "$BASE/scripts/apply_visual_ui_patch.py"
+
+echo
+echo "===== Standard PNG logo patch ====="
+python3 - <<'PY'
+from pathlib import Path
+import re
+
+app_path = Path('/srv/3wg-panel/app/app.py')
+text = app_path.read_text(encoding='utf-8')
+START = '# === 3WG STANDARD PNG LOGO START ==='
+END = '# === 3WG STANDARD PNG LOGO END ==='
+
+text = re.sub(re.escape(START) + r'.*?' + re.escape(END) + r'\n?', '', text, flags=re.S)
+
+block = r'''
+# === 3WG STANDARD PNG LOGO START ===
+@app.get('/logogrin.png')
+def logogrin_png():
+    logo_path = APP_DIR / 'static' / 'logogrin.png'
+    if not logo_path.exists():
+        raise HTTPException(status_code=404, detail='Logo not found')
+    return FileResponse(
+        logo_path,
+        media_type='image/png',
+        headers={'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0'},
+    )
+
+
+def standard_logo_img(width: str, height: str) -> str:
+    return (
+        '<img src="/logogrin.png" alt="3WG" '
+        'style="display:block!important;'
+        f'width:{width}!important;height:{height}!important;'
+        'max-width:none!important;max-height:none!important;'
+        'object-fit:contain!important;opacity:1!important;visibility:visible!important;'
+        'background:transparent!important">'
+    )
+
+
+try:
+    _login_html_before_standard_logo = login_html
+
+    def login_html(*args, **kwargs) -> str:
+        doc = _login_html_before_standard_logo(*args, **kwargs)
+        login_logo = (
+            '<div id="standard-login-logo" class="logo" style="height:62px;margin:0 0 10px 0;'
+            'display:flex!important;align-items:center!important;justify-content:flex-start!important;'
+            'background:transparent!important;overflow:visible!important">'
+            + standard_logo_img('195px', '50px') +
+            '</div>'
+        )
+        new_doc = re.sub(r'<div class="logo"[^>]*>.*?</div>', login_logo, doc, count=1, flags=re.S)
+        if new_doc == doc and 'standard-login-logo' not in doc:
+            new_doc = doc.replace(
+                '<div class="badge">SECURE NODE PANEL</div>',
+                '<div class="badge">SECURE NODE PANEL</div>' + login_logo,
+                1,
+            )
+        return new_doc
+except NameError:
+    pass
+
+
+try:
+    _page_before_standard_logo = page
+
+    def page(title: str, body: str) -> str:
+        doc = _page_before_standard_logo(title, body)
+        sidebar_logo = (
+            '<div class="neo-brand" id="standard-sidebar-logo" '
+            'style="display:flex!important;align-items:center!important;justify-content:flex-start!important;'
+            'min-height:58px!important;padding:0 0 18px!important;margin:0 0 18px!important;'
+            'border-bottom:1px dashed rgba(64,82,106,.55)!important;'
+            'background:transparent!important;overflow:visible!important">'
+            + standard_logo_img('178px', '46px') +
+            '</div>'
+        )
+        doc = re.sub(
+            r'<div class="neo-brand"[^>]*id="[^"]*sidebar-logo[^"]*"[^>]*>.*?</div>',
+            sidebar_logo,
+            doc,
+            count=1,
+            flags=re.S,
+        )
+        doc = re.sub(
+            r'<div class="neo-brand">\s*<div class="neo-logo">3</div>\s*<div>\s*<div class="neo-brand-title">3WG</div>\s*<div class="neo-brand-sub">NODE PANEL</div>\s*</div>\s*</div>',
+            sidebar_logo,
+            doc,
+            count=1,
+            flags=re.S,
+        )
+        title_logo = (
+            '<div class="neo-title-icon" id="standard-title-logo" '
+            'style="width:58px!important;background:transparent!important;border:0!important;'
+            'display:flex!important;align-items:center!important;justify-content:center!important;'
+            'overflow:visible!important">'
+            + standard_logo_img('54px', '26px') +
+            '</div>'
+        )
+        doc = re.sub(r'<div class="neo-title-icon"[^>]*>.*?</div>', title_logo, doc, count=1, flags=re.S)
+        return doc
+except NameError:
+    pass
+# === 3WG STANDARD PNG LOGO END ===
+'''.strip() + '\n'
+
+app_path.write_text(text.rstrip() + '\n\n' + block, encoding='utf-8')
+print('standard PNG logo route and img tags patched')
+PY
 
 echo
 echo "===== Restore classic Dockerfile ====="
@@ -119,6 +232,19 @@ echo "===== Health check ====="
 docker exec 3wg-panel python - <<'PY'
 import urllib.request
 print(urllib.request.urlopen("http://127.0.0.1:18080/health").read().decode())
+PY
+
+echo
+echo "===== Logo check ====="
+python3 - <<'PY'
+import urllib.request
+for url in ['http://127.0.0.1:18080/logogrin.png', 'http://127.0.0.1:18080/login', 'http://127.0.0.1:18080/']:
+    data = urllib.request.urlopen(url, timeout=10).read()
+    if url.endswith('.png'):
+        print(url, data[:8])
+    else:
+        text = data.decode('utf-8', errors='replace')
+        print(url, '/logogrin.png' in text)
 PY
 
 echo
