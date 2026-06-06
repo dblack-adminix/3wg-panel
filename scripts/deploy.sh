@@ -61,6 +61,10 @@ echo "===== Dashboard model API patch ====="
 python3 "$BASE/scripts/apply_dashboard_model_patch.py"
 
 echo
+echo "===== Visible classic UI patch ====="
+python3 "$BASE/scripts/apply_visual_ui_patch.py"
+
+echo
 echo "===== Restore classic Dockerfile ====="
 cat > "$BASE/app/Dockerfile" <<'EOF'
 FROM python:3.12-slim
