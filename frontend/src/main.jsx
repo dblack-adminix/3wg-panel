@@ -239,12 +239,28 @@ function ClientsTable({ peers, onRefresh }) {
 }
 
 function QrModal({ peer, onClose }) {
-  const qrUrl = peer.links?.qr_native_png;
-  const fileUrl = peer.links?.download;
+  const variants = [
+    {
+      key: 'native',
+      title: 'AmneziaWG app',
+      hint: 'Native .conf для AmneziaWG.',
+      file: peer.links?.download,
+      qr: peer.links?.qr_native_png,
+      fileLabel: 'Скачать .conf',
+    },
+    peer.links?.download_vpn && peer.links?.qr_amnezia_vpn_png ? {
+      key: 'vpn',
+      title: 'AmneziaVPN app',
+      hint: 'Специальный .vpn payload для AmneziaVPN.',
+      file: peer.links.download_vpn,
+      qr: peer.links.qr_amnezia_vpn_png,
+      fileLabel: 'Скачать .vpn',
+    } : null,
+  ].filter(Boolean);
 
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
-      <div className="modal-card qr-modal" role="dialog" aria-modal="true" aria-label="QR код клиента" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="modal-card qr-modal multi-qr-modal" role="dialog" aria-modal="true" aria-label="QR коды клиента" onMouseDown={(e) => e.stopPropagation()}>
         <div className="modal-head">
           <div>
             <h2>{peer.name}</h2>
@@ -252,10 +268,18 @@ function QrModal({ peer, onClose }) {
           </div>
           <button className="modal-close" type="button" onClick={onClose} aria-label="Закрыть"><X size={17} /></button>
         </div>
-        {qrUrl && <img className="modal-qr-image" src={qrUrl} alt={`QR ${peer.name}`} />}
-        <div className="modal-actions">
-          <a className="orange-btn small" href={fileUrl}><Download size={14} /> Скачать файл</a>
-          <a className="blue-btn small" href={qrUrl}><QrCode size={14} /> Скачать код</a>
+        <div className="modal-qr-grid">
+          {variants.map((item) => (
+            <div className="modal-qr-panel" key={item.key}>
+              <h3>{item.title}</h3>
+              <p>{item.hint}</p>
+              {item.qr && <img className="modal-qr-image" src={item.qr} alt={`${item.title} QR ${peer.name}`} />}
+              <div className="modal-actions">
+                <a className="orange-btn small" href={item.file}><Download size={14} /> {item.fileLabel}</a>
+                <a className="blue-btn small" href={item.qr}><QrCode size={14} /> Скачать код</a>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </div>
