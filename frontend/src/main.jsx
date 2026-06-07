@@ -14,6 +14,7 @@ import {
   RefreshCw,
   X,
   ShieldCheck,
+  Terminal,
   Users,
   Wifi,
   WifiOff,
@@ -387,6 +388,123 @@ function formatBytes(v) {
   return `${x.toFixed(2)} ${units[i]}`;
 }
 
+function StatusPage({ protocol, onLogout }) {
+  const [state, setState] = useState({ loading: true, status: null, error: '' });
+
+  const load = async () => {
+    try {
+      const data = await api('/api/node/status');
+      setState({ loading: false, status: data, error: '' });
+    } catch (err) {
+      setState({ loading: false, status: null, error: err.message || 'Ошибка статуса' });
+    }
+  };
+
+  useEffect(() => { load(); }, [protocol]);
+
+  const item = state.status?.protocols?.[protocol];
+  const raw = item?.raw || '';
+  const peers = useMemo(() => parseStatusPeers(raw), [raw]);
+  const online = peers.filter((p) => p.online).length;
+  const title = `${item?.title || protocol} status`;
+
+  return (
+    <Shell title={title} subtitle={item ? `${item.container} / ${item.interface}` : 'Protocol health'} onLogout={onLogout}>
+      {state.error && <div className="warning">{state.error}</div>}
+      {state.loading && <section className="card detail-card">Загрузка...</section>}
+      {item && (
+        <>
+          <div className="status-hero">
+            <section className="card status-summary-card">
+              <div className="status-summary-head">
+                <div>
+                  <span className="eyebrow">Protocol</span>
+                  <h2>{item.title}</h2>
+                </div>
+                <span className={item.available ? 'status-pill online' : 'status-pill offline'}>{item.available ? <Wifi size={14} /> : <WifiOff size={14} />}{item.available ? 'ONLINE' : 'OFFLINE'}</span>
+              </div>
+              <div className="status-meta-grid">
+                <div><span>Interface</span><code>{item.interface}</code></div>
+                <div><span>Container</span><code>{item.container}</code></div>
+                <div><span>Endpoint</span><code>{item.endpoint}</code></div>
+                <div><span>Network</span><code>{item.network}</code></div>
+              </div>
+            </section>
+            <div className="status-kpis">
+              <StatCard value={peers.length} label="peer'ов всего" icon={Users} />
+              <StatCard value={online} label="активных peer'ов" icon={Wifi} />
+              <StatCard value={item.port} label="порт UDP" icon={Network} />
+            </div>
+          </div>
+
+          <section className="card status-peers-card">
+            <div className="section-head">
+              <h2>Peer'ы</h2>
+              <a className="blue-btn small" href={`/raw/${protocol}`}><Terminal size={14} /> raw</a>
+            </div>
+            <div className="table-wrap">
+              <table className="status-table">
+                <colgroup>
+                  <col style={{ width: 100 }} />
+                  <col style={{ width: 210 }} />
+                  <col style={{ width: 150 }} />
+                  <col style={{ width: 190 }} />
+                  <col style={{ width: 210 }} />
+                  <col style={{ width: 230 }} />
+                </colgroup>
+                <thead><tr><th>Статус</th><th>Public key</th><th>Allowed IP</th><th>Endpoint</th><th>Handshake</th><th>Transfer</th></tr></thead>
+                <tbody>
+                  {peers.map((peer) => (
+                    <tr key={peer.publicKey}>
+                      <td><span className={peer.online ? 'active-text' : 'muted'}>{peer.online ? 'ACTIVE' : 'OFFLINE'}</span></td>
+                      <td title={peer.publicKey}><code>{shortKey(peer.publicKey)}</code></td>
+                      <td>{peer.allowedIp || '-'}</td>
+                      <td title={peer.endpoint}>{peer.endpoint || '-'}</td>
+                      <td>{peer.handshake || '-'}</td>
+                      <td>{peer.transfer || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section className="card raw-card">
+            <div className="section-head"><h2>Raw output</h2><button className="copy-button" type="button" onClick={() => navigator.clipboard?.writeText(raw)}><Copy size={15} /> Copy</button></div>
+            <pre>{raw || item.reason}</pre>
+          </section>
+        </>
+      )}
+    </Shell>
+  );
+}
+
+function parseStatusPeers(raw) {
+  const peers = [];
+  let current = null;
+  for (const line of String(raw || '').split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('peer: ')) {
+      current = { publicKey: trimmed.slice(6), endpoint: '', allowedIp: '', handshake: '', transfer: '', online: false };
+      peers.push(current);
+      continue;
+    }
+    if (!current) continue;
+    if (trimmed.startsWith('endpoint: ')) {
+      current.endpoint = trimmed.slice(10);
+      current.online = current.endpoint && current.endpoint !== '(none)';
+    } else if (trimmed.startsWith('allowed ips: ')) {
+      current.allowedIp = trimmed.slice(13);
+    } else if (trimmed.startsWith('latest handshake: ')) {
+      current.handshake = trimmed.slice(18);
+      if (current.handshake && current.handshake !== '0' && current.handshake !== '(none)') current.online = true;
+    } else if (trimmed.startsWith('transfer: ')) {
+      current.transfer = trimmed.slice(10);
+    }
+  }
+  return peers;
+}
+
 function Dashboard({ onLogout }) {
   const [state, setState] = useState({ loading: true, peers: [], status: null, protocols: null, error: '' });
 
@@ -435,7 +553,10 @@ function App() {
   if (auth.loading) return <div className="boot">3WG</div>;
   if (!auth.ok) return <Login onLogin={check} />;
   const clientMatch = window.location.pathname.match(/^\/client\/(\d+)$/);
-  return clientMatch ? <ClientPage clientId={clientMatch[1]} onLogout={logout} /> : <Dashboard onLogout={logout} />;
+  const statusMatch = window.location.pathname.match(/^\/status\/(wireguard|amneziawg)$/);
+  if (clientMatch) return <ClientPage clientId={clientMatch[1]} onLogout={logout} />;
+  if (statusMatch) return <StatusPage protocol={statusMatch[1]} onLogout={logout} />;
+  return <Dashboard onLogout={logout} />;
 }
 
 createRoot(document.getElementById('root')).render(<App />);
