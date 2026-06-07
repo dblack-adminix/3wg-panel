@@ -13,8 +13,7 @@ lt = chr(60)
 gt = chr(62)
 old = lt + 'table' + gt + '\n' + lt + 'thead' + gt
 new = lt + 'table class="clients-table"' + gt + '\n' + lt + 'colgroup' + gt + lt + 'col class="c-id"' + gt + lt + 'col class="c-name"' + gt + lt + 'col class="c-proto"' + gt + lt + 'col class="c-ip"' + gt + lt + 'col' + gt + lt + 'col' + gt + lt + 'col' + gt + lt + 'col' + gt + lt + 'col' + gt + lt + 'col' + gt + lt + '/colgroup' + gt + '\n' + lt + 'thead' + gt
-marker = 'clients-table'
-if marker not in s:
+if lt + 'table class="clients-table"' + gt not in s:
     s = s.replace(old, new, 1)
 
 p.write_text(s, encoding='utf-8')
