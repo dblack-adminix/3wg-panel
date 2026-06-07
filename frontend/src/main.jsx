@@ -84,14 +84,18 @@ function Login({ onLogin }) {
 }
 
 function Sidebar({ onLogout }) {
+  const path = window.location.pathname;
+  const isHome = path === '/' || path === '/ui';
+  const isStatus = path.startsWith('/status/');
+
   return (
     <aside className="sidebar">
       <div className="brand-block">
         <img src="/logogrin.png" alt="3WG" />
       </div>
       <div className="nav-title">ОБЗОР</div>
-      <a className="nav active" href="#top"><Home size={14} /> <span>Главная</span></a>
-      <a className="nav" href="/status/amneziawg"><Activity size={14} /> <span>AWG status</span></a>
+      <a className={`nav ${isHome ? 'active' : ''}`} href="/"><Home size={14} /> <span>Главная</span></a>
+      <a className={`nav ${isStatus ? 'active' : ''}`} href="/status/amneziawg"><Activity size={14} /> <span>AWG status</span></a>
       <div className="nav-title">УПРАВЛЕНИЕ</div>
       <button className="nav logout" onClick={onLogout}><LogOut size={14} /> <span>Выход</span></button>
     </aside>
