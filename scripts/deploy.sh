@@ -69,6 +69,10 @@ echo "===== Login radius patch ====="
 python3 "$BASE/scripts/apply_login_radius_patch.py"
 
 echo
+echo "===== Clients table layout patch ====="
+python3 "$BASE/scripts/apply_clients_table_patch.py"
+
+echo
 echo "===== Restore classic Dockerfile ====="
 cat > "$BASE/app/Dockerfile" <<'EOF'
 FROM python:3.12-slim
@@ -134,7 +138,7 @@ print(urllib.request.urlopen("http://127.0.0.1:18080/health").read().decode())
 PY
 
 echo
-echo "===== Logo check ====="
+echo "===== UI check ====="
 python3 - <<'PY'
 import hashlib
 import urllib.request
@@ -144,7 +148,7 @@ for url in ['http://127.0.0.1:18080/logogrin.png', 'http://127.0.0.1:18080/login
         print(url, data[:8], hashlib.sha256(data).hexdigest())
     else:
         text = data.decode('utf-8', errors='replace')
-        print(url, '/logogrin.png' in text, 'standard-title-logo' in text, 'border-radius:8px' in text)
+        print(url, '/logogrin.png' in text, 'standard-title-logo' in text, 'border-radius:8px' in text, 'clients-table' in text)
 PY
 
 echo
