@@ -407,6 +407,7 @@ function StatusPage({ protocol, onLogout }) {
   const peers = useMemo(() => parseStatusPeers(raw), [raw]);
   const online = peers.filter((p) => p.online).length;
   const title = `${item?.title || protocol} status`;
+  const [rawOpen, setRawOpen] = useState(false);
 
   return (
     <Shell title={title} subtitle={item ? `${item.container} / ${item.interface}` : 'Protocol health'} onLogout={onLogout}>
@@ -440,7 +441,7 @@ function StatusPage({ protocol, onLogout }) {
           <section className="card status-peers-card">
             <div className="section-head">
               <h2>Peer'ы</h2>
-              <a className="blue-btn small" href={`/raw/${protocol}`}><Terminal size={14} /> raw</a>
+              <button className="blue-btn small" type="button" onClick={() => setRawOpen(true)}><Terminal size={14} /> raw</button>
             </div>
             <div className="table-wrap">
               <table className="status-table">
@@ -469,13 +470,34 @@ function StatusPage({ protocol, onLogout }) {
             </div>
           </section>
 
-          <section className="card raw-card">
-            <div className="section-head"><h2>Raw output</h2><button className="copy-button" type="button" onClick={() => navigator.clipboard?.writeText(raw)}><Copy size={15} /> Copy</button></div>
+          <section className="card raw-card compact-raw-card">
+            <div className="section-head"><h2>Raw output</h2><button className="copy-button" type="button" onClick={() => setRawOpen(true)}><Terminal size={15} /> Open</button></div>
             <pre>{raw || item.reason}</pre>
           </section>
+          {rawOpen && <RawModal title={`${item.title} raw output`} raw={raw || item.reason} onClose={() => setRawOpen(false)} />}
         </>
       )}
     </Shell>
+  );
+}
+
+function RawModal({ title, raw, onClose }) {
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <div className="modal-card raw-modal" role="dialog" aria-modal="true" aria-label="Raw output" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <div>
+            <h2>{title}</h2>
+            <p>Live command output</p>
+          </div>
+          <button className="modal-close" type="button" onClick={onClose} aria-label="Закрыть"><X size={17} /></button>
+        </div>
+        <pre>{raw}</pre>
+        <div className="modal-actions">
+          <button className="blue-btn small" type="button" onClick={() => navigator.clipboard?.writeText(raw)}><Copy size={14} /> Copy</button>
+        </div>
+      </div>
+    </div>
   );
 }
 

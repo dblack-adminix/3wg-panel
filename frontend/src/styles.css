@@ -127,7 +127,7 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 .qr-image { display: block; width: 260px; max-width: 100%; aspect-ratio: 1; object-fit: contain; background: #fff; border-radius: 6px; padding: 8px; }
 .qr-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .orange-btn.small, .blue-btn.small { min-width: 0; height: 32px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border-radius: 7px; padding: 0 12px; font-size: 12px; font-weight: 900; text-decoration: none; }
-.blue-btn { background: #0b3342; border: 1px solid #126378; color: #2eeaff; }
+.blue-btn { background: #0b3342; border: 1px solid #126378; color: #2eeaff; cursor: pointer; }
 .config-card pre { max-height: 460px; overflow: auto; margin: 0; padding: 14px; border: 1px solid #1f2e41; border-radius: 8px; background: #050b12; color: #f3f7ff; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .copy-button { height: 30px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid #263546; border-radius: 7px; background: #0b121b; color: #c7d8ee; font-weight: 900; cursor: pointer; padding: 0 10px; }
 
@@ -173,3 +173,7 @@ button:disabled { cursor: not-allowed; opacity: .58; }
   .status-hero { grid-template-columns: 1fr; }
   .status-kpis { grid-template-columns: repeat(3, minmax(150px, 1fr)); }
 }
+
+.compact-raw-card pre { max-height: 180px; }
+.raw-modal { width: min(980px, 94vw); }
+.raw-modal pre { max-height: 70vh; overflow: auto; margin: 0; padding: 14px; border: 1px solid #1f2e41; border-radius: 8px; background: #050b12; color: #f3f7ff; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
