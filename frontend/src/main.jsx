@@ -1,5 +1,20 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import {
+  Activity,
+  ArrowUpRight,
+  Download,
+  Home,
+  LogOut,
+  Network,
+  Plus,
+  QrCode,
+  RefreshCw,
+  ShieldCheck,
+  Users,
+  Wifi,
+  WifiOff,
+} from 'lucide-react';
 import './styles.css';
 
 const api = async (path, options = {}) => {
@@ -17,6 +32,14 @@ const api = async (path, options = {}) => {
   }
   return data;
 };
+
+function IconButton({ href, onClick, title, tone = 'default', children }) {
+  const className = `icon-button ${tone}`;
+  if (href) {
+    return <a className={className} href={href} title={title} aria-label={title}>{children}</a>;
+  }
+  return <button className={className} onClick={onClick} title={title} aria-label={title} type="button">{children}</button>;
+}
 
 function Login({ onLogin }) {
   const [username, setUsername] = useState('admin');
@@ -65,20 +88,20 @@ function Sidebar({ onLogout }) {
         <div className="brand-sub">NODE PANEL</div>
       </div>
       <div className="nav-title">ОБЗОР</div>
-      <a className="nav active" href="#top">⌂ <span>Главная</span></a>
-      <a className="nav" href="#status">✶ <span>AWG status</span></a>
+      <a className="nav active" href="#top"><Home size={14} /> <span>Главная</span></a>
+      <a className="nav" href="#status"><Activity size={14} /> <span>AWG status</span></a>
       <div className="nav-title">УПРАВЛЕНИЕ</div>
-      <button className="nav logout" onClick={onLogout}>↪ <span>Выход</span></button>
+      <button className="nav logout" onClick={onLogout}><LogOut size={14} /> <span>Выход</span></button>
     </aside>
   );
 }
 
-function StatCard({ value, label }) {
+function StatCard({ value, label, icon: Icon }) {
   return (
     <div className="stat-card">
       <div className="stat-value">{value}</div>
       <div className="stat-label">{label}</div>
-      <div className="stat-mark" />
+      <div className="stat-mark">{Icon && <Icon size={16} />}</div>
     </div>
   );
 }
@@ -111,7 +134,7 @@ function CreateClient({ protocols, onCreated }) {
   };
 
   return (
-    <section className="card create-card">
+    <section className="card create-card compact-create">
       <h2>Создать клиента</h2>
       <form onSubmit={submit}>
         <input className="name-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Например: Ivan iPhone" />
@@ -119,7 +142,7 @@ function CreateClient({ protocols, onCreated }) {
           <label className={!wgAvailable ? 'muted' : ''}><input type="checkbox" checked={wireguard} disabled={!wgAvailable} onChange={(e) => setWireguard(e.target.checked)} /> WireGuard {!wgAvailable && <span className="pill bad">не установлен</span>}</label>
           <label><input type="checkbox" checked={amnezia} disabled={!available} onChange={(e) => setAmnezia(e.target.checked)} /> AmneziaWG</label>
         </div>
-        <button className="orange-btn" disabled={loading || !name.trim()}>+ Создать клиента</button>
+        <button className="orange-btn" disabled={loading || !name.trim()}><Plus size={15} /> Создать клиента</button>
         {error && <div className="warning">{error}</div>}
       </form>
       <div className="warning compact-warning">
@@ -135,7 +158,10 @@ function CreateClient({ protocols, onCreated }) {
 function ClientsTable({ peers, onRefresh }) {
   return (
     <section className="card clients-card">
-      <h2>Клиенты</h2>
+      <div className="section-head">
+        <h2>Клиенты</h2>
+        <IconButton onClick={onRefresh} title="Обновить таблицу" tone="ghost"><RefreshCw size={15} /></IconButton>
+      </div>
       <div className="table-wrap">
         <table className="clients-table">
           <colgroup>
@@ -148,7 +174,7 @@ function ClientsTable({ peers, onRefresh }) {
             <col style={{ width: 170 }} />
             <col style={{ width: 105 }} />
             <col style={{ width: 105 }} />
-            <col style={{ width: 82 }} />
+            <col style={{ width: 96 }} />
           </colgroup>
           <thead>
             <tr>
@@ -161,7 +187,7 @@ function ClientsTable({ peers, onRefresh }) {
               <th>Последнее подключение</th>
               <th>RX</th>
               <th>TX</th>
-              <th></th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -176,7 +202,11 @@ function ClientsTable({ peers, onRefresh }) {
                 <td>{p.live?.latest_handshake && p.live.latest_handshake !== '0' ? new Date(Number(p.live.latest_handshake) * 1000).toLocaleString('ru-RU') : '-'}</td>
                 <td>{formatBytes(p.live?.rx)}</td>
                 <td>{formatBytes(p.live?.tx)}</td>
-                <td className="actions"><a href={p.links?.html || '#'}>↗</a><button onClick={onRefresh}>↻</button></td>
+                <td className="actions">
+                  <IconButton href={p.links?.html || '#'} title="Открыть клиента" tone="open"><ArrowUpRight size={14} /></IconButton>
+                  <IconButton href={p.links?.download || '#'} title="Скачать config" tone="download"><Download size={14} /></IconButton>
+                  <IconButton href={p.links?.qr_native_png || '#'} title="Скачать QR" tone="qr"><QrCode size={14} /></IconButton>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -225,18 +255,18 @@ function Dashboard({ onLogout }) {
             <h1>3WG Panel</h1>
             <p>WireGuard / AmneziaWG node management</p>
           </div>
-          <div className="top-actions"><span>AWG</span><button onClick={onLogout}>↪</button></div>
+          <div className="top-actions"><span>AWG</span><button onClick={onLogout} title="Выйти"><LogOut size={15} /></button></div>
         </header>
         {state.error && <div className="warning">{state.error}</div>}
         <div className="stats-grid">
-          <StatCard value={state.status?.clients_total ?? state.peers.length} label="клиентов в панели" />
-          <StatCard value={state.status?.peers_total ?? 0} label="peer'ов в контейнерах" />
-          <StatCard value={online} label="сейчас в сети" />
-          <StatCard value={available} label="доступных протокола" />
+          <StatCard value={state.status?.clients_total ?? state.peers.length} label="клиентов в панели" icon={Users} />
+          <StatCard value={state.status?.peers_total ?? 0} label="peer'ов в контейнерах" icon={Network} />
+          <StatCard value={online} label="сейчас в сети" icon={Wifi} />
+          <StatCard value={available} label="доступных протокола" icon={ShieldCheck} />
         </div>
         <CreateClient protocols={state.protocols} onCreated={load} />
         <ClientsTable peers={state.peers} onRefresh={load} />
-        <section className="card" id="status"><h2>Статус</h2><div className="status-grid">{Object.values(state.protocols || {}).map((p) => <div className="status-item" key={p.protocol}><b>{p.title}</b><span className={p.available ? 'status-ok' : 'status-bad'}>{p.available ? 'ONLINE' : 'OFFLINE'}</span><small>{p.container} / {p.interface}</small></div>)}</div></section>
+        <section className="card status-card" id="status"><h2>Статус</h2><div className="status-grid">{Object.values(state.protocols || {}).map((p) => <div className="status-item" key={p.protocol}><b>{p.title}</b><span className={p.available ? 'status-ok' : 'status-bad'}>{p.available ? <Wifi size={14} /> : <WifiOff size={14} />}{p.available ? 'ONLINE' : 'OFFLINE'}</span><small>{p.container} / {p.interface}</small></div>)}</div></section>
       </main>
     </div>
   );
