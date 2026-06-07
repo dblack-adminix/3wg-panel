@@ -84,8 +84,6 @@ function Sidebar({ onLogout }) {
     <aside className="sidebar">
       <div className="brand-block">
         <img src="/logogrin.png" alt="3WG" />
-        <div className="brand-title">3WG</div>
-        <div className="brand-sub">NODE PANEL</div>
       </div>
       <div className="nav-title">ОБЗОР</div>
       <a className="nav active" href="#top"><Home size={14} /> <span>Главная</span></a>

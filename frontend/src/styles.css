@@ -38,10 +38,9 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 
 .layout { min-height: 100vh; display: grid; grid-template-columns: 212px minmax(0, 1fr); }
 .sidebar { background: #080d14; border-right: 1px solid #233043; padding: 10px; }
-.brand-block { border-bottom: 1px dashed #40526a; padding-bottom: 18px; margin-bottom: 18px; }
-.brand-block img { display: block; width: 195px; height: 50px; object-fit: contain; margin-bottom: 14px; }
-.brand-title { font-size: 21px; font-weight: 900; margin-top: 14px; }
-.brand-sub, .nav-title { color: #8191a8; font-size: 10px; letter-spacing: .18em; font-weight: 800; }
+.brand-block { border-bottom: 1px dashed #40526a; padding-bottom: 16px; margin-bottom: 18px; }
+.brand-block img { display: block; width: 195px; height: 50px; object-fit: contain; }
+.nav-title { color: #8191a8; font-size: 10px; letter-spacing: .18em; font-weight: 800; }
 .nav-title { margin: 18px 0 8px; }
 .nav { width: 100%; display: flex; gap: 10px; align-items: center; height: 34px; color: #d9e7f7; text-decoration: none; border: 1px solid transparent; border-radius: 6px; background: transparent; padding: 0 10px; font-weight: 800; }
 .nav.active { border-color: #075c4c; background: #06251f; }
