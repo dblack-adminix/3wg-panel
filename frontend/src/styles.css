@@ -7,7 +7,7 @@
   --text: #f3f7ff;
   --green: #24f0a0;
   --cyan: #14d9ff;
-  --orange: #ff9f1a;
+  --orange: #ff9800;
   --danger: #ff6b86;
 }
 
@@ -72,6 +72,7 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 .protocol-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .protocol-row input { accent-color: #48b8ff; }
 .orange-btn { width: fit-content; min-width: 176px; height: 38px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 0; border-radius: 8px; background: var(--orange); color: #080b10; font-weight: 900; font-size: 14px; cursor: pointer; padding: 0 16px; }
+.orange-btn:disabled { opacity: 1; background: #ff9800; color: #080b10; cursor: not-allowed; }
 .muted { color: #8796a9; }
 .pill { font-size: 10px; padding: 2px 6px; border-radius: 4px; margin-left: 4px; }
 .pill.bad { background: #552335; color: #ffb3c6; }
