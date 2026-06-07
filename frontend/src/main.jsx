@@ -90,7 +90,7 @@ function Sidebar({ onLogout }) {
       </div>
       <div className="nav-title">ОБЗОР</div>
       <a className="nav active" href="#top"><Home size={14} /> <span>Главная</span></a>
-      <a className="nav" href="#status"><Activity size={14} /> <span>AWG status</span></a>
+      <a className="nav" href="/status/amneziawg"><Activity size={14} /> <span>AWG status</span></a>
       <div className="nav-title">УПРАВЛЕНИЕ</div>
       <button className="nav logout" onClick={onLogout}><LogOut size={14} /> <span>Выход</span></button>
     </aside>
@@ -195,7 +195,7 @@ function ClientsTable({ peers, onRefresh }) {
             <col style={{ width: 170 }} />
             <col style={{ width: 105 }} />
             <col style={{ width: 105 }} />
-            <col style={{ width: 96 }} />
+            <col style={{ width: 102 }} />
           </colgroup>
           <thead>
             <tr>
@@ -223,10 +223,12 @@ function ClientsTable({ peers, onRefresh }) {
                 <td>{p.live?.latest_handshake && p.live.latest_handshake !== '0' ? new Date(Number(p.live.latest_handshake) * 1000).toLocaleString('ru-RU') : '-'}</td>
                 <td>{formatBytes(p.live?.rx)}</td>
                 <td>{formatBytes(p.live?.tx)}</td>
-                <td className="actions">
-                  <IconButton href={p.links?.html || '#'} title="Открыть клиента" tone="open"><ArrowUpRight size={14} /></IconButton>
-                  <IconButton href={p.links?.download || '#'} title="Скачать config" tone="download"><Download size={14} /></IconButton>
-                  <IconButton onClick={() => setQrPeer(p)} title="Показать QR" tone="qr"><QrCode size={14} /></IconButton>
+                <td className="actions-cell">
+                  <div className="actions">
+                    <IconButton href={p.links?.html || '#'} title="Открыть клиента" tone="open"><ArrowUpRight size={14} /></IconButton>
+                    <IconButton href={p.links?.download || '#'} title="Скачать config" tone="download"><Download size={14} /></IconButton>
+                    <IconButton onClick={() => setQrPeer(p)} title="Показать QR" tone="qr"><QrCode size={14} /></IconButton>
+                  </div>
                 </td>
               </tr>
             ))}
