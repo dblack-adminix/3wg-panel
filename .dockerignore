@@ -1,0 +1,9 @@
+.git
+.env
+.env.backup.*
+backups/
+clients/
+data/
+frontend/node_modules/
+__pycache__/
+*.pyc

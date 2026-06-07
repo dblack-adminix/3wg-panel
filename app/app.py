@@ -5113,3 +5113,377 @@ try:
 
 except NameError:
     pass
+
+
+
+# === 3WG REACT FRONTEND START ===
+from fastapi.responses import FileResponse as ReactFileResponse
+
+
+@app.middleware('http')
+async def react_frontend_middleware(request: Request, call_next):
+    path = request.url.path
+    dist = APP_DIR / 'frontend' / 'dist'
+    index_file = dist / 'index.html'
+
+    if path == '/logogrin.png':
+        logo_file = APP_DIR / 'static' / 'logogrin.png'
+        if logo_file.exists():
+            return ReactFileResponse(
+                logo_file,
+                media_type='image/png',
+                headers={'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0'},
+            )
+
+    if path.startswith('/assets/'):
+        asset_file = dist / path.lstrip('/')
+        if asset_file.exists() and asset_file.is_file():
+            return ReactFileResponse(asset_file)
+
+    if path in ('/', '/login', '/ui') and index_file.exists():
+        return ReactFileResponse(
+            index_file,
+            media_type='text/html; charset=utf-8',
+            headers={'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0'},
+        )
+
+    return await call_next(request)
+# === 3WG REACT FRONTEND END ===
+
+# === 3WG REACT API START ===
+# JSON API for the future React frontend.
+from fastapi.responses import JSONResponse
+
+
+def api_is_authenticated(request: Request) -> bool:
+    cookie_token = request.cookies.get(SESSION_COOKIE)
+    return bool(cookie_token and secrets.compare_digest(cookie_token, make_session_token()))
+
+
+def api_require_auth(request: Request):
+    if api_is_authenticated(request):
+        return PANEL_USER
+    raise HTTPException(status_code=401, detail='Unauthorized')
+
+
+def api_error(message: str, status_code: int = 400, **extra):
+    payload = {'ok': False, 'error': message}
+    payload.update(extra)
+    return JSONResponse(payload, status_code=status_code)
+
+
+async def api_read_payload(request: Request) -> dict:
+    ctype = request.headers.get('content-type', '')
+    if 'application/json' in ctype:
+        try:
+            data = await request.json()
+            return data if isinstance(data, dict) else {}
+        except Exception:
+            return {}
+    try:
+        form = await request.form()
+        data = dict(form)
+        if hasattr(form, 'getlist'):
+            values = form.getlist('protocols') or form.getlist('protocol')
+            if values:
+                data['protocols'] = values
+        return data
+    except Exception:
+        return {}
+
+
+def api_protocol_state(protocol: str, include_raw: bool = False) -> dict:
+    p = proto(protocol)
+    item = {
+        'protocol': protocol,
+        'title': p['title'],
+        'container': p['container'],
+        'interface': p['interface'],
+        'tool': p['tool'],
+        'port': int(str(p['port'])),
+        'endpoint_host': ENDPOINT_HOST,
+        'endpoint': f"{ENDPOINT_HOST}:{p['port']}",
+        'network': p['network'],
+        'available': False,
+        'container_status': 'unknown',
+        'reason': 'not checked',
+    }
+    try:
+        container = dc().containers.get(p['container'])
+        item['container_status'] = getattr(container, 'status', 'unknown') or 'unknown'
+    except Exception as e:
+        item['reason'] = 'container unavailable: ' + str(e)
+        return item
+    try:
+        raw = exec_c(p['container'], [p['tool'], 'show', p['interface']], check=True)
+        item['available'] = True
+        item['reason'] = 'ok'
+        if include_raw:
+            item['raw'] = raw
+    except Exception as e:
+        item['reason'] = str(e)
+    return item
+
+
+def api_live_maps() -> tuple[dict, dict]:
+    live = {}
+    errors = {}
+    for protocol in PROTOCOLS:
+        try:
+            live[protocol] = {x['public_key']: x for x in live_peers(protocol)}
+        except Exception as e:
+            live[protocol] = {}
+            errors[protocol] = str(e)
+    return live, errors
+
+
+def api_peer_payload(c, live: dict | None = None, include_config: bool = False) -> dict:
+    protocol = c['protocol']
+    p = PROTOCOLS[protocol]
+    lp = live.get(protocol, {}).get(c['public_key']) if live else None
+    active = bool(lp and lp.get('endpoint') and lp.get('endpoint') != '(none)')
+    payload = {
+        'id': int(c['id']),
+        'name': c['name'],
+        'protocol': protocol,
+        'protocol_title': p['title'],
+        'ip_cidr': c['ip_cidr'],
+        'public_key': c['public_key'],
+        'enabled': bool(c['enabled']),
+        'created_at': int(c['created_at']),
+        'deleted_at': int(c['deleted_at']) if 'deleted_at' in c.keys() else 0,
+        'endpoint': f"{ENDPOINT_HOST}:{p['port']}",
+        'status': 'active' if active else 'offline',
+        'live': lp or None,
+        'links': {
+            'html': f"/client/{c['id']}",
+            'download': f"/client/{c['id']}/download",
+            'download_vpn': f"/client/{c['id']}/download-vpn" if protocol == 'amneziawg' else None,
+            'qr_native': f"/client/{c['id']}/qr/native",
+            'qr_native_png': f"/client/{c['id']}/qr/native/download",
+            'qr_amnezia_vpn': f"/client/{c['id']}/qr/amnezia-vpn" if protocol == 'amneziawg' else None,
+            'qr_amnezia_vpn_png': f"/client/{c['id']}/qr/amnezia-vpn/download" if protocol == 'amneziawg' else None,
+        },
+    }
+    if include_config:
+        payload['config'] = read_conf(c)
+    return payload
+
+
+@app.post('/api/auth/login')
+async def api_auth_login(request: Request):
+    data = await api_read_payload(request)
+    username = str(data.get('username', ''))
+    password = str(data.get('password', ''))
+    ok_user = secrets.compare_digest(username, PANEL_USER)
+    ok_pass = secrets.compare_digest(password, PANEL_PASSWORD)
+    if not (ok_user and ok_pass):
+        return api_error('Неверный логин или пароль', status_code=401)
+    resp = JSONResponse({'ok': True, 'authenticated': True, 'user': PANEL_USER})
+    resp.set_cookie(
+        SESSION_COOKIE,
+        make_session_token(),
+        max_age=60 * 60 * 24 * 30,
+        httponly=True,
+        samesite='lax',
+    )
+    return resp
+
+
+@app.post('/api/auth/logout')
+def api_auth_logout(user=Depends(api_require_auth)):
+    resp = JSONResponse({'ok': True})
+    resp.delete_cookie(SESSION_COOKIE)
+    return resp
+
+
+@app.get('/api/auth/me')
+def api_auth_me(request: Request):
+    if not api_is_authenticated(request):
+        return JSONResponse({'ok': False, 'authenticated': False}, status_code=401)
+    return {'ok': True, 'authenticated': True, 'user': PANEL_USER}
+
+
+@app.get('/api/node/protocols')
+def api_node_protocols(user=Depends(api_require_auth)):
+    return {
+        'ok': True,
+        'endpoint_host': ENDPOINT_HOST,
+        'protocols': {protocol: api_protocol_state(protocol) for protocol in PROTOCOLS},
+    }
+
+
+@app.get('/api/node/status')
+def api_node_status(user=Depends(api_require_auth)):
+    live, errors = api_live_maps()
+    with db() as conn:
+        total = conn.execute('SELECT COUNT(*) AS n FROM clients WHERE COALESCE(deleted_at, 0) = 0').fetchone()['n']
+    return {
+        'ok': True,
+        'endpoint_host': ENDPOINT_HOST,
+        'dns_servers': DNS_SERVERS,
+        'clients_total': int(total),
+        'peers_total': sum(len(pm) for pm in live.values()),
+        'peers_online': sum(1 for pm in live.values() for x in pm.values() if x.get('endpoint') != '(none)'),
+        'protocols': {protocol: api_protocol_state(protocol, include_raw=True) for protocol in PROTOCOLS},
+        'errors': errors,
+    }
+
+
+@app.get('/api/peers')
+def api_peers(user=Depends(api_require_auth)):
+    live, errors = api_live_maps()
+    with db() as conn:
+        rows = conn.execute('SELECT * FROM clients WHERE COALESCE(deleted_at, 0) = 0 ORDER BY id DESC').fetchall()
+    return {'ok': True, 'peers': [api_peer_payload(c, live=live) for c in rows], 'errors': errors}
+
+
+@app.post('/api/peers')
+async def api_create_peers(request: Request, user=Depends(api_require_auth)):
+    data = await api_read_payload(request)
+    name = str(data.get('name', '')).strip()
+    protocols = data.get('protocols', data.get('protocol', []))
+    if isinstance(protocols, str):
+        protocols = [protocols]
+    protocols = [p for p in protocols if p in PROTOCOLS]
+
+    if not name:
+        return api_error('Пустое имя клиента', status_code=400)
+    if not protocols:
+        return api_error('Не выбран протокол', status_code=400)
+
+    created_ids = []
+    try:
+        for protocol in protocols:
+            created_ids.append(create_client(name, protocol))
+    except Exception as e:
+        return api_error(str(e), status_code=500, created_ids=created_ids)
+
+    live, _ = api_live_maps()
+    with db() as conn:
+        qmarks = ','.join('?' for _ in created_ids)
+        rows = conn.execute(f'SELECT * FROM clients WHERE id IN ({qmarks}) ORDER BY id DESC', created_ids).fetchall()
+    return {'ok': True, 'created_ids': created_ids, 'peers': [api_peer_payload(c, live=live) for c in rows]}
+
+
+@app.get('/api/peers/{client_id}')
+def api_peer_get(client_id: int, user=Depends(api_require_auth)):
+    live, _ = api_live_maps()
+    c = load_client(client_id)
+    return {'ok': True, 'peer': api_peer_payload(c, live=live, include_config=True)}
+
+
+@app.get('/api/peers/{client_id}/config')
+def api_peer_config(client_id: int, user=Depends(api_require_auth)):
+    c = load_client(client_id)
+    return PlainTextResponse(read_conf(c))
+
+
+@app.delete('/api/peers/{client_id}')
+def api_peer_delete(client_id: int, user=Depends(api_require_auth)):
+    c = load_client(client_id)
+    try:
+        remove_peer(c['protocol'], c['public_key'])
+        with db() as conn:
+            conn.execute('UPDATE clients SET enabled = 0, deleted_at = ? WHERE id = ?', (int(time.time()), client_id))
+            conn.commit()
+        conf_path = Path(c['config_path'])
+        if conf_path.exists():
+            conf_path.rename(conf_path.with_suffix(conf_path.suffix + f'.deleted.{int(time.time())}'))
+    except Exception as e:
+        return api_error(str(e), status_code=500)
+    return {'ok': True, 'deleted_id': client_id}
+# === 3WG REACT API END ===
+
+# === 3WG DASHBOARD MODEL API START ===
+# API-модель экрана для будущего React: React должен повторять текущий красивый /.
+
+def api_peer_view_model(peer: dict) -> dict:
+    actions = [
+        {'key': 'open', 'label': 'Открыть', 'kind': 'primary', 'url': peer['links']['html']},
+        {'key': 'download', 'label': 'CONF', 'kind': 'download', 'url': peer['links']['download']},
+        {'key': 'qr', 'label': 'QR', 'kind': 'qr', 'url': peer['links']['qr_native_png']},
+    ]
+    if peer['links'].get('download_vpn'):
+        actions.insert(2, {'key': 'download_vpn', 'label': 'VPN', 'kind': 'download', 'url': peer['links']['download_vpn']})
+    if peer['links'].get('qr_amnezia_vpn_png'):
+        actions.append({'key': 'qr_amnezia_vpn', 'label': 'QR VPN', 'kind': 'qr', 'url': peer['links']['qr_amnezia_vpn_png']})
+
+    return {
+        **peer,
+        'ui': {
+            'state': 'online' if peer['status'] == 'active' else 'offline',
+            'status_label': 'ACTIVE' if peer['status'] == 'active' else 'OFFLINE',
+            'status_tone': 'success' if peer['status'] == 'active' else 'muted',
+            'actions': actions,
+        },
+    }
+
+
+def api_protocol_view_model(protocol: dict) -> dict:
+    return {
+        **protocol,
+        'ui': {
+            'state': 'online' if protocol.get('available') else 'offline',
+            'status_label': 'ONLINE' if protocol.get('available') else 'OFFLINE',
+            'status_tone': 'success' if protocol.get('available') else 'danger',
+            'subtitle': f"{protocol.get('container')} / {protocol.get('interface')}",
+            'endpoint_label': protocol.get('endpoint'),
+        },
+    }
+
+
+def api_dashboard_payload() -> dict:
+    live, errors = api_live_maps()
+    protocols = {protocol: api_protocol_state(protocol) for protocol in PROTOCOLS}
+
+    with db() as conn:
+        rows = conn.execute(
+            'SELECT * FROM clients WHERE COALESCE(deleted_at, 0) = 0 ORDER BY id DESC'
+        ).fetchall()
+
+    peers = [api_peer_payload(c, live=live) for c in rows]
+    online = sum(1 for p in peers if p.get('status') == 'active')
+    available_protocols = [p for p in protocols.values() if p.get('available')]
+    primary_protocol = available_protocols[0]['title'] if available_protocols else 'нет активного протокола'
+
+    return {
+        'ok': True,
+        'screen': 'dashboard',
+        'title': '3WG Panel',
+        'subtitle': f"Node / {ENDPOINT_HOST}",
+        'endpoint_host': ENDPOINT_HOST,
+        'theme': {'name': 'classic-neo', 'source': 'legacy-html-design'},
+        'navigation': [
+            {'section': 'Обзор', 'items': [{'key': 'home', 'label': 'Главная', 'href': '/', 'active': True}]},
+            {'section': 'Управление', 'items': [
+                {'key': 'awg_status', 'label': 'AWG status', 'action': 'status_modal', 'protocol': 'amneziawg'},
+                {'key': 'wg_status', 'label': 'WG status', 'action': 'status_modal', 'protocol': 'wireguard'},
+            ]},
+            {'section': 'Система', 'items': [{'key': 'logout', 'label': 'Выход', 'href': '/logout'}]},
+        ],
+        'cards': [
+            {'key': 'clients_total', 'label': 'Клиентов', 'value': len(peers), 'tone': 'success'},
+            {'key': 'peers_total', 'label': "Peer'ов", 'value': sum(len(pm) for pm in live.values()), 'tone': 'info'},
+            {'key': 'peers_online', 'label': 'Online', 'value': online, 'tone': 'success'},
+            {'key': 'primary_protocol', 'label': 'Основной протокол', 'value': primary_protocol, 'tone': 'accent'},
+        ],
+        'protocols': [api_protocol_view_model(p) for p in protocols.values()],
+        'peers': [api_peer_view_model(p) for p in peers],
+        'errors': errors,
+        'actions': {
+            'refresh': {'method': 'GET', 'url': '/api/dashboard'},
+            'create_peer': {'method': 'POST', 'url': '/api/peers'},
+        },
+    }
+
+
+@app.get('/api/dashboard')
+def api_dashboard(user=Depends(api_require_auth)):
+    return api_dashboard_payload()
+
+
+@app.get('/api/ui/dashboard')
+def api_ui_dashboard(user=Depends(api_require_auth)):
+    return api_dashboard_payload()
+# === 3WG DASHBOARD MODEL API END ===
