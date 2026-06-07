@@ -12,6 +12,7 @@ import {
   Plus,
   QrCode,
   RefreshCw,
+  X,
   ShieldCheck,
   Users,
   Wifi,
@@ -174,6 +175,8 @@ function CreateClient({ protocols, onCreated }) {
 }
 
 function ClientsTable({ peers, onRefresh }) {
+  const [qrPeer, setQrPeer] = useState(null);
+
   return (
     <section className="card clients-card">
       <div className="section-head">
@@ -223,14 +226,39 @@ function ClientsTable({ peers, onRefresh }) {
                 <td className="actions">
                   <IconButton href={p.links?.html || '#'} title="Открыть клиента" tone="open"><ArrowUpRight size={14} /></IconButton>
                   <IconButton href={p.links?.download || '#'} title="Скачать config" tone="download"><Download size={14} /></IconButton>
-                  <IconButton href={p.links?.qr_native_png || '#'} title="Скачать QR" tone="qr"><QrCode size={14} /></IconButton>
+                  <IconButton onClick={() => setQrPeer(p)} title="Показать QR" tone="qr"><QrCode size={14} /></IconButton>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      {qrPeer && <QrModal peer={qrPeer} onClose={() => setQrPeer(null)} />}
     </section>
+  );
+}
+
+function QrModal({ peer, onClose }) {
+  const qrUrl = peer.links?.qr_native_png;
+  const fileUrl = peer.links?.download;
+
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <div className="modal-card qr-modal" role="dialog" aria-modal="true" aria-label="QR код клиента" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <div>
+            <h2>{peer.name}</h2>
+            <p>{peer.protocol_title || peer.protocol} / {peer.ip_cidr}</p>
+          </div>
+          <button className="modal-close" type="button" onClick={onClose} aria-label="Закрыть"><X size={17} /></button>
+        </div>
+        {qrUrl && <img className="modal-qr-image" src={qrUrl} alt={`QR ${peer.name}`} />}
+        <div className="modal-actions">
+          <a className="orange-btn small" href={fileUrl}><Download size={14} /> Скачать файл</a>
+          <a className="blue-btn small" href={qrUrl}><QrCode size={14} /> Скачать код</a>
+        </div>
+      </div>
+    </div>
   );
 }
 
