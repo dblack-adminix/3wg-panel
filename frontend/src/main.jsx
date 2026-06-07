@@ -3,6 +3,8 @@ import { createRoot } from 'react-dom/client';
 import {
   Activity,
   ArrowUpRight,
+  ChevronLeft,
+  Copy,
   Download,
   Home,
   LogOut,
@@ -91,6 +93,24 @@ function Sidebar({ onLogout }) {
       <div className="nav-title">УПРАВЛЕНИЕ</div>
       <button className="nav logout" onClick={onLogout}><LogOut size={14} /> <span>Выход</span></button>
     </aside>
+  );
+}
+
+function Shell({ title, subtitle, onLogout, children }) {
+  return (
+    <div className="layout" id="top">
+      <Sidebar onLogout={onLogout} />
+      <main className="main">
+        <header className="topbar">
+          <div>
+            <h1>{title}</h1>
+            <p>{subtitle}</p>
+          </div>
+          <div className="top-actions"><span>AWG</span><button onClick={onLogout} title="Выйти"><LogOut size={15} /></button></div>
+        </header>
+        {children}
+      </main>
+    </div>
   );
 }
 
@@ -214,6 +234,96 @@ function ClientsTable({ peers, onRefresh }) {
   );
 }
 
+
+function ClientPage({ clientId, onLogout }) {
+  const [state, setState] = useState({ loading: true, peer: null, error: '' });
+
+  const load = async () => {
+    try {
+      const data = await api(`/api/peers/${clientId}`);
+      setState({ loading: false, peer: data.peer, error: '' });
+    } catch (err) {
+      setState({ loading: false, peer: null, error: err.message || 'Ошибка загрузки клиента' });
+    }
+  };
+
+  useEffect(() => { load(); }, [clientId]);
+
+  const peer = state.peer;
+  const title = peer ? `${peer.name} ${peer.protocol_title || peer.protocol}` : 'Клиент';
+
+  return (
+    <Shell title={title} subtitle="WireGuard / AmneziaWG node management" onLogout={onLogout}>
+      {state.error && <div className="warning">{state.error}</div>}
+      {state.loading && <section className="card detail-card">Загрузка...</section>}
+      {peer && (
+        <>
+          <section className="card detail-card">
+            <div className="detail-head">
+              <a className="back-link" href="/"><ChevronLeft size={16} /> Назад</a>
+              <span className={peer.status === 'active' ? 'active-text' : 'muted'}>{peer.status === 'active' ? 'ACTIVE' : 'OFFLINE'}</span>
+            </div>
+            <div className="detail-grid">
+              <div><span>IP</span><code>{peer.ip_cidr}</code></div>
+              <div><span>Endpoint</span><code>{peer.endpoint}</code></div>
+              <div><span>Protocol</span><b>{peer.protocol_title || peer.protocol}</b></div>
+              <div><span>Public key</span><code title={peer.public_key}>{shortKey(peer.public_key)}</code></div>
+            </div>
+          </section>
+
+          <section className="qr-grid">
+            <QrPanel
+              title="QR для AmneziaWG app"
+              hint="Native .conf. Если QR не применяется, скачай .conf и импортируй файлом."
+              img={peer.links?.qr_native_png}
+              config={peer.links?.download}
+              qr={peer.links?.qr_native_png}
+              configLabel="Скачать .conf"
+            />
+            {peer.links?.download_vpn && (
+              <QrPanel
+                title="QR для AmneziaVPN app"
+                hint="Специальный payload для AmneziaVPN. Дополнительно можно скачать .vpn ключ."
+                img={peer.links?.qr_amnezia_vpn_png}
+                config={peer.links?.download_vpn}
+                qr={peer.links?.qr_amnezia_vpn_png}
+                configLabel="Скачать .vpn"
+              />
+            )}
+          </section>
+
+          <section className="card config-card">
+            <div className="section-head">
+              <h2>Конфиг</h2>
+              <button className="copy-button" type="button" onClick={() => navigator.clipboard?.writeText(peer.config || '')}><Copy size={15} /> Copy</button>
+            </div>
+            <pre>{peer.config}</pre>
+          </section>
+        </>
+      )}
+    </Shell>
+  );
+}
+
+function QrPanel({ title, hint, img, config, qr, configLabel }) {
+  return (
+    <section className="card qr-card">
+      <h2>{title}</h2>
+      <p>{hint}</p>
+      {img && <img className="qr-image" src={img} alt={title} />}
+      <div className="qr-actions">
+        <a className="orange-btn small" href={config}><Download size={14} /> {configLabel}</a>
+        <a className="blue-btn small" href={qr}><QrCode size={14} /> Скачать QR</a>
+      </div>
+    </section>
+  );
+}
+
+function shortKey(value) {
+  if (!value) return '-';
+  return value.length > 22 ? `${value.slice(0, 10)}...${value.slice(-8)}` : value;
+}
+
 function formatBytes(v) {
   const n = Number(v || 0);
   if (!n) return '0.00 B';
@@ -245,28 +355,18 @@ function Dashboard({ onLogout }) {
   const available = Object.values(state.protocols || {}).filter((p) => p.available).length;
 
   return (
-    <div className="layout" id="top">
-      <Sidebar onLogout={onLogout} />
-      <main className="main">
-        <header className="topbar">
-          <div>
-            <h1>3WG Panel</h1>
-            <p>WireGuard / AmneziaWG node management</p>
-          </div>
-          <div className="top-actions"><span>AWG</span><button onClick={onLogout} title="Выйти"><LogOut size={15} /></button></div>
-        </header>
-        {state.error && <div className="warning">{state.error}</div>}
-        <div className="stats-grid">
-          <StatCard value={state.status?.clients_total ?? state.peers.length} label="клиентов в панели" icon={Users} />
-          <StatCard value={state.status?.peers_total ?? 0} label="peer'ов в контейнерах" icon={Network} />
-          <StatCard value={online} label="сейчас в сети" icon={Wifi} />
-          <StatCard value={available} label="доступных протокола" icon={ShieldCheck} />
-        </div>
-        <CreateClient protocols={state.protocols} onCreated={load} />
-        <ClientsTable peers={state.peers} onRefresh={load} />
-        <section className="card status-card" id="status"><h2>Статус</h2><div className="status-grid">{Object.values(state.protocols || {}).map((p) => <div className="status-item" key={p.protocol}><b>{p.title}</b><span className={p.available ? 'status-ok' : 'status-bad'}>{p.available ? <Wifi size={14} /> : <WifiOff size={14} />}{p.available ? 'ONLINE' : 'OFFLINE'}</span><small>{p.container} / {p.interface}</small></div>)}</div></section>
-      </main>
-    </div>
+    <Shell title="3WG Panel" subtitle="WireGuard / AmneziaWG node management" onLogout={onLogout}>
+      {state.error && <div className="warning">{state.error}</div>}
+      <div className="stats-grid">
+        <StatCard value={state.status?.clients_total ?? state.peers.length} label="клиентов в панели" icon={Users} />
+        <StatCard value={state.status?.peers_total ?? 0} label="peer'ов в контейнерах" icon={Network} />
+        <StatCard value={online} label="сейчас в сети" icon={Wifi} />
+        <StatCard value={available} label="доступных протокола" icon={ShieldCheck} />
+      </div>
+      <CreateClient protocols={state.protocols} onCreated={load} />
+      <ClientsTable peers={state.peers} onRefresh={load} />
+      <section className="card status-card" id="status"><h2>Статус</h2><div className="status-grid">{Object.values(state.protocols || {}).map((p) => <div className="status-item" key={p.protocol}><b>{p.title}</b><span className={p.available ? 'status-ok' : 'status-bad'}>{p.available ? <Wifi size={14} /> : <WifiOff size={14} />}{p.available ? 'ONLINE' : 'OFFLINE'}</span><small>{p.container} / {p.interface}</small></div>)}</div></section>
+    </Shell>
   );
 }
 
@@ -279,7 +379,9 @@ function App() {
   useEffect(() => { check(); }, []);
   const logout = async () => { try { await api('/api/auth/logout', { method: 'POST' }); } finally { setAuth({ loading: false, ok: false }); } };
   if (auth.loading) return <div className="boot">3WG</div>;
-  return auth.ok ? <Dashboard onLogout={logout} /> : <Login onLogin={check} />;
+  if (!auth.ok) return <Login onLogin={check} />;
+  const clientMatch = window.location.pathname.match(/^\/client\/(\d+)$/);
+  return clientMatch ? <ClientPage clientId={clientMatch[1]} onLogout={logout} /> : <Dashboard onLogout={logout} />;
 }
 
 createRoot(document.getElementById('root')).render(<App />);

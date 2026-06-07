@@ -111,3 +111,26 @@ button:disabled { cursor: not-allowed; opacity: .58; }
   .name-input { width: 100%; }
   .orange-btn { width: fit-content; }
 }
+
+.detail-card { min-height: 0; }
+.detail-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+.back-link { display: inline-flex; align-items: center; gap: 5px; color: #dce9fb; font-weight: 900; text-decoration: none; }
+.detail-grid { display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 12px; }
+.detail-grid div { display: grid; gap: 7px; }
+.detail-grid span { color: #8fa3bd; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
+.detail-grid b { color: #f3f7ff; }
+.qr-grid { display: grid; grid-template-columns: repeat(2, minmax(280px, 390px)); gap: 12px; align-items: start; margin-bottom: 12px; }
+.qr-card { min-height: 0; }
+.qr-card h2 { margin-bottom: 8px; font-size: 17px; }
+.qr-card p { min-height: 36px; margin: 0 0 12px; color: #8fa3bd; font-size: 12px; line-height: 1.45; }
+.qr-image { display: block; width: 260px; max-width: 100%; aspect-ratio: 1; object-fit: contain; background: #fff; border-radius: 6px; padding: 8px; }
+.qr-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.orange-btn.small, .blue-btn.small { min-width: 0; height: 32px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border-radius: 7px; padding: 0 12px; font-size: 12px; font-weight: 900; text-decoration: none; }
+.blue-btn { background: #0b3342; border: 1px solid #126378; color: #2eeaff; }
+.config-card pre { max-height: 460px; overflow: auto; margin: 0; padding: 14px; border: 1px solid #1f2e41; border-radius: 8px; background: #050b12; color: #f3f7ff; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.copy-button { height: 30px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid #263546; border-radius: 7px; background: #0b121b; color: #c7d8ee; font-weight: 900; cursor: pointer; padding: 0 10px; }
+
+@media (max-width: 1100px) {
+  .detail-grid { grid-template-columns: repeat(2, minmax(150px, 1fr)); }
+  .qr-grid { grid-template-columns: 1fr; }
+}
