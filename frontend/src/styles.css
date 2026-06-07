@@ -7,7 +7,7 @@
   --text: #f3f7ff;
   --green: #24f0a0;
   --cyan: #14d9ff;
-  --orange: #f7a83d;
+  --orange: #ff9f1a;
   --danger: #ff6b86;
 }
 
@@ -75,7 +75,8 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 .muted { color: #8796a9; }
 .pill { font-size: 10px; padding: 2px 6px; border-radius: 4px; margin-left: 4px; }
 .pill.bad { background: #552335; color: #ffb3c6; }
-.compact-warning { display: inline-block; max-width: 360px; margin-top: 12px; }
+.compact-warning { display: inline-block; max-width: 340px; margin-top: 10px; padding: 8px 10px; font-size: 12px; line-height: 1.35; }
+.compact-warning b { display: block; margin-bottom: 3px; line-height: 1.35; }
 .endpoint-host { color: #92a6c0; margin-top: 8px; }
 .endpoint-host code, .clients-table code { background: #050a10; border: 1px solid #263546; border-radius: 4px; padding: 2px 6px; color: #fff; }
 
