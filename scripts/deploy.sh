@@ -397,6 +397,86 @@ cat > "$FRONT/src/styles.css" <<'EOF'
 :root{--bg:#080d14;--panel:#0b111a;--card:#101923;--line:#263546;--muted:#95a9c2;--text:#f3f7ff;--green:#24f0a0;--cyan:#14d9ff;--orange:#f7a83d;--red:#7c293a;--radius:8px}*{box-sizing:border-box}html,body,#root{height:100%;margin:0}body{background:radial-gradient(circle at 20% -20%,#123f3a55,transparent 30%),linear-gradient(180deg,#081019,#070b11);color:var(--text);font-family:Inter,"Segoe UI",Arial,sans-serif;font-size:14px}.boot{height:100%;display:grid;place-items:center;color:var(--green);font-weight:900;font-size:38px}.login-page{min-height:100%;display:grid;place-items:center;padding:24px}.login-card{width:430px;border:1px solid var(--line);border-radius:8px;background:#101824;padding:30px;box-shadow:0 18px 60px #0008}.badge{display:inline-flex;border:1px solid #0b8f6c;color:var(--green);border-radius:8px;padding:6px 12px;font-weight:900;letter-spacing:.04em}.login-logo{display:block;width:195px;height:50px;object-fit:contain;margin:24px 0 10px}.login-subtitle{color:#a7bbd6;font-size:16px;margin:0 0 24px}.login-card label{display:block;margin:14px 0 8px;color:#c9d9ee;font-weight:700}.login-card input,.name-input{width:100%;height:38px;border-radius:8px;border:1px solid #314155;background:#0b121b;color:var(--text);padding:0 12px}.login-card button,.orange-btn{width:100%;height:42px;border:0;border-radius:8px;background:var(--orange);color:#080b10;font-weight:900;font-size:15px;cursor:pointer}.login-error,.warning{border:1px solid #7d5d2c;background:#1c1a14;color:#ffd386;border-radius:8px;padding:10px 12px;margin:12px 0}.login-host{text-align:center;color:#91a5bf;margin-top:18px}.layout{min-height:100%;display:grid;grid-template-columns:170px 1fr}.sidebar{background:#080d14;border-right:1px solid #233043;padding:6px 8px}.brand-block{border-bottom:1px dashed #40526a;padding-bottom:18px;margin-bottom:18px}.brand-block img{display:block;width:132px;height:34px;object-fit:contain}.brand-title{font-size:21px;font-weight:900;margin-top:18px}.brand-sub,.nav-title{color:#8191a8;font-size:10px;letter-spacing:.22em;font-weight:800}.nav-title{margin:18px 0 8px}.nav{width:100%;display:flex;gap:10px;align-items:center;height:34px;color:#d9e7f7;text-decoration:none;border:1px solid transparent;border-radius:6px;background:transparent;padding:0 10px;font-weight:800}.nav.active{border-color:#075c4c;background:#06251f}.logout{cursor:pointer}.main{padding:8px 16px 40px;overflow:hidden}.topbar{height:44px;display:flex;justify-content:space-between;align-items:flex-start}.topbar h1{font-size:24px;line-height:1;margin:0}.topbar p{margin:6px 0 0;color:#a9bad1}.top-actions{display:flex;gap:8px}.top-actions span,.top-actions button{border:1px solid #2e3d51;border-radius:6px;background:#0c141e;color:#e9f2ff;font-weight:900;padding:6px 10px}.stats-grid{display:grid;grid-template-columns:repeat(4,minmax(160px,1fr));gap:8px;margin:8px 0 12px}.stat-card,.card{border:1px solid var(--line);border-radius:8px;background:#0d151f}.stat-card{height:72px;padding:14px 16px;position:relative}.stat-value{font-size:20px;color:var(--green);font-weight:900}.stat-label{color:#92a6c0;font-size:12px;margin-top:8px}.stat-mark{position:absolute;right:12px;top:22px;width:26px;height:26px;border:1px solid #0a684e;border-radius:6px;background:#0b2a24}.card{padding:16px;margin-bottom:10px}.card h2{margin:0 0 18px;font-size:19px}.create-card{min-height:180px}.name-input{width:260px}.protocol-row{display:flex;gap:14px;align-items:center;margin:14px 0}.protocol-row input{accent-color:#48b8ff}.muted{color:#8796a9}.pill{font-size:10px;padding:2px 6px;border-radius:4px;margin-left:4px}.pill.bad{background:#552335;color:#ffb3c6}.compact-warning{display:inline-block;margin-top:12px}.endpoint-host{color:#92a6c0;margin-top:8px}.endpoint-host code,.clients-table code{background:#050a10;border:1px solid #263546;border-radius:4px;padding:2px 6px;color:#fff}.table-wrap{width:100%;overflow-x:auto}.clients-table{width:auto;min-width:1120px;table-layout:fixed;border-collapse:collapse;font-size:13px}.clients-table th,.clients-table td{border-bottom:1px solid #223042;padding:10px 8px;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.clients-table th{color:#9fb3cd;text-transform:uppercase;font-size:11px;letter-spacing:.08em}.clients-table td:first-child,.clients-table th:first-child{padding-left:8px}.clients-table small{display:block;color:#8194ac;margin-top:4px}.proto{display:inline-block;background:#073947;color:#17eaff;border:1px solid #116174;border-radius:5px;padding:4px 8px;font-weight:900}.active-text{color:var(--green);font-weight:900}.actions{display:flex;gap:6px}.actions a,.actions button{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:5px;border:0;text-decoration:none;background:var(--orange);color:#111;font-weight:900}.actions button{background:#4b1728;color:#ffc6d5;cursor:pointer}.status-link{color:#fff;font-size:16px;font-weight:900}@media(max-width:900px){.layout{grid-template-columns:1fr}.sidebar{display:none}.stats-grid{grid-template-columns:1fr 1fr}.main{padding:12px}.login-card{width:min(430px,94vw)}}
 EOF
 
+cat >> "$FRONT/src/styles.css" <<'EOF'
+
+/* ===== CLASSIC 3WG GEOMETRY RESTORE ===== */
+.layout {
+  grid-template-columns: 212px minmax(0, 1fr) !important;
+}
+
+.sidebar {
+  padding: 10px !important;
+}
+
+.brand-block {
+  padding-bottom: 18px !important;
+  margin-bottom: 18px !important;
+}
+
+.brand-block img {
+  width: 195px !important;
+  height: 50px !important;
+  object-fit: contain !important;
+  margin-bottom: 14px !important;
+}
+
+.main {
+  padding: 12px 22px 40px !important;
+}
+
+.topbar {
+  height: 54px !important;
+}
+
+.topbar h1 {
+  font-size: 26px !important;
+}
+
+.stats-grid {
+  grid-template-columns: repeat(4, minmax(180px, 1fr)) !important;
+  gap: 10px !important;
+  margin: 8px 0 14px !important;
+}
+
+.card {
+  padding: 18px 20px !important;
+  margin-bottom: 12px !important;
+}
+
+.create-card {
+  min-height: 250px !important;
+}
+
+.create-form {
+  display: block !important;
+}
+
+.name-input {
+  width: 220px !important;
+}
+
+.orange-btn {
+  width: 180px !important;
+  height: 38px !important;
+}
+
+.compact-warning {
+  display: inline-block !important;
+  max-width: 360px !important;
+}
+
+.clients-table {
+  width: auto !important;
+  min-width: 1120px !important;
+  table-layout: fixed !important;
+}
+
+.clients-table th,
+.clients-table td {
+  padding: 10px 8px !important;
+}
+EOF
+
 echo
 echo "===== Restore React Dockerfile ====="
 cat > "$BASE/app/Dockerfile" <<'EOF'
