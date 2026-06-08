@@ -86,7 +86,18 @@ function Login({ onLogin }) {
 function Sidebar({ onLogout }) {
   const path = window.location.pathname;
   const isHome = path === '/' || path === '/ui';
-  const isStatus = path.startsWith('/status/');
+  const [protocols, setProtocols] = useState(null);
+
+  useEffect(() => {
+    let alive = true;
+    api('/api/node/protocols')
+      .then((data) => { if (alive) setProtocols(data.protocols || {}); })
+      .catch(() => { if (alive) setProtocols({}); });
+    return () => { alive = false; };
+  }, []);
+
+  const showWireGuardStatus = Boolean(protocols?.wireguard?.available);
+  const showAmneziaStatus = protocols?.amneziawg?.available !== false;
 
   return (
     <aside className="sidebar">
@@ -95,7 +106,8 @@ function Sidebar({ onLogout }) {
       </div>
       <div className="nav-title">ОБЗОР</div>
       <a className={`nav ${isHome ? 'active' : ''}`} href="/"><Home size={14} /> <span>Главная</span></a>
-      <a className={`nav ${isStatus ? 'active' : ''}`} href="/status/amneziawg"><Activity size={14} /> <span>AWG status</span></a>
+      {showWireGuardStatus && <a className={`nav ${path === '/status/wireguard' ? 'active' : ''}`} href="/status/wireguard"><Activity size={14} /> <span>WG status</span></a>}
+      {showAmneziaStatus && <a className={`nav ${path === '/status/amneziawg' ? 'active' : ''}`} href="/status/amneziawg"><Activity size={14} /> <span>AWG status</span></a>}
       <div className="nav-title">УПРАВЛЕНИЕ</div>
       <button className="nav logout" onClick={onLogout}><LogOut size={14} /> <span>Выход</span></button>
     </aside>
