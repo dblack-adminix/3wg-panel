@@ -130,11 +130,8 @@ function Shell({ title, subtitle, onLogout, children }) {
         </header>
         {children}
         <footer className="app-footer">
-          <span>3WG Panel</span>
-          <a href="https://t.me/vorchiks" target="_blank" rel="noreferrer">@vorchiks</a>
-          <a href="mailto:vitaly@goreeb.ru">vitaly@goreeb.ru</a>
-          <a href="https://3wg.ru" target="_blank" rel="noreferrer">3wg.ru</a>
-          <code>{APP_BUILD}</code>
+          <div>© 2026 3WG Panel. Все права защищены. Связь: <a href="https://t.me/vorchiks" target="_blank" rel="noreferrer">@vorchiks</a>, <a href="mailto:vitaly@goreeb.ru">vitaly@goreeb.ru</a>, <a href="https://3wg.ru" target="_blank" rel="noreferrer">3wg.ru</a>.</div>
+          <div>Вы используете последнюю версию <code>{APP_BUILD}</code></div>
         </footer>
       </main>
     </div>
