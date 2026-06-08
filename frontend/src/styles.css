@@ -55,6 +55,12 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 .top-actions span, .top-actions button { border: 1px solid #2e3d51; border-radius: 6px; background: #0c141e; color: #e9f2ff; font-weight: 900; padding: 6px 10px; }
 .top-actions button { cursor: pointer; }
 
+.app-footer { min-height: 44px; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px 14px; margin: 18px 0 0; padding: 14px 16px; border-top: 1px solid #1f2e41; color: #8fa3bd; font-size: 12px; }
+.app-footer span { color: #dce9fb; font-weight: 900; }
+.app-footer a { color: #24f0a0; text-decoration: none; font-weight: 800; }
+.app-footer a:hover { color: #17eaff; }
+.app-footer code { border: 1px solid #263546; border-radius: 6px; background: #0b121b; color: #c7d8ee; padding: 3px 7px; font-size: 11px; }
+
 .stats-grid { display: grid; grid-template-columns: repeat(4, minmax(180px, 1fr)); gap: 10px; margin: 8px 0 14px; }
 .stat-card, .card { border: 1px solid var(--line); border-radius: 8px; background: #0d151f; }
 .stat-card { height: 72px; padding: 14px 16px; position: relative; }

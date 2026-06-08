@@ -21,6 +21,8 @@ import {
 } from 'lucide-react';
 import './styles.css';
 
+const APP_BUILD = '2026.06.08-dev';
+
 const api = async (path, options = {}) => {
   const res = await fetch(path, {
     credentials: 'same-origin',
@@ -127,6 +129,13 @@ function Shell({ title, subtitle, onLogout, children }) {
           <div className="top-actions"><span>AWG</span><button onClick={onLogout} title="Выйти"><LogOut size={15} /></button></div>
         </header>
         {children}
+        <footer className="app-footer">
+          <span>3WG Panel</span>
+          <a href="https://t.me/vorchiks" target="_blank" rel="noreferrer">@vorchiks</a>
+          <a href="mailto:vitaly@goreeb.ru">vitaly@goreeb.ru</a>
+          <a href="https://3wg.ru" target="_blank" rel="noreferrer">3wg.ru</a>
+          <code>{APP_BUILD}</code>
+        </footer>
       </main>
     </div>
   );
