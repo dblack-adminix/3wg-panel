@@ -231,7 +231,7 @@ function ClientsTable({ peers, onRefresh }) {
               <tr key={p.id}>
                 <td>{p.id}</td>
                 <td><b>{p.name}</b><small>создан панелью</small></td>
-                <td><span className="proto">{p.protocol_title || p.protocol}</span></td>
+                <td><span className={`proto ${p.protocol === 'wireguard' ? 'proto-wireguard' : ''}`}>{p.protocol_title || p.protocol}</span></td>
                 <td><code>{p.ip_cidr}</code></td>
                 <td><span className={p.status === 'active' ? 'active-text' : 'muted'}>{p.status === 'active' ? 'ONLINE' : 'OFFLINE'}</span></td>
                 <td title={p.live?.endpoint || ''}>{p.live?.endpoint || '(none)'}</td>

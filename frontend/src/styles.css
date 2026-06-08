@@ -89,6 +89,7 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 .clients-table td:first-child, .clients-table th:first-child { padding-left: 8px; }
 .clients-table small { display: block; color: #8194ac; margin-top: 4px; }
 .proto { display: inline-block; background: #073947; color: #17eaff; border: 1px solid #116174; border-radius: 5px; padding: 4px 8px; font-weight: 900; }
+.proto-wireguard { background: #42131b; color: #ff6b86; border-color: #8f2b3f; }
 .active-text { color: var(--green); font-weight: 900; }
 .clients-table td.actions-cell { width: 102px; min-width: 102px; overflow: visible; padding: 7px 8px; }
 .actions { display: flex; gap: 5px; align-items: center; justify-content: flex-start; }
