@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import './styles.css';
 
-const APP_BUILD = '2026.06.08-dev';
+const APP_VERSION = 'v1.0.0';
 
 const api = async (path, options = {}) => {
   const res = await fetch(path, {
@@ -130,8 +130,8 @@ function Shell({ title, subtitle, onLogout, children }) {
         </header>
         {children}
         <footer className="app-footer">
-          <div>© 2026 3WG Panel. Все права защищены. Связь: <a href="https://t.me/vorchiks" target="_blank" rel="noreferrer">@vorchiks</a>, <a href="mailto:vitaly@goreeb.ru">vitaly@goreeb.ru</a>, <a href="https://3wg.ru" target="_blank" rel="noreferrer">3wg.ru</a>.</div>
-          <div>Вы используете последнюю версию <code>{APP_BUILD}</code></div>
+          <div>© 2026 3WG Panel. Все права защищены. Связь: <a href="https://t.me/vorchiks" target="_blank" rel="noreferrer">@vorchiks</a>, <a href="mailto:vitaly@goreev.ru">vitaly@goreev.ru</a>, <a href="https://3wg.ru" target="_blank" rel="noreferrer">3wg.ru</a>.</div>
+          <div>Вы используете последнюю версию <code>({APP_VERSION})</code></div>
         </footer>
       </main>
     </div>
