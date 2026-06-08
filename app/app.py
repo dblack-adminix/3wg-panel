@@ -347,6 +347,17 @@ def init_db():
         cols = [r["name"] for r in conn.execute("PRAGMA table_info(clients)").fetchall()]
         if "deleted_at" not in cols:
             conn.execute("ALTER TABLE clients ADD COLUMN deleted_at INTEGER NOT NULL DEFAULT 0")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS traffic_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts INTEGER NOT NULL,
+                protocol TEXT NOT NULL,
+                interface TEXT NOT NULL,
+                rx INTEGER NOT NULL,
+                tx INTEGER NOT NULL
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_traffic_snapshots_protocol_ts ON traffic_snapshots(protocol, ts)")
         conn.commit()
 
 
@@ -5140,7 +5151,7 @@ async def react_frontend_middleware(request: Request, call_next):
         if asset_file.exists() and asset_file.is_file():
             return ReactFileResponse(asset_file)
 
-    if (path in ('/', '/login', '/ui') or re.match(r'^/client/\d+$', path) or re.match(r'^/status/(wireguard|amneziawg)$', path)) and index_file.exists():
+    if (path in ('/', '/login', '/ui') or re.match(r'^/client/\d+$', path) or re.match(r'^/status/(wireguard|amneziawg)$', path) or re.match(r'^/traffic/(wireguard|amneziawg)$', path)) and index_file.exists():
         return ReactFileResponse(
             index_file,
             media_type='text/html; charset=utf-8',
@@ -5235,6 +5246,93 @@ def api_live_maps() -> tuple[dict, dict]:
             live[protocol] = {}
             errors[protocol] = str(e)
     return live, errors
+
+
+def api_protocol_traffic_totals(live: dict | None = None) -> dict:
+    live = live if live is not None else api_live_maps()[0]
+    totals = {}
+    for protocol, p in PROTOCOLS.items():
+        rows = live.get(protocol, {}) if live else {}
+        rx = sum(int(peer.get('rx') or 0) for peer in rows.values())
+        tx = sum(int(peer.get('tx') or 0) for peer in rows.values())
+        totals[protocol] = {
+            'protocol': protocol,
+            'title': p['title'],
+            'interface': p['interface'],
+            'rx': rx,
+            'tx': tx,
+            'total': rx + tx,
+        }
+    return totals
+
+
+def api_record_traffic_snapshot(live: dict | None = None, min_interval: int = 60) -> dict:
+    now = int(time.time())
+    totals = api_protocol_traffic_totals(live)
+    with db() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS traffic_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts INTEGER NOT NULL,
+                protocol TEXT NOT NULL,
+                interface TEXT NOT NULL,
+                rx INTEGER NOT NULL,
+                tx INTEGER NOT NULL
+            )
+        """)
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_traffic_snapshots_protocol_ts ON traffic_snapshots(protocol, ts)')
+        for protocol, item in totals.items():
+            row = conn.execute(
+                'SELECT ts, rx, tx FROM traffic_snapshots WHERE protocol = ? ORDER BY ts DESC LIMIT 1',
+                (protocol,),
+            ).fetchone()
+            if row and int(row['ts']) > now - min_interval:
+                continue
+            conn.execute(
+                'INSERT INTO traffic_snapshots(ts, protocol, interface, rx, tx) VALUES (?, ?, ?, ?, ?)',
+                (now, protocol, item['interface'], int(item['rx']), int(item['tx'])),
+            )
+        conn.commit()
+    return totals
+
+
+def api_traffic_history_payload(protocol: str, days: int = 30) -> dict:
+    if protocol not in PROTOCOLS:
+        raise HTTPException(status_code=404, detail='Unknown protocol')
+    days = max(1, min(int(days or 30), 90))
+    live, _ = api_live_maps()
+    current = api_record_traffic_snapshot(live, min_interval=60).get(protocol)
+    since = int(time.time()) - days * 86400
+    with db() as conn:
+        rows = conn.execute(
+            'SELECT ts, rx, tx FROM traffic_snapshots WHERE protocol = ? AND ts >= ? ORDER BY ts ASC',
+            (protocol, since),
+        ).fetchall()
+    buckets = {}
+    for row in rows:
+        day_ts = int(time.mktime(time.gmtime(int(row['ts']))[:3] + (0, 0, 0, 0, 0, 0)))
+        item = buckets.setdefault(day_ts, {'day': day_ts, 'first_rx': int(row['rx']), 'first_tx': int(row['tx']), 'last_rx': int(row['rx']), 'last_tx': int(row['tx'])})
+        item['last_rx'] = int(row['rx'])
+        item['last_tx'] = int(row['tx'])
+    today = int(time.mktime(time.gmtime(int(time.time()))[:3] + (0, 0, 0, 0, 0, 0)))
+    series = []
+    for i in range(days - 1, -1, -1):
+        day = today - i * 86400
+        item = buckets.get(day)
+        rx = max(0, item['last_rx'] - item['first_rx']) if item else 0
+        tx = max(0, item['last_tx'] - item['first_tx']) if item else 0
+        series.append({'day': day, 'rx': rx, 'tx': tx, 'total': rx + tx})
+    return {
+        'ok': True,
+        'protocol': protocol,
+        'title': PROTOCOLS[protocol]['title'],
+        'interface': PROTOCOLS[protocol]['interface'],
+        'days': days,
+        'current': current,
+        'series': series,
+        'month_total': sum(x['total'] for x in series),
+        'note': 'История начинает накапливаться с момента включения snapshots.',
+    }
 
 
 ONLINE_HANDSHAKE_WINDOW_SECONDS = 180
@@ -5351,9 +5449,15 @@ def api_node_status(user=Depends(api_require_auth)):
 @app.get('/api/peers')
 def api_peers(user=Depends(api_require_auth)):
     live, errors = api_live_maps()
+    api_record_traffic_snapshot(live)
     with db() as conn:
         rows = conn.execute('SELECT * FROM clients WHERE COALESCE(deleted_at, 0) = 0 ORDER BY id DESC').fetchall()
     return {'ok': True, 'peers': [api_peer_payload(c, live=live) for c in rows], 'errors': errors}
+
+
+@app.get('/api/traffic/history')
+def api_traffic_history(protocol: str = 'amneziawg', days: int = 30, user=Depends(api_require_auth)):
+    return api_traffic_history_payload(protocol, days)
 
 
 @app.post('/api/peers')

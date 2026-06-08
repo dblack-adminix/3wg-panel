@@ -643,7 +643,7 @@ function TrafficWidget({ peers, protocols, history }) {
             const rowTotal = row.rx + row.tx;
             const pct = Math.max(3, Math.round((rowTotal / maxRow) * 100));
             return (
-              <div className="traffic-row" key={row.protocol}>
+              <a className="traffic-row" key={row.protocol} href={`/traffic/${row.protocol}`}>
                 <div className="traffic-row-top">
                   <span className={`traffic-proto ${row.protocol === 'wireguard' ? 'wg' : 'awg'}`}>{row.title}</span>
                   <b>{formatBytes(rowTotal)}</b>
@@ -654,12 +654,92 @@ function TrafficWidget({ peers, protocols, history }) {
                   <span>TX {formatBytes(row.tx)}</span>
                 </div>
                 <div className="traffic-bar"><i style={{ width: `${pct}%` }} /></div>
-              </div>
+              </a>
             );
           })}
         </div>
       </div>
     </section>
+  );
+}
+
+function formatTrafficDay(day) {
+  return new Date(Number(day) * 1000).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' });
+}
+
+function MonthlyTrafficChart({ series }) {
+  const max = Math.max(1, ...series.map((item) => item.total));
+  return (
+    <div className="month-chart">
+      {series.map((item) => {
+        const height = Math.max(4, Math.round((item.total / max) * 100));
+        return (
+          <div className="month-bar" key={item.day} title={`${formatTrafficDay(item.day)}: ${formatBytes(item.total)}`}>
+            <i style={{ height: `${height}%` }} />
+            <span>{formatTrafficDay(item.day)}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function TrafficPage({ protocol, onLogout }) {
+  const [state, setState] = useState({ loading: true, data: null, error: '' });
+
+  const load = async () => {
+    try {
+      const data = await api(`/api/traffic/history?protocol=${encodeURIComponent(protocol)}&days=30`);
+      setState({ loading: false, data, error: '' });
+    } catch (err) {
+      setState((s) => ({ ...s, loading: false, error: err.message || 'Ошибка трафика' }));
+    }
+  };
+
+  useEffect(() => {
+    load();
+    const timer = window.setInterval(load, 60000);
+    return () => window.clearInterval(timer);
+  }, [protocol]);
+
+  const data = state.data;
+  const current = data?.current || {};
+  const series = data?.series || [];
+  const today = series.at(-1) || { rx: 0, tx: 0, total: 0 };
+  const title = data ? `${data.title} traffic` : 'Traffic';
+
+  return (
+    <Shell title={title} subtitle={data ? `${data.interface} / 30 дней` : 'Traffic history'} onLogout={onLogout}>
+      <section className="card traffic-page-card">
+        <div className="detail-head">
+          <a className="back-link" href="/"><ChevronLeft size={16} /> Главная</a>
+          <button className="copy-button" type="button" onClick={load}><RefreshCw size={14} /> Обновить</button>
+        </div>
+        {state.error && <div className="warning">{state.error}</div>}
+        {state.loading && <div className="muted">Загрузка...</div>}
+        {data && (
+          <>
+            <div className="traffic-kpi-grid">
+              <div><span>Текущий счётчик</span><b>{formatBytes(current.total)}</b></div>
+              <div><span>За сегодня</span><b>{formatBytes(today.total)}</b></div>
+              <div><span>За 30 дней</span><b>{formatBytes(data.month_total)}</b></div>
+              <div><span>Интерфейс</span><b>{data.interface}</b></div>
+            </div>
+            <MonthlyTrafficChart series={series} />
+            <div className="traffic-month-list">
+              {series.slice().reverse().map((item) => (
+                <div key={item.day}>
+                  <span>{formatTrafficDay(item.day)}</span>
+                  <b>{formatBytes(item.total)}</b>
+                  <small>RX {formatBytes(item.rx)} / TX {formatBytes(item.tx)}</small>
+                </div>
+              ))}
+            </div>
+            <p className="traffic-note">{data.note}</p>
+          </>
+        )}
+      </section>
+    </Shell>
   );
 }
 
@@ -740,8 +820,10 @@ function App() {
   if (!auth.ok) return <Login onLogin={check} />;
   const clientMatch = window.location.pathname.match(/^\/client\/(\d+)$/);
   const statusMatch = window.location.pathname.match(/^\/status\/(wireguard|amneziawg)$/);
+  const trafficMatch = window.location.pathname.match(/^\/traffic\/(wireguard|amneziawg)$/);
   if (clientMatch) return <ClientPage clientId={clientMatch[1]} onLogout={logout} />;
   if (statusMatch) return <StatusPage protocol={statusMatch[1]} onLogout={logout} />;
+  if (trafficMatch) return <TrafficPage protocol={trafficMatch[1]} onLogout={logout} />;
   return <Dashboard onLogout={logout} />;
 }
 
