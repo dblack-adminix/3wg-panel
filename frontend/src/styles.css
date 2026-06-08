@@ -34,6 +34,7 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 .login-card input:focus, .name-input:focus { border-color: var(--orange); }
 .login-card button { width: 100%; height: 42px; border: 0; border-radius: 8px; background: var(--orange); color: #080b10; font-weight: 900; font-size: 15px; cursor: pointer; margin-top: 18px; }
 .login-error, .warning { border: 1px solid #7d5d2c; background: #1c1a14; color: #ffd386; border-radius: 8px; padding: 10px 12px; margin: 12px 0; }
+.success { border: 1px solid #0b7656; background: #09231d; color: #b8ffe1; border-radius: 8px; padding: 10px 12px; margin: 12px 0; }
 .login-host { text-align: center; color: #91a5bf; margin-top: 18px; }
 
 .layout { min-height: 100vh; display: grid; grid-template-columns: 212px minmax(0, 1fr); }

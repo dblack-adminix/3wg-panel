@@ -138,6 +138,7 @@ function CreateClient({ protocols, onCreated }) {
   const [wireguard, setWireguard] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const allProtocolsAvailable = Boolean(available && wgAvailable);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -169,10 +170,19 @@ function CreateClient({ protocols, onCreated }) {
         <button className="orange-btn" disabled={loading || !name.trim()}><Plus size={15} /> Создать клиента</button>
         {error && <div className="warning">{error}</div>}
       </form>
-      <div className="warning compact-warning">
-        <b>На этой ноде доступен не весь набор протоколов.</b><br />
-        Доступно: {available ? 'AmneziaWG' : '—'}<br />
-        Не установлено: {!wgAvailable ? 'WireGuard' : '—'}
+      <div className={allProtocolsAvailable ? 'success compact-warning' : 'warning compact-warning'}>
+        {allProtocolsAvailable ? (
+          <>
+            <b>Все протоколы установлены.</b>
+            Доступно: WireGuard и AmneziaWG
+          </>
+        ) : (
+          <>
+            <b>На этой ноде доступен не весь набор протоколов.</b>
+            Доступно: {available ? 'AmneziaWG' : '—'}<br />
+            Не установлено: {!wgAvailable ? 'WireGuard' : '—'}
+          </>
+        )}
       </div>
       <div className="endpoint-host">Endpoint host: <code>{location.hostname}</code></div>
     </section>
