@@ -1,49 +1,49 @@
-# Configuration Reference
+# Конфигурация
 
-3WG Panel is configured through `.env`.
+3WG Panel настраивается через `.env`.
 
-## Core Variables
+## Основные переменные
 
-| Variable | Example | Description |
+| Переменная | Пример | Описание |
 | --- | --- | --- |
-| `PANEL_USER` | `admin` | Web login username |
-| `PANEL_PASSWORD` | `change-me` | Web login password |
-| `SESSION_SECRET` | random hex | Secret used to sign session cookies |
-| `ENDPOINT_HOST` | `vpn.example.com` | Host written into generated client configs |
-| `DNS_SERVERS` | `1.1.1.1, 1.0.0.1` | DNS pushed into generated configs |
-| `HIDE_EXISTING_PEERS` | `1` | Hide peers not created by 3WG Panel |
+| `PANEL_USER` | `admin` | Логин для входа в панель |
+| `PANEL_PASSWORD` | `change-me` | Пароль для входа в панель |
+| `SESSION_SECRET` | random hex | Секрет для подписи session cookie |
+| `ENDPOINT_HOST` | `vpn.example.com` | Хост, который попадёт в клиентские конфиги |
+| `DNS_SERVERS` | `1.1.1.1, 1.0.0.1` | DNS в генерируемых конфигах |
+| `HIDE_EXISTING_PEERS` | `1` | Скрывать peer'ы, созданные не через 3WG Panel |
 
-## WireGuard Variables
+## WireGuard
 
-| Variable | Example | Description |
+| Переменная | Пример | Описание |
 | --- | --- | --- |
-| `WG_CONTAINER` | `amnezia-wireguard` | Docker container name |
-| `WG_INTERFACE` | `wg0` | Interface name inside the container |
-| `WG_PORT` | `51820` | Public UDP port |
-| `WG_CONFIG_PATH` | `/opt/amnezia/wireguard/wg0.conf` | Config path inside the container |
-| `WG_NETWORK` | `10.8.1.0/24` | Client address pool |
+| `WG_CONTAINER` | `amnezia-wireguard` | Имя Docker-контейнера |
+| `WG_INTERFACE` | `wg0` | Имя интерфейса внутри контейнера |
+| `WG_PORT` | `51820` | Публичный UDP-порт |
+| `WG_CONFIG_PATH` | `/opt/amnezia/wireguard/wg0.conf` | Путь к конфигу внутри контейнера |
+| `WG_NETWORK` | `10.8.1.0/24` | Пул адресов клиентов |
 
-## AmneziaWG Variables
+## AmneziaWG
 
-| Variable | Example | Description |
+| Переменная | Пример | Описание |
 | --- | --- | --- |
-| `AWG_CONTAINER` | `amnezia-awg2` | Docker container name |
-| `AWG_INTERFACE` | `awg0` | Interface name inside the container |
-| `AWG_PORT` | `42300` | Public UDP port |
-| `AWG_CONFIG_PATH` | `/opt/amnezia/awg/awg0.conf` | Config path inside the container |
-| `AWG_NETWORK` | `10.8.1.0/24` | Client address pool |
+| `AWG_CONTAINER` | `amnezia-awg2` | Имя Docker-контейнера |
+| `AWG_INTERFACE` | `awg0` | Имя интерфейса внутри контейнера |
+| `AWG_PORT` | `42300` | Публичный UDP-порт |
+| `AWG_CONFIG_PATH` | `/opt/amnezia/awg/awg0.conf` | Путь к конфигу внутри контейнера |
+| `AWG_NETWORK` | `10.8.1.0/24` | Пул адресов клиентов |
 
-## Data Paths
+## Пути данных
 
-Inside the container:
+Внутри контейнера:
 
 ```text
 /app/data      SQLite database
-/app/clients   generated client configs
-/app/backups   backups and deleted configs
+/app/clients   сгенерированные клиентские конфиги
+/app/backups   backup'ы и удалённые конфиги
 ```
 
-On the host those paths are mounted from the installation directory, usually:
+На хосте эти директории обычно находятся здесь:
 
 ```text
 /opt/3wg-panel/data
@@ -51,8 +51,8 @@ On the host those paths are mounted from the installation directory, usually:
 /opt/3wg-panel/backups
 ```
 
-## Notes
+## Примечания
 
-- If both WireGuard and AmneziaWG use the same CIDR, make sure this matches your real network design.
-- `ENDPOINT_HOST` should be the domain clients can reach from the Internet.
-- Do not commit `.env` to Git.
+- Если WireGuard и AmneziaWG используют один CIDR, убедитесь, что это действительно соответствует вашей сетевой схеме.
+- `ENDPOINT_HOST` должен быть доменом или IP, доступным клиентам из Интернета.
+- Никогда не коммитьте `.env` в Git.

@@ -1,101 +1,103 @@
 # 3WG Panel
 
-3WG Panel is a web panel for managing WireGuard and AmneziaWG peers on a node. The backend is FastAPI, the UI is React, and deployment is Docker-based.
+3WG Panel — веб-панель для управления WireGuard и AmneziaWG peer'ами на серверной ноде. Backend написан на FastAPI, интерфейс — на React, развёртывание — через Docker.
 
-## What It Does
+## Возможности
 
-- Manages WireGuard and AmneziaWG clients from one panel.
-- Generates configs, QR codes, and AmneziaVPN-compatible files.
-- Shows peer status, latest handshake, RX/TX counters, and protocol health.
-- Includes live interface traffic and detailed traffic history pages.
-- Stores panel state in SQLite and keeps generated client files on persistent volumes.
-- Ships with an interactive installer for GitHub-based deployments.
+- Управление WireGuard и AmneziaWG клиентами из одной панели.
+- Генерация конфигов, QR-кодов и файлов для AmneziaVPN.
+- Отображение статуса peer'ов, последнего handshake, RX/TX и состояния протоколов.
+- Live-виджет трафика по интерфейсам.
+- Подробные страницы истории трафика.
+- Хранение состояния панели в SQLite.
+- Постоянные volume'ы для базы, клиентов и backup'ов.
+- Интерактивный installer для развёртывания с GitHub.
 
-## Screens And Routes
+## Основные страницы
 
-- `/` - main dashboard
-- `/client/<id>` - client config, QR codes, downloads
-- `/status/wireguard` - WireGuard status page
-- `/status/amneziawg` - AmneziaWG status page
-- `/traffic/wireguard` - WireGuard traffic history
-- `/traffic/amneziawg` - AmneziaWG traffic history
-- `/health` - health check
+- `/` — главная панель
+- `/client/<id>` — конфиг клиента, QR-коды, скачивание файлов
+- `/status/wireguard` — статус WireGuard
+- `/status/amneziawg` — статус AmneziaWG
+- `/traffic/wireguard` — история трафика WireGuard
+- `/traffic/amneziawg` — история трафика AmneziaWG
+- `/health` — health-check
 
-## Requirements
+## Требования
 
-On the target server:
+На целевом сервере нужны:
 
-- Linux server, Debian/Ubuntu recommended
+- Linux server, рекомендуется Debian/Ubuntu
 - Docker
 - Git
-- Node.js/npm, used to build React during install
+- Node.js/npm для сборки React
 - Python 3
 - curl
-- Existing WireGuard and/or AmneziaWG containers reachable through Docker
-- Access to `/var/run/docker.sock` from the panel container
+- уже существующие WireGuard и/или AmneziaWG контейнеры
+- доступ контейнера панели к `/var/run/docker.sock`
 
-3WG Panel does not install WireGuard or AmneziaWG by itself. It manages existing protocol containers.
+3WG Panel не устанавливает WireGuard или AmneziaWG самостоятельно. Панель управляет уже существующими protocol-контейнерами.
 
-## Quick Install
+## Быстрая установка
 
-On a new server run:
+На новом сервере:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/dblack-adminix/3wg-panel/dev/scripts/install.sh -o /tmp/3wg-install.sh
 sudo bash /tmp/3wg-install.sh
 ```
 
-The installer asks for:
+Installer спросит:
 
-- Git repository and branch/tag
-- install directory, default `/opt/3wg-panel`
-- bind host and port, default `127.0.0.1:18080`
-- public endpoint host/domain
-- panel username/password
-- WireGuard container/interface/port/config/network
-- AmneziaWG container/interface/port/config/network
+- Git repository и branch/tag
+- папку установки
+- bind host и port
+- публичный endpoint host/domain
+- логин и пароль панели
+- параметры WireGuard: container, interface, port, config path, network
+- параметры AmneziaWG: container, interface, port, config path, network
 - DNS servers
-- whether to hide peers not created by the panel
+- скрывать ли peer'ы, созданные не панелью
 
-Detailed installation guide: [docs/INSTALL.md](docs/INSTALL.md)
+Подробная инструкция: [docs/INSTALL.md](docs/INSTALL.md)
 
-## Configuration
+## Конфигурация
 
-Copy and edit `.env.example` if installing manually. Full variable reference: [docs/CONFIGURATION.md](docs/CONFIGURATION.md)
+Для ручной установки скопируйте `.env.example` в `.env` и измените значения. Полное описание переменных: [docs/CONFIGURATION.md](docs/CONFIGURATION.md)
 
-## Operations
+## Эксплуатация
 
-- Backup, update, logs, health checks: [docs/OPERATIONS.md](docs/OPERATIONS.md)
-- Security and reverse proxy notes: [docs/SECURITY.md](docs/SECURITY.md)
-- Troubleshooting: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
+- Обновление, backup, restore, logs, health-check: [docs/OPERATIONS.md](docs/OPERATIONS.md)
+- Безопасность и reverse proxy: [docs/SECURITY.md](docs/SECURITY.md)
+- Решение проблем: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
 
-## Development Deploy On The Current Node
+## Dev deploy на текущей ноде
 
-The existing dev node uses:
+Текущая dev-нода использует:
 
 ```bash
 bash /srv/3wg-panel/scripts/deploy.sh
 ```
 
-That script is intentionally node-specific. For new servers, use `scripts/install.sh`.
+Этот скрипт специально привязан к dev-серверу. Для новых серверов используйте `scripts/install.sh`.
 
-## Project Layout
+## Структура проекта
 
 ```text
-app/                 FastAPI backend and static assets
+app/                 FastAPI backend и static assets
 frontend/            React frontend source
-scripts/deploy.sh    dev deploy script for cz-prg-01
-scripts/install.sh   interactive production installer
-docs/                documentation
-.env.example         environment template
+scripts/deploy.sh    dev deploy script для cz-prg-01
+scripts/install.sh   интерактивный production installer
+docs/                документация
+.env.example         шаблон окружения
 ```
 
-## Version
+## Версия
 
-Current UI version: `v1.0.0`
+Текущая версия UI: `v1.0.0`
 
 ## Copyright
 
-Copyright 2026 3WG Panel. Contacts: [@vorchiks](https://t.me/vorchiks), [vitaly@goreev.ru](mailto:vitaly@goreev.ru), [3wg.ru](https://3wg.ru).
+© 2026 3WG Panel. Контакты: [@vorchiks](https://t.me/vorchiks), [vitaly@goreev.ru](mailto:vitaly@goreev.ru), [3wg.ru](https://3wg.ru).
 
-WireGuard is a registered trademark of Jason A. Donenfeld.
+WireGuard является зарегистрированным товарным знаком Jason A. Donenfeld.

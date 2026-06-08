@@ -1,39 +1,39 @@
-# Security Notes
+# Безопасность
 
-## Recommended Exposure
+## Как лучше публиковать панель
 
-Bind 3WG Panel to localhost and expose it through HTTPS reverse proxy:
+Рекомендуемый вариант — держать 3WG Panel на localhost и отдавать наружу только через HTTPS reverse proxy:
 
 ```text
 127.0.0.1:18080 -> Caddy/Nginx -> Internet
 ```
 
-Avoid binding the panel directly to `0.0.0.0` unless you know exactly what you are doing.
+Не открывайте панель напрямую на `0.0.0.0`, если точно не понимаете последствия.
 
-## Passwords And Secrets
+## Пароли и secrets
 
-- Use a strong `PANEL_PASSWORD`.
-- Use a random `SESSION_SECRET`.
-- Keep `.env` mode `600`.
-- Do not commit `.env`.
+- Используйте сильный `PANEL_PASSWORD`.
+- Используйте случайный `SESSION_SECRET`.
+- Держите `.env` с правами `600`.
+- Не коммитьте `.env` в Git.
 
-## Docker Socket
+## Docker socket
 
-The panel needs `/var/run/docker.sock` to inspect and execute commands in protocol containers. This is powerful access. Run the panel only on servers you trust and protect the web login.
+Панели нужен `/var/run/docker.sock`, чтобы смотреть protocol-контейнеры и выполнять команды внутри них. Это высокий уровень доступа. Запускайте панель только на доверенных серверах и защищайте вход в web UI.
 
-## Firewall Checklist
+## Firewall checklist
 
-Open only what you need:
+Открывайте только необходимое:
 
-- TCP 80/443 for reverse proxy
-- WireGuard/AmneziaWG UDP ports
-- SSH from trusted addresses
+- TCP 80/443 для reverse proxy
+- UDP ports WireGuard/AmneziaWG
+- SSH только с доверенных адресов
 
-Do not expose SQLite, Docker API, or internal panel port publicly.
+Не публикуйте наружу SQLite, Docker API и внутренний порт панели.
 
 ## HTTPS
 
-Use Caddy or Nginx with Let's Encrypt. Caddy example:
+Используйте Caddy или Nginx с Let's Encrypt. Пример Caddy:
 
 ```caddy
 panel.example.com {

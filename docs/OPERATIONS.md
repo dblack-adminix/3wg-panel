@@ -1,18 +1,18 @@
-# Operations
+# Эксплуатация
 
-## Health Check
+## Health-check
 
 ```bash
 curl -fsS http://127.0.0.1:18080/health
 ```
 
-Expected output:
+Ожидаемый ответ:
 
 ```json
 {"status":"ok"}
 ```
 
-## Logs
+## Логи
 
 ```bash
 docker logs -f 3wg-panel
@@ -24,9 +24,9 @@ docker logs -f 3wg-panel
 docker restart 3wg-panel
 ```
 
-## Update From Git
+## Обновление из Git
 
-For installer-based deployments:
+Для установок через installer:
 
 ```bash
 cd /opt/3wg-panel
@@ -36,11 +36,11 @@ git pull --ff-only
 sudo bash scripts/install.sh
 ```
 
-The installer will keep the same directory, rebuild frontend/image, recreate the container, and perform a health check.
+Installer использует ту же директорию, пересобирает frontend/image, пересоздаёт контейнер и делает health-check.
 
 ## Backup
 
-Stop is not required for a basic SQLite/file backup, but doing it during low traffic is cleaner.
+Останавливать контейнер обычно не обязательно, но лучше делать backup в момент низкой нагрузки.
 
 ```bash
 cd /opt/3wg-panel
@@ -48,7 +48,7 @@ mkdir -p backups/manual
 tar -czf backups/manual/3wg-panel.$(date +%F_%H-%M-%S).tgz data clients backups .env
 ```
 
-Recommended files to back up:
+Что важно сохранять:
 
 - `.env`
 - `data/panel.db`
@@ -60,17 +60,17 @@ Recommended files to back up:
 ```bash
 cd /opt/3wg-panel
 docker rm -f 3wg-panel
-# unpack backup into /opt/3wg-panel
+# распакуйте backup в /opt/3wg-panel
 sudo bash scripts/install.sh
 ```
 
-## Traffic History
+## История трафика
 
-Traffic history is stored in SQLite table `traffic_snapshots`. It starts accumulating from the moment the feature is deployed. Old monthly data cannot be reconstructed if snapshots were not collected before.
+История трафика хранится в SQLite table `traffic_snapshots`. Она начинает накапливаться только после включения этой функции. Старую месячную статистику восстановить нельзя, если snapshots раньше не собирались.
 
-## Release Flow
+## Release flow
 
-Recommended release flow:
+Рекомендуемый порядок релиза:
 
 ```bash
 git checkout dev
@@ -79,4 +79,4 @@ git tag v1.0.0
 git push origin v1.0.0
 ```
 
-For production servers, install a tag instead of a moving branch when stability matters.
+Для production-серверов лучше ставить tag, а не плавающую ветку.

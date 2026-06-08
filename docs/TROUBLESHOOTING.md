@@ -1,6 +1,6 @@
-# Troubleshooting
+# Решение проблем
 
-## Health Check Fails
+## Health-check не проходит
 
 ```bash
 docker ps
@@ -8,46 +8,46 @@ docker logs --tail 100 3wg-panel
 curl -v http://127.0.0.1:18080/health
 ```
 
-Common causes:
+Частые причины:
 
-- container is not running
-- bad `.env`
-- port already used
-- Docker socket not mounted
+- контейнер не запущен
+- ошибка в `.env`
+- порт уже занят
+- Docker socket не примонтирован
 
-## Protocol Shows Offline Or Unavailable
+## Protocol показывает Offline или Unavailable
 
-Check container names and interfaces:
+Проверьте имена контейнеров и интерфейсы:
 
 ```bash
 docker ps
 docker exec <container> wg show
 ```
 
-For AmneziaWG, the tool name inside the container must match what the backend expects.
+Для AmneziaWG tool внутри контейнера должен соответствовать тому, что ожидает backend.
 
-## QR Or Download Is Wrong
+## QR или download неверный
 
-Check:
+Проверьте:
 
 - `ENDPOINT_HOST`
-- protocol UDP port
-- generated client file in `clients/`
-- protocol config path inside the container
+- UDP port протокола
+- сгенерированный файл клиента в `clients/`
+- путь к protocol config внутри контейнера
 
-## Installer Cannot Pull Git
+## Installer не может скачать Git
 
-Use HTTPS repo URL if SSH keys are not configured:
+Если SSH-ключи не настроены, используйте HTTPS repository URL:
 
 ```text
 https://github.com/dblack-adminix/3wg-panel.git
 ```
 
-For private repositories, configure deploy keys or GitHub token access first.
+Для private repositories заранее настройте deploy key или GitHub token.
 
-## Frontend Build Fails
+## Frontend build падает
 
-Check Node/npm:
+Проверьте Node/npm:
 
 ```bash
 node -v
@@ -57,12 +57,12 @@ npm install
 npm run build
 ```
 
-## Database Problems
+## Проблемы с базой
 
-SQLite database lives at:
+SQLite database находится здесь:
 
 ```text
 data/panel.db
 ```
 
-Back it up before manual edits.
+Перед ручными изменениями обязательно сделайте backup.

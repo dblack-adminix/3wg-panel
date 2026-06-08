@@ -1,10 +1,10 @@
-# Installation Guide
+# Установка
 
-This guide describes installing 3WG Panel from GitHub onto a Linux server.
+Этот документ описывает установку 3WG Panel с GitHub на Linux-сервер.
 
-## 1. Prepare The Server
+## 1. Подготовьте сервер
 
-Install the required packages:
+Установите необходимые пакеты:
 
 ```bash
 sudo apt update
@@ -12,58 +12,58 @@ sudo apt install -y git curl python3 nodejs npm docker.io
 sudo systemctl enable --now docker
 ```
 
-Make sure the protocol containers already exist:
+Проверьте, что protocol-контейнеры уже существуют:
 
 ```bash
 docker ps
 ```
 
-You should know these values before running the installer:
+Перед запуском installer желательно знать:
 
-- public domain or endpoint host
-- panel admin login and password
+- публичный домен или endpoint host
+- логин и пароль панели
 - WireGuard container name, interface, UDP port, config path, CIDR
 - AmneziaWG container name, interface, UDP port, config path, CIDR
 
-## 2. Run The Installer
+## 2. Запустите installer
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/dblack-adminix/3wg-panel/dev/scripts/install.sh -o /tmp/3wg-install.sh
 sudo bash /tmp/3wg-install.sh
 ```
 
-Default values are safe for a typical local install. Press Enter to accept a default.
+У большинства вопросов есть значения по умолчанию. Если значение подходит, нажмите Enter.
 
-Recommended install directory:
+Рекомендуемая папка установки:
 
 ```text
 /opt/3wg-panel
 ```
 
-Recommended bind address behind a reverse proxy:
+Рекомендуемый bind address при работе за reverse proxy:
 
 ```text
 127.0.0.1:18080
 ```
 
-## 3. What The Installer Does
+## 3. Что делает installer
 
-The installer:
+Installer выполняет:
 
-1. checks required commands
-2. clones or updates the Git repository
-3. asks for deployment settings
-4. creates `.env`
-5. applies backend API patches
-6. builds the React frontend
-7. builds Docker image `3wg-panel:local`
-8. recreates container `3wg-panel`
-9. checks `/health`
-10. prints the panel URL and credentials
+1. проверку нужных команд
+2. clone или update Git repository
+3. опрос настроек установки
+4. создание `.env`
+5. применение backend API patches
+6. сборку React frontend
+7. сборку Docker image `3wg-panel:local`
+8. пересоздание контейнера `3wg-panel`
+9. проверку `/health`
+10. вывод URL, логина и пароля
 
-## 4. Manual Install
+## 4. Ручная установка
 
-Manual install is useful for debugging:
+Ручной вариант полезен для отладки:
 
 ```bash
 git clone --branch dev https://github.com/dblack-adminix/3wg-panel.git /opt/3wg-panel
@@ -82,9 +82,9 @@ docker run -d   --name 3wg-panel   --restart unless-stopped   --env-file /opt/3w
 curl -fsS http://127.0.0.1:18080/health
 ```
 
-## 5. HTTPS With Caddy
+## 5. HTTPS через Caddy
 
-Example Caddyfile:
+Пример Caddyfile:
 
 ```caddy
 panel.example.com {
@@ -92,15 +92,15 @@ panel.example.com {
 }
 ```
 
-After DNS points to the server, Caddy will issue HTTPS automatically.
+После настройки DNS Caddy сам выпустит HTTPS-сертификат.
 
-## 6. First Login
+## 6. Первый вход
 
-Open the URL printed by the installer and log in using the generated or provided credentials.
+Откройте URL, который напечатал installer, и войдите в панель.
 
-Immediately verify:
+Сразу проверьте:
 
-- `/health` is OK
-- both protocol status cards show expected state
-- creating a test client works
-- QR and download buttons work
+- `/health` возвращает OK
+- карточки протоколов показывают ожидаемое состояние
+- создание тестового клиента работает
+- QR и download-кнопки работают
