@@ -62,19 +62,21 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 .stat-label { color: #92a6c0; font-size: 12px; margin-top: 8px; }
 .stat-mark { position: absolute; right: 12px; top: 22px; width: 26px; height: 26px; display: grid; place-items: center; color: var(--green); border: 1px solid #0a684e; border-radius: 6px; background: #0b2a24; }
 
-.traffic-card { min-height: 260px; }
+.dashboard-row { display: grid; grid-template-columns: 430px minmax(0, 1fr); gap: 12px; align-items: stretch; margin-bottom: 12px; }
+.dashboard-row .card { margin-bottom: 0; }
+.traffic-card { min-height: 0; }
 .traffic-head h2 { display: inline-flex; align-items: center; gap: 8px; }
 .live-dot { height: 24px; display: inline-flex; align-items: center; border: 1px solid #0a684e; border-radius: 6px; background: #09261f; color: var(--green); padding: 0 8px; font-size: 11px; font-weight: 900; }
-.traffic-layout { display: grid; grid-template-columns: minmax(280px, 420px) minmax(360px, 1fr); gap: 16px; align-items: stretch; }
+.traffic-layout { display: grid; grid-template-columns: minmax(260px, 340px) minmax(320px, 1fr); gap: 12px; align-items: stretch; }
 .traffic-total, .traffic-row { border: 1px solid #233043; border-radius: 8px; background: #0b121b; }
-.traffic-total { min-height: 190px; padding: 16px; overflow: hidden; }
+.traffic-total { min-height: 0; padding: 14px; overflow: hidden; }
 .traffic-total > span { display: block; color: #8fa3bd; font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em; }
 .traffic-total > strong { display: block; margin-top: 4px; font-size: 30px; line-height: 1; }
 .traffic-rates { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 16px; }
 .traffic-rates div { display: grid; gap: 4px; }
 .traffic-rates small, .traffic-meta { color: #8fa3bd; }
 .traffic-rates b { font-size: 14px; }
-.traffic-chart { width: 100%; height: 86px; margin-top: 14px; display: block; }
+.traffic-chart { width: 100%; height: 66px; margin-top: 12px; display: block; }
 .traffic-chart polygon { fill: rgba(36, 240, 160, .15); }
 .traffic-chart polyline { fill: none; stroke: var(--green); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
 .traffic-interfaces { display: grid; gap: 10px; align-content: start; }
@@ -136,6 +138,7 @@ button:disabled { cursor: not-allowed; opacity: .58; }
   .layout { grid-template-columns: 1fr; }
   .sidebar { display: none; }
   .stats-grid { grid-template-columns: 1fr 1fr; }
+  .dashboard-row { grid-template-columns: 1fr; }
   .traffic-layout { grid-template-columns: 1fr; }
   .main { padding: 12px; }
   .create-card form { align-items: stretch; }

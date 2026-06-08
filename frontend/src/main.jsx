@@ -706,8 +706,10 @@ function Dashboard({ onLogout }) {
         <StatCard value={online} label="сейчас в сети" icon={Wifi} />
         <StatCard value={available} label="доступных протокола" icon={ShieldCheck} />
       </div>
-      <TrafficWidget peers={state.peers} protocols={state.protocols} history={trafficHistory} />
-      <CreateClient protocols={state.protocols} onCreated={load} />
+      <div className="dashboard-row">
+        <CreateClient protocols={state.protocols} onCreated={load} />
+        <TrafficWidget peers={state.peers} protocols={state.protocols} history={trafficHistory} />
+      </div>
       <ClientsTable peers={state.peers} onRefresh={load} />
       <section className="card status-card" id="status"><h2>Статус</h2><div className="status-grid">{Object.values(state.protocols || {}).map((p) => <div className="status-item" key={p.protocol}><b>{p.title}</b><span className={p.available ? 'status-ok' : 'status-bad'}>{p.available ? <Wifi size={14} /> : <WifiOff size={14} />}{p.available ? 'ONLINE' : 'OFFLINE'}</span><small>{p.container} / {p.interface}</small></div>)}</div></section>
     </Shell>
