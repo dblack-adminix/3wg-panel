@@ -2,7 +2,8 @@
 from pathlib import Path
 import re
 
-APP_PATH = Path('/srv/3wg-panel/app/app.py')
+ROOT = Path(__file__).resolve().parents[1]
+APP_PATH = ROOT / 'app/app.py'
 text = APP_PATH.read_text(encoding='utf-8')
 
 

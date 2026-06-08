@@ -2,7 +2,8 @@
 from pathlib import Path
 import re
 
-p = Path('/srv/3wg-panel/app/app.py')
+ROOT = Path(__file__).resolve().parents[1]
+p = ROOT / 'app/app.py'
 s = p.read_text(encoding='utf-8')
 
 # Убираем сломанные runtime-блоки, если они уже были вставлены.
