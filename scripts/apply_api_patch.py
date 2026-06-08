@@ -94,11 +94,27 @@ def api_live_maps() -> tuple[dict, dict]:
     return live, errors
 
 
+ONLINE_HANDSHAKE_WINDOW_SECONDS = 180
+
+
+def api_recent_handshake(lp: dict | None) -> tuple[bool, int | None]:
+    if not lp:
+        return False, None
+    try:
+        latest = int(str(lp.get('latest_handshake') or '0'))
+    except (TypeError, ValueError):
+        return False, None
+    if latest <= 0:
+        return False, None
+    age = max(0, int(time.time()) - latest)
+    return age <= ONLINE_HANDSHAKE_WINDOW_SECONDS, age
+
+
 def api_peer_payload(c, live: dict | None = None, include_config: bool = False) -> dict:
     protocol = c['protocol']
     p = PROTOCOLS[protocol]
     lp = live.get(protocol, {}).get(c['public_key']) if live else None
-    active = bool(lp and lp.get('endpoint') and lp.get('endpoint') != '(none)')
+    active, handshake_age = api_recent_handshake(lp)
     payload = {
         'id': int(c['id']),
         'name': c['name'],
@@ -111,6 +127,8 @@ def api_peer_payload(c, live: dict | None = None, include_config: bool = False) 
         'deleted_at': int(c['deleted_at']) if 'deleted_at' in c.keys() else 0,
         'endpoint': f"{ENDPOINT_HOST}:{p['port']}",
         'status': 'active' if active else 'offline',
+        'online_window_seconds': ONLINE_HANDSHAKE_WINDOW_SECONDS,
+        'handshake_age_seconds': handshake_age,
         'live': lp or None,
         'links': {
             'html': f"/client/{c['id']}",

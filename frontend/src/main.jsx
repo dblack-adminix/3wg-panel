@@ -233,7 +233,7 @@ function ClientsTable({ peers, onRefresh }) {
                 <td><b>{p.name}</b><small>создан панелью</small></td>
                 <td><span className="proto">{p.protocol_title || p.protocol}</span></td>
                 <td><code>{p.ip_cidr}</code></td>
-                <td><span className={p.status === 'active' ? 'active-text' : 'muted'}>{p.status === 'active' ? 'ACTIVE' : 'OFFLINE'}</span></td>
+                <td><span className={p.status === 'active' ? 'active-text' : 'muted'}>{p.status === 'active' ? 'ONLINE' : 'OFFLINE'}</span></td>
                 <td title={p.live?.endpoint || ''}>{p.live?.endpoint || '(none)'}</td>
                 <td>{p.live?.latest_handshake && p.live.latest_handshake !== '0' ? new Date(Number(p.live.latest_handshake) * 1000).toLocaleString('ru-RU') : '-'}</td>
                 <td>{formatBytes(p.live?.rx)}</td>
@@ -330,7 +330,7 @@ function ClientPage({ clientId, onLogout }) {
           <section className="card detail-card">
             <div className="detail-head">
               <a className="back-link" href="/"><ChevronLeft size={16} /> Назад</a>
-              <span className={peer.status === 'active' ? 'active-text' : 'muted'}>{peer.status === 'active' ? 'ACTIVE' : 'OFFLINE'}</span>
+              <span className={peer.status === 'active' ? 'active-text' : 'muted'}>{peer.status === 'active' ? 'ONLINE' : 'OFFLINE'}</span>
             </div>
             <div className="detail-grid">
               <div><span>IP</span><code>{peer.ip_cidr}</code></div>
@@ -471,7 +471,7 @@ function StatusPage({ protocol, onLogout }) {
                 <tbody>
                   {peers.map((peer) => (
                     <tr key={peer.publicKey}>
-                      <td><span className={peer.online ? 'active-text' : 'muted'}>{peer.online ? 'ACTIVE' : 'OFFLINE'}</span></td>
+                      <td><span className={peer.online ? 'active-text' : 'muted'}>{peer.online ? 'ONLINE' : 'OFFLINE'}</span></td>
                       <td title={peer.publicKey}><code>{shortKey(peer.publicKey)}</code></td>
                       <td>{peer.allowedIp || '-'}</td>
                       <td title={peer.endpoint}>{peer.endpoint || '-'}</td>
@@ -515,6 +515,15 @@ function RawModal({ title, raw, onClose }) {
   );
 }
 
+function isRecentHandshakeText(value) {
+  if (!value || value === '0' || value === '(none)' || value === '-') return false;
+  const normalized = value.toLowerCase();
+  if (normalized.includes('second')) return true;
+  const minuteMatch = normalized.match(/(\d+)\s+minute/);
+  if (minuteMatch) return Number(minuteMatch[1]) <= 3;
+  return false;
+}
+
 function parseStatusPeers(raw) {
   const peers = [];
   let current = null;
@@ -528,12 +537,11 @@ function parseStatusPeers(raw) {
     if (!current) continue;
     if (trimmed.startsWith('endpoint: ')) {
       current.endpoint = trimmed.slice(10);
-      current.online = current.endpoint && current.endpoint !== '(none)';
     } else if (trimmed.startsWith('allowed ips: ')) {
       current.allowedIp = trimmed.slice(13);
     } else if (trimmed.startsWith('latest handshake: ')) {
       current.handshake = trimmed.slice(18);
-      if (current.handshake && current.handshake !== '0' && current.handshake !== '(none)') current.online = true;
+      current.online = isRecentHandshakeText(current.handshake);
     } else if (trimmed.startsWith('transfer: ')) {
       current.transfer = trimmed.slice(10);
     }
