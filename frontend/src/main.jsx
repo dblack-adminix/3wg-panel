@@ -561,8 +561,113 @@ function parseStatusPeers(raw) {
   return peers;
 }
 
+function protocolTrafficRows(peers, protocols) {
+  const map = new Map();
+  for (const p of Object.values(protocols || {})) {
+    map.set(p.protocol, {
+      protocol: p.protocol,
+      title: p.title,
+      interface: p.interface,
+      available: p.available,
+      rx: 0,
+      tx: 0,
+      peers: 0,
+    });
+  }
+  for (const peer of peers || []) {
+    const key = peer.protocol;
+    const row = map.get(key) || {
+      protocol: key,
+      title: peer.protocol_title || key,
+      interface: key,
+      available: true,
+      rx: 0,
+      tx: 0,
+      peers: 0,
+    };
+    row.rx += Number(peer.live?.rx || 0);
+    row.tx += Number(peer.live?.tx || 0);
+    row.peers += 1;
+    map.set(key, row);
+  }
+  return Array.from(map.values()).filter((row) => row.available || row.peers || row.rx || row.tx);
+}
+
+function TrafficChart({ points }) {
+  const data = points.length ? points : [{ total: 0 }];
+  const max = Math.max(1, ...data.map((p) => p.total));
+  const width = 360;
+  const height = 88;
+  const step = data.length > 1 ? width / (data.length - 1) : width;
+  const coords = data.map((p, i) => {
+    const x = i * step;
+    const y = height - (p.total / max) * (height - 10) - 5;
+    return `${x.toFixed(2)},${y.toFixed(2)}`;
+  });
+  const area = coords.length > 1 ? `0,${height} ${coords.join(' ')} ${width},${height}` : `0,${height} ${width},${height}`;
+  return (
+    <svg className="traffic-chart" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true">
+      <polygon points={area} />
+      <polyline points={coords.join(' ')} />
+    </svg>
+  );
+}
+
+function TrafficWidget({ peers, protocols, history }) {
+  const rows = useMemo(() => protocolTrafficRows(peers, protocols), [peers, protocols]);
+  const totals = rows.reduce((acc, row) => ({ rx: acc.rx + row.rx, tx: acc.tx + row.tx }), { rx: 0, tx: 0 });
+  const total = totals.rx + totals.tx;
+  const latest = history.at(-1);
+  const prev = history.length > 1 ? history.at(-2) : null;
+  const seconds = latest && prev ? Math.max(1, (latest.t - prev.t) / 1000) : 1;
+  const rxRate = latest && prev ? Math.max(0, (latest.rx - prev.rx) / seconds) : 0;
+  const txRate = latest && prev ? Math.max(0, (latest.tx - prev.tx) / seconds) : 0;
+  const maxRow = Math.max(1, ...rows.map((row) => row.rx + row.tx));
+
+  return (
+    <section className="card traffic-card">
+      <div className="section-head traffic-head">
+        <h2><Activity size={18} /> Трафик интерфейсов</h2>
+        <span className="live-dot">LIVE</span>
+      </div>
+      <div className="traffic-layout">
+        <div className="traffic-total">
+          <span>Общий трафик</span>
+          <strong>{formatBytes(total)}</strong>
+          <div className="traffic-rates">
+            <div><small>RX / sec</small><b>{formatBytes(rxRate)}</b></div>
+            <div><small>TX / sec</small><b>{formatBytes(txRate)}</b></div>
+          </div>
+          <TrafficChart points={history} />
+        </div>
+        <div className="traffic-interfaces">
+          {rows.map((row) => {
+            const rowTotal = row.rx + row.tx;
+            const pct = Math.max(3, Math.round((rowTotal / maxRow) * 100));
+            return (
+              <div className="traffic-row" key={row.protocol}>
+                <div className="traffic-row-top">
+                  <span className={`traffic-proto ${row.protocol === 'wireguard' ? 'wg' : 'awg'}`}>{row.title}</span>
+                  <b>{formatBytes(rowTotal)}</b>
+                </div>
+                <div className="traffic-meta">
+                  <span>{row.interface}</span>
+                  <span>RX {formatBytes(row.rx)}</span>
+                  <span>TX {formatBytes(row.tx)}</span>
+                </div>
+                <div className="traffic-bar"><i style={{ width: `${pct}%` }} /></div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function Dashboard({ onLogout }) {
   const [state, setState] = useState({ loading: true, peers: [], status: null, protocols: null, error: '' });
+  const [trafficHistory, setTrafficHistory] = useState([]);
 
   const load = async () => {
     try {
@@ -571,13 +676,23 @@ function Dashboard({ onLogout }) {
         api('/api/peers'),
         api('/api/node/protocols'),
       ]);
-      setState({ loading: false, peers: peers.peers || [], status, protocols: proto.protocols || {}, error: '' });
+      const nextPeers = peers.peers || [];
+      setState({ loading: false, peers: nextPeers, status, protocols: proto.protocols || {}, error: '' });
+      const totals = nextPeers.reduce((acc, peer) => ({
+        rx: acc.rx + Number(peer.live?.rx || 0),
+        tx: acc.tx + Number(peer.live?.tx || 0),
+      }), { rx: 0, tx: 0 });
+      setTrafficHistory((items) => [...items.slice(-23), { t: Date.now(), rx: totals.rx, tx: totals.tx, total: totals.rx + totals.tx }]);
     } catch (err) {
       setState((s) => ({ ...s, loading: false, error: err.message || 'Ошибка загрузки' }));
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    const timer = window.setInterval(load, 5000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const online = useMemo(() => state.peers.filter((p) => p.status === 'active').length, [state.peers]);
   const available = Object.values(state.protocols || {}).filter((p) => p.available).length;
@@ -591,6 +706,7 @@ function Dashboard({ onLogout }) {
         <StatCard value={online} label="сейчас в сети" icon={Wifi} />
         <StatCard value={available} label="доступных протокола" icon={ShieldCheck} />
       </div>
+      <TrafficWidget peers={state.peers} protocols={state.protocols} history={trafficHistory} />
       <CreateClient protocols={state.protocols} onCreated={load} />
       <ClientsTable peers={state.peers} onRefresh={load} />
       <section className="card status-card" id="status"><h2>Статус</h2><div className="status-grid">{Object.values(state.protocols || {}).map((p) => <div className="status-item" key={p.protocol}><b>{p.title}</b><span className={p.available ? 'status-ok' : 'status-bad'}>{p.available ? <Wifi size={14} /> : <WifiOff size={14} />}{p.available ? 'ONLINE' : 'OFFLINE'}</span><small>{p.container} / {p.interface}</small></div>)}</div></section>
