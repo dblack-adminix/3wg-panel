@@ -67,7 +67,7 @@ Installer спросит:
 
 ## Эксплуатация
 
-- Обновление, backup, restore, logs, health-check: [docs/OPERATIONS.md](docs/OPERATIONS.md)
+- Обновление через `scripts/update.sh`, backup, restore, logs, health-check: [docs/OPERATIONS.md](docs/OPERATIONS.md)
 - Безопасность и reverse proxy: [docs/SECURITY.md](docs/SECURITY.md)
 - Решение проблем: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
 
@@ -88,6 +88,7 @@ app/                 FastAPI backend и static assets
 frontend/            React frontend source
 scripts/deploy.sh    dev deploy script для cz-prg-01
 scripts/install.sh   интерактивный production installer
+scripts/update.sh    production updater без перезаписи .env
 docs/                документация
 .env.example         шаблон окружения
 ```

@@ -24,19 +24,35 @@ docker logs -f 3wg-panel
 docker restart 3wg-panel
 ```
 
-## Обновление из Git
+## Обновление
 
-Для установок через installer:
+Для обычного production-обновления используйте отдельный updater:
 
 ```bash
 cd /opt/3wg-panel
-git fetch --all --tags
-git checkout dev
-git pull --ff-only
-sudo bash scripts/install.sh
+sudo bash scripts/update.sh
 ```
 
-Installer использует ту же директорию, пересобирает frontend/image, пересоздаёт контейнер и делает health-check.
+По умолчанию updater использует:
+
+```text
+INSTALL_DIR=/opt/3wg-panel
+BRANCH=dev
+IMAGE=3wg-panel:local
+CONTAINER=3wg-panel
+BIND_HOST=127.0.0.1
+BIND_PORT=18080
+```
+
+Можно переопределить значения через переменные окружения:
+
+```bash
+sudo BRANCH=v1.0.0 INSTALL_DIR=/opt/3wg-panel bash scripts/update.sh
+```
+
+Updater делает backup, обновляет Git, применяет backend patches, собирает React, пересобирает Docker image, пересоздаёт контейнер и выполняет health-check.
+
+Если нужно заново пройти вопросы установки и перегенерировать `.env`, используйте `scripts/install.sh`.
 
 ## Backup
 
