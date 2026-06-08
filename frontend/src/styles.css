@@ -101,8 +101,9 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 .icon-button:hover { filter: brightness(1.12); }
 .status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
 .status-item { border: 1px solid #233043; border-radius: 8px; padding: 12px; background: #0b121b; }
-.status-item b { display: block; margin-bottom: 6px; }
-.status-ok, .status-bad { display: inline-flex; align-items: center; gap: 5px; font-weight: 900; }
+.status-item b { display: block; margin-bottom: 8px; }
+.status-item small { display: block; margin-top: 8px; color: #8fa3bd; font-size: 12px; line-height: 1.35; }
+.status-ok, .status-bad { display: inline-flex; align-items: center; gap: 6px; font-weight: 900; }
 .status-ok { color: var(--green); }
 .status-bad { color: var(--danger); }
 
