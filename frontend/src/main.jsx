@@ -594,14 +594,14 @@ function protocolTrafficRows(peers, protocols) {
 }
 
 function TrafficChart({ points }) {
-  const data = points.length ? points : [{ total: 0 }];
-  const max = Math.max(1, ...data.map((p) => p.total));
+  const data = points.length ? points : [{ rate: 0 }];
+  const max = Math.max(1, ...data.map((p) => p.rate || 0));
   const width = 360;
   const height = 88;
   const step = data.length > 1 ? width / (data.length - 1) : width;
   const coords = data.map((p, i) => {
     const x = i * step;
-    const y = height - (p.total / max) * (height - 10) - 5;
+    const y = height - ((p.rate || 0) / max) * (height - 10) - 5;
     return `${x.toFixed(2)},${y.toFixed(2)}`;
   });
   const area = coords.length > 1 ? `0,${height} ${coords.join(' ')} ${width},${height}` : `0,${height} ${width},${height}`;
@@ -618,10 +618,8 @@ function TrafficWidget({ peers, protocols, history }) {
   const totals = rows.reduce((acc, row) => ({ rx: acc.rx + row.rx, tx: acc.tx + row.tx }), { rx: 0, tx: 0 });
   const total = totals.rx + totals.tx;
   const latest = history.at(-1);
-  const prev = history.length > 1 ? history.at(-2) : null;
-  const seconds = latest && prev ? Math.max(1, (latest.t - prev.t) / 1000) : 1;
-  const rxRate = latest && prev ? Math.max(0, (latest.rx - prev.rx) / seconds) : 0;
-  const txRate = latest && prev ? Math.max(0, (latest.tx - prev.tx) / seconds) : 0;
+  const rxRate = latest?.rxRate || 0;
+  const txRate = latest?.txRate || 0;
   const maxRow = Math.max(1, ...rows.map((row) => row.rx + row.tx));
 
   return (
@@ -682,7 +680,21 @@ function Dashboard({ onLogout }) {
         rx: acc.rx + Number(peer.live?.rx || 0),
         tx: acc.tx + Number(peer.live?.tx || 0),
       }), { rx: 0, tx: 0 });
-      setTrafficHistory((items) => [...items.slice(-23), { t: Date.now(), rx: totals.rx, tx: totals.tx, total: totals.rx + totals.tx }]);
+      setTrafficHistory((items) => {
+        const prev = items.at(-1);
+        const now = Date.now();
+        const seconds = prev ? Math.max(1, (now - prev.t) / 1000) : 1;
+        const rxRate = prev ? Math.max(0, (totals.rx - prev.rx) / seconds) : 0;
+        const txRate = prev ? Math.max(0, (totals.tx - prev.tx) / seconds) : 0;
+        return [...items.slice(-23), {
+          t: now,
+          rx: totals.rx,
+          tx: totals.tx,
+          rxRate,
+          txRate,
+          rate: rxRate + txRate,
+        }];
+      });
     } catch (err) {
       setState((s) => ({ ...s, loading: false, error: err.message || 'Ошибка загрузки' }));
     }
