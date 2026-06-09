@@ -35,15 +35,25 @@ docker exec <container> wg show
 - сгенерированный файл клиента в `clients/`
 - путь к protocol config внутри контейнера
 
-## Installer не может скачать Git
+## Installer или curl не может скачать Git
 
-Если SSH-ключи не настроены, используйте HTTPS repository URL:
+Если команда вида `curl https://raw.githubusercontent.com/.../scripts/install.sh` возвращает `404`, скорее всего репозиторий приватный. Для приватного GitHub это нормальное поведение.
+
+Используйте clone через SSH после настройки deploy key:
+
+```bash
+git clone --branch dev git@github.com:dblack-adminix/3wg-panel.git /opt/3wg-panel
+cd /opt/3wg-panel
+sudo bash scripts/install.sh
+```
+
+Если SSH-ключи не настроены, можно использовать HTTPS clone только для публичного репозитория:
 
 ```text
 https://github.com/dblack-adminix/3wg-panel.git
 ```
 
-Для private repositories заранее настройте deploy key или GitHub token.
+Для private repositories заранее настройте deploy key, GitHub token или сделайте репозиторий публичным.
 
 ## Frontend build падает
 

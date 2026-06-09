@@ -40,12 +40,23 @@
 
 ## Быстрая установка
 
-На новом сервере:
+Если репозиторий приватный, сначала настройте SSH deploy key или доступ GitHub на сервере. После этого на новом сервере:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/dblack-adminix/3wg-panel/dev/scripts/install.sh -o /tmp/3wg-install.sh
-sudo bash /tmp/3wg-install.sh
+git clone --branch dev git@github.com:dblack-adminix/3wg-panel.git /opt/3wg-panel
+cd /opt/3wg-panel
+sudo bash scripts/install.sh
 ```
+
+Если репозиторий публичный, можно использовать HTTPS clone:
+
+```bash
+git clone --branch dev https://github.com/dblack-adminix/3wg-panel.git /opt/3wg-panel
+cd /opt/3wg-panel
+sudo bash scripts/install.sh
+```
+
+Прямой `curl` с `raw.githubusercontent.com` для приватного репозитория вернёт `404`, это нормальное поведение GitHub.
 
 Installer спросит:
 

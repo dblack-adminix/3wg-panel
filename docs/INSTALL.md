@@ -25,12 +25,25 @@ docker ps
 - WireGuard container name, interface, UDP port, config path, CIDR
 - AmneziaWG container name, interface, UDP port, config path, CIDR
 
-## 2. Запустите installer
+## 2. Скачайте репозиторий и запустите installer
+
+Для приватного репозитория используйте SSH-доступ. На сервере должен быть настроен deploy key или GitHub SSH key:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/dblack-adminix/3wg-panel/dev/scripts/install.sh -o /tmp/3wg-install.sh
-sudo bash /tmp/3wg-install.sh
+git clone --branch dev git@github.com:dblack-adminix/3wg-panel.git /opt/3wg-panel
+cd /opt/3wg-panel
+sudo bash scripts/install.sh
 ```
+
+Для публичного репозитория можно использовать HTTPS clone:
+
+```bash
+git clone --branch dev https://github.com/dblack-adminix/3wg-panel.git /opt/3wg-panel
+cd /opt/3wg-panel
+sudo bash scripts/install.sh
+```
+
+Не используйте `raw.githubusercontent.com` для приватного репозитория: GitHub отдаёт `404`, если запрос без авторизации.
 
 У большинства вопросов есть значения по умолчанию. Если значение подходит, нажмите Enter.
 
@@ -68,7 +81,7 @@ Installer выполняет:
 Ручной вариант полезен для отладки:
 
 ```bash
-git clone --branch dev https://github.com/dblack-adminix/3wg-panel.git /opt/3wg-panel
+git clone --branch dev git@github.com:dblack-adminix/3wg-panel.git /opt/3wg-panel
 cd /opt/3wg-panel
 cp .env.example .env
 nano .env
