@@ -314,6 +314,54 @@ def sh(container_name: str, script: str, check=True) -> str:
     return exec_c(container_name, ["sh", "-lc", script], check=check)
 
 
+def interface_listen_port(protocol: str) -> str:
+    p = proto(protocol)
+    try:
+        port = exec_c(p["container"], [p["tool"], "show", p["interface"], "listen-port"], check=True)
+        if port.strip().isdigit():
+            return port.strip()
+    except Exception:
+        pass
+    return str(p["port"])
+
+
+def docker_published_udp_port(protocol: str) -> str:
+    p = proto(protocol)
+    fallback_port = str(p["port"])
+    internal_port = interface_listen_port(protocol)
+
+    try:
+        container = dc().containers.get(p["container"])
+        ports = (container.attrs.get("NetworkSettings") or {}).get("Ports") or {}
+    except Exception:
+        return internal_port or fallback_port
+
+    candidates = []
+    for port in (internal_port, fallback_port):
+        key = f"{port}/udp"
+        bindings = ports.get(key) or []
+        for binding in bindings:
+            host_port = str((binding or {}).get("HostPort") or "").strip()
+            if host_port:
+                return host_port
+
+    for key, bindings in ports.items():
+        if not str(key).endswith("/udp"):
+            continue
+        for binding in bindings or []:
+            host_port = str((binding or {}).get("HostPort") or "").strip()
+            if host_port and host_port not in candidates:
+                candidates.append(host_port)
+
+    if len(candidates) == 1:
+        return candidates[0]
+    return internal_port or fallback_port
+
+
+def client_endpoint(protocol: str) -> str:
+    return f"{ENDPOINT_HOST}:{docker_published_udp_port(protocol)}"
+
+
 def db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -596,7 +644,6 @@ def remove_peer(protocol: str, public_key: str):
 
 
 def build_client_conf(protocol: str, private_key: str, ip_cidr: str, psk: str) -> str:
-    p = proto(protocol)
     srv_pub = server_pubkey(protocol)
 
     text = f"""[Interface]
@@ -621,7 +668,7 @@ PrivateKey = {private_key}
 PublicKey = {srv_pub}
 PresharedKey = {psk}
 AllowedIPs = 0.0.0.0/0, ::/0
-Endpoint = {ENDPOINT_HOST}:{p["port"]}
+Endpoint = {client_endpoint(protocol)}
 PersistentKeepalive = 25
 """
 
@@ -700,7 +747,13 @@ def load_client(client_id: int):
 
 
 def read_conf(c) -> str:
-    return Path(c["config_path"]).read_text(encoding="utf-8")
+    text = Path(c["config_path"]).read_text(encoding="utf-8")
+    protocol = c["protocol"]
+    if protocol in PROTOCOLS:
+        endpoint = client_endpoint(protocol)
+        if re.search(r"^Endpoint\s*=", text, flags=re.M):
+            text = re.sub(r"^Endpoint\s*=.*$", f"Endpoint = {endpoint}", text, flags=re.M)
+    return text
 
 
 def dns_pair():
@@ -712,7 +765,7 @@ def build_amnezia_vpn_payload(c) -> str:
     if c["protocol"] != "amneziawg":
         raise HTTPException(status_code=400, detail="AmneziaVPN QR is only for AmneziaWG")
 
-    p = proto("amneziawg")
+    endpoint_port = docker_published_udp_port("amneziawg")
     conf_text = read_conf(c)
     ip_clean = str(ipaddress.ip_interface(c["ip_cidr"]).ip)
     dns1, dns2 = dns_pair()
@@ -727,7 +780,7 @@ def build_amnezia_vpn_payload(c) -> str:
         "psk_key": c["preshared_key"],
         "server_pub_key": srv_pub,
         "hostName": ENDPOINT_HOST,
-        "port": int(p["port"]),
+        "port": int(endpoint_port),
         "config": conf_text,
     }
 
@@ -738,7 +791,7 @@ def build_amnezia_vpn_payload(c) -> str:
                 "awg": {
                     "isThirdPartyConfig": True,
                     "transport_proto": "udp",
-                    "port": str(p["port"]),
+                    "port": str(endpoint_port),
                     **mask,
                     "last_config": json.dumps(last_config_obj, ensure_ascii=False),
                 },
@@ -5205,15 +5258,17 @@ async def api_read_payload(request: Request) -> dict:
 
 def api_protocol_state(protocol: str, include_raw: bool = False) -> dict:
     p = proto(protocol)
+    endpoint_port = docker_published_udp_port(protocol)
     item = {
         'protocol': protocol,
         'title': p['title'],
         'container': p['container'],
         'interface': p['interface'],
         'tool': p['tool'],
-        'port': int(str(p['port'])),
+        'port': int(str(endpoint_port)),
+        'configured_port': int(str(p['port'])),
         'endpoint_host': ENDPOINT_HOST,
-        'endpoint': f"{ENDPOINT_HOST}:{p['port']}",
+        'endpoint': f"{ENDPOINT_HOST}:{endpoint_port}",
         'network': p['network'],
         'available': False,
         'container_status': 'unknown',
@@ -5354,6 +5409,7 @@ def api_recent_handshake(lp: dict | None) -> tuple[bool, int | None]:
 def api_peer_payload(c, live: dict | None = None, include_config: bool = False) -> dict:
     protocol = c['protocol']
     p = PROTOCOLS[protocol]
+    endpoint = client_endpoint(protocol)
     lp = live.get(protocol, {}).get(c['public_key']) if live else None
     active, handshake_age = api_recent_handshake(lp)
     payload = {
@@ -5366,7 +5422,7 @@ def api_peer_payload(c, live: dict | None = None, include_config: bool = False) 
         'enabled': bool(c['enabled']),
         'created_at': int(c['created_at']),
         'deleted_at': int(c['deleted_at']) if 'deleted_at' in c.keys() else 0,
-        'endpoint': f"{ENDPOINT_HOST}:{p['port']}",
+        'endpoint': endpoint,
         'status': 'active' if active else 'offline',
         'online_window_seconds': ONLINE_HANDSHAKE_WINDOW_SECONDS,
         'handshake_age_seconds': handshake_age,

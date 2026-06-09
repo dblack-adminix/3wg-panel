@@ -52,15 +52,17 @@ async def api_read_payload(request: Request) -> dict:
 
 def api_protocol_state(protocol: str, include_raw: bool = False) -> dict:
     p = proto(protocol)
+    endpoint_port = docker_published_udp_port(protocol)
     item = {
         'protocol': protocol,
         'title': p['title'],
         'container': p['container'],
         'interface': p['interface'],
         'tool': p['tool'],
-        'port': int(str(p['port'])),
+        'port': int(str(endpoint_port)),
+        'configured_port': int(str(p['port'])),
         'endpoint_host': ENDPOINT_HOST,
-        'endpoint': f"{ENDPOINT_HOST}:{p['port']}",
+        'endpoint': f"{ENDPOINT_HOST}:{endpoint_port}",
         'network': p['network'],
         'available': False,
         'container_status': 'unknown',
@@ -201,6 +203,7 @@ def api_recent_handshake(lp: dict | None) -> tuple[bool, int | None]:
 def api_peer_payload(c, live: dict | None = None, include_config: bool = False) -> dict:
     protocol = c['protocol']
     p = PROTOCOLS[protocol]
+    endpoint = client_endpoint(protocol)
     lp = live.get(protocol, {}).get(c['public_key']) if live else None
     active, handshake_age = api_recent_handshake(lp)
     payload = {
@@ -213,7 +216,7 @@ def api_peer_payload(c, live: dict | None = None, include_config: bool = False) 
         'enabled': bool(c['enabled']),
         'created_at': int(c['created_at']),
         'deleted_at': int(c['deleted_at']) if 'deleted_at' in c.keys() else 0,
-        'endpoint': f"{ENDPOINT_HOST}:{p['port']}",
+        'endpoint': endpoint,
         'status': 'active' if active else 'offline',
         'online_window_seconds': ONLINE_HANDSHAKE_WINDOW_SECONDS,
         'handshake_age_seconds': handshake_age,
