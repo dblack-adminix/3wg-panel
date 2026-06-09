@@ -25,58 +25,29 @@ docker ps
 - WireGuard container name, interface, UDP port, config path, CIDR
 - AmneziaWG container name, interface, UDP port, config path, CIDR
 
-## 2. Скачайте репозиторий и запустите installer
+## 2. Запустите installer
 
-### Вариант A: приватный GitHub repository через SSH deploy key
-
-На новом сервере создайте отдельный SSH key для чтения репозитория:
+Если репозиторий публичный, скачайте installer напрямую:
 
 ```bash
-ssh-keygen -t ed25519 -C "3wg-panel-bright-violet" -f ~/.ssh/3wg_panel_deploy -N ""
-cat ~/.ssh/3wg_panel_deploy.pub
+curl -fsSL https://raw.githubusercontent.com/dblack-adminix/3wg-panel/dev/scripts/install.sh -o /tmp/3wg-install.sh
+sudo bash /tmp/3wg-install.sh
 ```
 
-Скопируйте выведенный public key и добавьте его в GitHub:
+Installer спросит Git repository и branch. Значения по умолчанию:
 
 ```text
-Repository -> Settings -> Deploy keys -> Add deploy key
+Git repository: https://github.com/dblack-adminix/3wg-panel.git
+Git branch/tag: dev
 ```
 
-Для установки достаточно read-only deploy key. Галочку `Allow write access` включать не нужно.
-
-Добавьте SSH config, чтобы Git использовал именно этот ключ:
-
-```bash
-cat >> ~/.ssh/config <<'EOF'
-Host github.com
-  HostName github.com
-  User git
-  IdentityFile ~/.ssh/3wg_panel_deploy
-  IdentitiesOnly yes
-EOF
-chmod 600 ~/.ssh/config
-ssh -T git@github.com || true
-```
-
-После этого клонируйте repository и запустите installer:
-
-```bash
-git clone --branch dev git@github.com:dblack-adminix/3wg-panel.git /opt/3wg-panel
-cd /opt/3wg-panel
-sudo bash scripts/install.sh
-```
-
-### Вариант B: публичный repository через HTTPS
-
-Для публичного репозитория можно использовать HTTPS clone:
+Альтернативно можно сначала клонировать репозиторий:
 
 ```bash
 git clone --branch dev https://github.com/dblack-adminix/3wg-panel.git /opt/3wg-panel
 cd /opt/3wg-panel
 sudo bash scripts/install.sh
 ```
-
-Не используйте `raw.githubusercontent.com` для приватного репозитория: GitHub отдаёт `404`, если запрос без авторизации.
 
 У большинства вопросов есть значения по умолчанию. Если значение подходит, нажмите Enter.
 
@@ -114,7 +85,7 @@ Installer выполняет:
 Ручной вариант полезен для отладки:
 
 ```bash
-git clone --branch dev git@github.com:dblack-adminix/3wg-panel.git /opt/3wg-panel
+git clone --branch dev https://github.com/dblack-adminix/3wg-panel.git /opt/3wg-panel
 cd /opt/3wg-panel
 cp .env.example .env
 nano .env

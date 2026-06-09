@@ -40,44 +40,27 @@
 
 ## Быстрая установка
 
-Если репозиторий приватный, сначала настройте SSH deploy key на новом сервере:
+Если репозиторий публичный, установка на новом сервере максимально простая:
 
 ```bash
-ssh-keygen -t ed25519 -C "3wg-panel-bright-violet" -f ~/.ssh/3wg_panel_deploy -N ""
-cat ~/.ssh/3wg_panel_deploy.pub
+curl -fsSL https://raw.githubusercontent.com/dblack-adminix/3wg-panel/dev/scripts/install.sh -o /tmp/3wg-install.sh
+sudo bash /tmp/3wg-install.sh
 ```
 
-Скопируйте public key в GitHub: `Repository -> Settings -> Deploy keys -> Add deploy key`. Для установки достаточно read-only доступа. Затем добавьте SSH config:
+Installer сам спросит Git repository и branch. По умолчанию используйте:
 
-```bash
-cat >> ~/.ssh/config <<'EOF'
-Host github.com
-  HostName github.com
-  User git
-  IdentityFile ~/.ssh/3wg_panel_deploy
-  IdentitiesOnly yes
-EOF
-chmod 600 ~/.ssh/config
-ssh -T git@github.com || true
+```text
+Repository: https://github.com/dblack-adminix/3wg-panel.git
+Branch: dev
 ```
 
-После этого на новом сервере:
-
-```bash
-git clone --branch dev git@github.com:dblack-adminix/3wg-panel.git /opt/3wg-panel
-cd /opt/3wg-panel
-sudo bash scripts/install.sh
-```
-
-Если репозиторий публичный, можно использовать HTTPS clone:
+Для ручного clone-варианта:
 
 ```bash
 git clone --branch dev https://github.com/dblack-adminix/3wg-panel.git /opt/3wg-panel
 cd /opt/3wg-panel
 sudo bash scripts/install.sh
 ```
-
-Прямой `curl` с `raw.githubusercontent.com` для приватного репозитория вернёт `404`, это нормальное поведение GitHub.
 
 Installer спросит:
 

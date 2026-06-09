@@ -35,55 +35,30 @@ docker exec <container> wg show
 - сгенерированный файл клиента в `clients/`
 - путь к protocol config внутри контейнера
 
-## Installer или curl не может скачать Git
+## Installer или Git не может скачать репозиторий
 
-Если команда вида `curl https://raw.githubusercontent.com/.../scripts/install.sh` возвращает `404`, скорее всего репозиторий приватный. Для приватного GitHub это нормальное поведение.
+Если `curl https://raw.githubusercontent.com/.../scripts/install.sh` возвращает `404`, проверьте:
 
-Если `git clone git@github.com:...` падает с ошибкой:
+- репозиторий действительно публичный;
+- branch `dev` существует;
+- файл `scripts/install.sh` есть в этой ветке;
+- URL написан без опечаток.
+
+Для публичного репозитория рабочая команда такая:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/dblack-adminix/3wg-panel/dev/scripts/install.sh -o /tmp/3wg-install.sh
+sudo bash /tmp/3wg-install.sh
+```
+
+Если репозиторий всё-таки приватный, используйте SSH deploy key или GitHub token. Ошибка вида:
 
 ```text
 Permission denied (publickey).
 fatal: Could not read from remote repository.
 ```
 
-значит на сервере нет SSH-ключа, которому GitHub разрешает читать этот repository.
-
-Создайте deploy key на сервере:
-
-```bash
-ssh-keygen -t ed25519 -C "3wg-panel-bright-violet" -f ~/.ssh/3wg_panel_deploy -N ""
-cat ~/.ssh/3wg_panel_deploy.pub
-```
-
-Добавьте public key в GitHub:
-
-```text
-Repository -> Settings -> Deploy keys -> Add deploy key
-```
-
-Добавьте SSH config:
-
-```bash
-cat >> ~/.ssh/config <<'EOF'
-Host github.com
-  HostName github.com
-  User git
-  IdentityFile ~/.ssh/3wg_panel_deploy
-  IdentitiesOnly yes
-EOF
-chmod 600 ~/.ssh/config
-ssh -T git@github.com || true
-```
-
-После этого повторите clone:
-
-```bash
-git clone --branch dev git@github.com:dblack-adminix/3wg-panel.git /opt/3wg-panel
-cd /opt/3wg-panel
-sudo bash scripts/install.sh
-```
-
-HTTPS clone без токена работает только для публичного репозитория. Для private repository используйте deploy key или GitHub token.
+означает, что серверу не разрешён доступ к приватному GitHub repository.
 
 ## Frontend build падает
 
