@@ -42,6 +42,72 @@ gen_secret() {
     python3 -c 'import secrets; print(secrets.token_hex(32))'
   fi
 }
+is_local_host() {
+  case "${1:-}" in
+    ""|localhost|127.*|0.0.0.0|::1)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+setup_caddy_proxy() {
+  local domain="$1" upstream_host="$2" upstream_port="$3"
+  local caddyfile="/etc/caddy/Caddyfile"
+
+  if is_local_host "$domain"; then
+    warn "Caddy не настроен: публичный домен не задан."
+    return 0
+  fi
+
+  if ! command -v caddy >/dev/null 2>&1; then
+    if command -v apt-get >/dev/null 2>&1; then
+      say "Installing Caddy"
+      apt-get update
+      apt-get install -y caddy
+    else
+      warn "Caddy не найден, а apt-get недоступен. Настройте reverse proxy вручную."
+      return 0
+    fi
+  fi
+
+  mkdir -p /etc/caddy
+  touch "$caddyfile"
+  cp "$caddyfile" "$caddyfile.3wg-backup.$(date +%F_%H-%M-%S)"
+
+  python3 - "$caddyfile" "$domain" "$upstream_host:$upstream_port" <<'PY'
+from pathlib import Path
+import sys
+
+caddyfile = Path(sys.argv[1])
+domain = sys.argv[2]
+upstream = sys.argv[3]
+start = f"# 3wg-panel:{domain}:start"
+end = f"# 3wg-panel:{domain}:end"
+block = f"{start}\n{domain} {{\n    reverse_proxy {upstream}\n}}\n{end}\n"
+text = caddyfile.read_text(encoding="utf-8")
+
+if start in text and end in text:
+    before, rest = text.split(start, 1)
+    _, after = rest.split(end, 1)
+    text = before.rstrip() + "\n\n" + block + after.lstrip("\n")
+else:
+    if text and not text.endswith("\n"):
+        text += "\n"
+    text = text.rstrip() + "\n\n" + block
+
+caddyfile.write_text(text, encoding="utf-8")
+PY
+
+  caddy fmt --overwrite "$caddyfile" >/dev/null 2>&1 || true
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl enable --now caddy
+    systemctl reload caddy || systemctl restart caddy
+  else
+    caddy reload --config "$caddyfile" || warn "Caddyfile обновлен, но Caddy не удалось перезагрузить автоматически."
+  fi
+}
 
 if [ "${EUID:-$(id -u)}" -ne 0 ]; then
   fail "Запустите installer от root: sudo bash scripts/install.sh"
@@ -63,6 +129,11 @@ BIND_HOST="$(ask 'Bind host' "$BIND_HOST_DEFAULT")"
 BIND_PORT="$(ask 'Bind port' "$BIND_PORT_DEFAULT")"
 
 ENDPOINT_HOST="$(ask 'Public endpoint host / domain' "$(hostname -f 2>/dev/null || hostname)")"
+CADDY_DEFAULT="0"
+if [ "$BIND_HOST" = "127.0.0.1" ] && ! is_local_host "$ENDPOINT_HOST"; then
+  CADDY_DEFAULT="1"
+fi
+SETUP_CADDY="$(ask 'Configure Caddy reverse proxy for this domain? 1=yes, 0=no' "$CADDY_DEFAULT")"
 PANEL_USER="$(ask 'Panel admin username' 'admin')"
 PANEL_PASSWORD="$(ask_secret 'Panel admin password, empty = auto-generate' "$(gen_secret | head -c 18)")"
 SESSION_SECRET="$(gen_secret)"
@@ -164,13 +235,21 @@ for i in 1 2 3 4 5 6 7 8 9 10; do
   sleep 2
 done
 
+PANEL_URL="http://$BIND_HOST:$BIND_PORT/"
+if [ "$SETUP_CADDY" = "1" ]; then
+  say "Configuring Caddy reverse proxy"
+  setup_caddy_proxy "$ENDPOINT_HOST" "$BIND_HOST" "$BIND_PORT"
+  PANEL_URL="https://$ENDPOINT_HOST/"
+fi
+
 cat <<DONE
 
 3WG Panel installed.
-URL:      http://$BIND_HOST:$BIND_PORT/
+URL:      $PANEL_URL
+Local:    http://$BIND_HOST:$BIND_PORT/
 User:     $PANEL_USER
 Password: $PANEL_PASSWORD
 Path:     $INSTALL_DIR
 
-Для HTTPS поставьте Caddy/Nginx перед $BIND_HOST:$BIND_PORT.
+Если домен не открывается, проверьте DNS A-запись на IP сервера и доступность портов 80/443.
 DONE

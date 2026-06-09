@@ -63,6 +63,20 @@ sudo bash scripts/install.sh
 127.0.0.1:18080
 ```
 
+Если указан публичный домен и bind host оставлен `127.0.0.1`, installer предложит настроить Caddy:
+
+```text
+Configure Caddy reverse proxy for this domain? 1=yes, 0=no [1]:
+```
+
+При выборе `1` installer установит Caddy через `apt-get`, добавит managed-блок в `/etc/caddy/Caddyfile` и направит домен на локальную панель `127.0.0.1:18080`.
+
+Перед этим проверьте, что:
+
+- DNS `A`-запись домена указывает на публичный IP сервера
+- порты `80/tcp` и `443/tcp` открыты в firewall/provider security group
+- домен уже резолвится снаружи
+
 ## 3. Что делает installer
 
 Installer выполняет:
@@ -76,7 +90,8 @@ Installer выполняет:
 7. сборку Docker image `3wg-panel:local`
 8. пересоздание контейнера `3wg-panel`
 9. проверку `/health`
-10. вывод URL, логина и пароля
+10. опциональную настройку Caddy reverse proxy
+11. вывод URL, логина и пароля
 
 Для последующих обновлений используйте `scripts/update.sh`, чтобы не перезаписывать `.env`.
 
@@ -103,7 +118,7 @@ curl -fsS http://127.0.0.1:18080/health
 
 ## 5. HTTPS через Caddy
 
-Пример Caddyfile:
+Если Caddy не включали в installer, его можно настроить вручную. Пример Caddyfile:
 
 ```caddy
 panel.example.com {
@@ -112,6 +127,13 @@ panel.example.com {
 ```
 
 После настройки DNS Caddy сам выпустит HTTPS-сертификат.
+
+Важно: `ping` не является проверкой доступности панели. ICMP может быть закрыт. Проверяйте именно HTTP/HTTPS:
+
+```bash
+curl -I http://panel.example.com/
+curl -I https://panel.example.com/
+```
 
 ## 6. Первый вход
 
