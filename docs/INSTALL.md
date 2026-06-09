@@ -27,13 +27,46 @@ docker ps
 
 ## 2. Скачайте репозиторий и запустите installer
 
-Для приватного репозитория используйте SSH-доступ. На сервере должен быть настроен deploy key или GitHub SSH key:
+### Вариант A: приватный GitHub repository через SSH deploy key
+
+На новом сервере создайте отдельный SSH key для чтения репозитория:
+
+```bash
+ssh-keygen -t ed25519 -C "3wg-panel-bright-violet" -f ~/.ssh/3wg_panel_deploy -N ""
+cat ~/.ssh/3wg_panel_deploy.pub
+```
+
+Скопируйте выведенный public key и добавьте его в GitHub:
+
+```text
+Repository -> Settings -> Deploy keys -> Add deploy key
+```
+
+Для установки достаточно read-only deploy key. Галочку `Allow write access` включать не нужно.
+
+Добавьте SSH config, чтобы Git использовал именно этот ключ:
+
+```bash
+cat >> ~/.ssh/config <<'EOF'
+Host github.com
+  HostName github.com
+  User git
+  IdentityFile ~/.ssh/3wg_panel_deploy
+  IdentitiesOnly yes
+EOF
+chmod 600 ~/.ssh/config
+ssh -T git@github.com || true
+```
+
+После этого клонируйте repository и запустите installer:
 
 ```bash
 git clone --branch dev git@github.com:dblack-adminix/3wg-panel.git /opt/3wg-panel
 cd /opt/3wg-panel
 sudo bash scripts/install.sh
 ```
+
+### Вариант B: публичный repository через HTTPS
 
 Для публичного репозитория можно использовать HTTPS clone:
 

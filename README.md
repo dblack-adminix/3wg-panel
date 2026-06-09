@@ -40,7 +40,28 @@
 
 ## Быстрая установка
 
-Если репозиторий приватный, сначала настройте SSH deploy key или доступ GitHub на сервере. После этого на новом сервере:
+Если репозиторий приватный, сначала настройте SSH deploy key на новом сервере:
+
+```bash
+ssh-keygen -t ed25519 -C "3wg-panel-bright-violet" -f ~/.ssh/3wg_panel_deploy -N ""
+cat ~/.ssh/3wg_panel_deploy.pub
+```
+
+Скопируйте public key в GitHub: `Repository -> Settings -> Deploy keys -> Add deploy key`. Для установки достаточно read-only доступа. Затем добавьте SSH config:
+
+```bash
+cat >> ~/.ssh/config <<'EOF'
+Host github.com
+  HostName github.com
+  User git
+  IdentityFile ~/.ssh/3wg_panel_deploy
+  IdentitiesOnly yes
+EOF
+chmod 600 ~/.ssh/config
+ssh -T git@github.com || true
+```
+
+После этого на новом сервере:
 
 ```bash
 git clone --branch dev git@github.com:dblack-adminix/3wg-panel.git /opt/3wg-panel
