@@ -21,13 +21,18 @@ def api_peer_view_model(peer: dict) -> dict:
         actions.insert(2, {'key': 'download_vpn', 'label': 'VPN', 'kind': 'download', 'url': peer['links']['download_vpn']})
     if peer['links'].get('qr_amnezia_vpn_png'):
         actions.append({'key': 'qr_amnezia_vpn', 'label': 'QR VPN', 'kind': 'qr', 'url': peer['links']['qr_amnezia_vpn_png']})
+    if peer.get('enabled'):
+        actions.append({'key': 'disable', 'label': 'Отключить', 'kind': 'block', 'url': peer['links']['disable']})
+    else:
+        actions.append({'key': 'enable', 'label': 'Включить', 'kind': 'enable', 'url': peer['links']['enable']})
+    actions.append({'key': 'delete', 'label': 'Удалить', 'kind': 'danger', 'url': peer['links']['delete']})
 
     return {
         **peer,
         'ui': {
-            'state': 'online' if peer['status'] == 'active' else 'offline',
-            'status_label': 'ACTIVE' if peer['status'] == 'active' else 'OFFLINE',
-            'status_tone': 'success' if peer['status'] == 'active' else 'muted',
+            'state': 'online' if peer['status'] == 'active' else ('blocked' if peer['status'] == 'disabled' else 'offline'),
+            'status_label': 'ACTIVE' if peer['status'] == 'active' else ('BLOCKED' if peer['status'] == 'disabled' else 'OFFLINE'),
+            'status_tone': 'success' if peer['status'] == 'active' else ('warning' if peer['status'] == 'disabled' else 'muted'),
             'actions': actions,
         },
     }

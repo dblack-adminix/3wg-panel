@@ -643,6 +643,36 @@ def remove_peer(protocol: str, public_key: str):
         write_server_config(protocol, new)
 
 
+def config_has_peer(protocol: str, public_key: str) -> bool:
+    try:
+        text = read_server_config(protocol)
+    except Exception:
+        return False
+    return bool(re.search(r"^PublicKey\s*=\s*" + re.escape(public_key) + r"\s*$", text, flags=re.M))
+
+
+def enable_peer(c):
+    protocol = c["protocol"]
+    public_key = c["public_key"]
+
+    backup_config(protocol)
+    add_peer_live(protocol, public_key, c["preshared_key"], c["ip_cidr"])
+
+    if not config_has_peer(protocol, public_key):
+        append_peer(protocol, c["name"], public_key, c["preshared_key"], c["ip_cidr"])
+
+    with db() as conn:
+        conn.execute("UPDATE clients SET enabled = 1 WHERE id = ?", (int(c["id"]),))
+        conn.commit()
+
+
+def disable_peer(c):
+    remove_peer(c["protocol"], c["public_key"])
+    with db() as conn:
+        conn.execute("UPDATE clients SET enabled = 0 WHERE id = ?", (int(c["id"]),))
+        conn.commit()
+
+
 def build_client_conf(protocol: str, private_key: str, ip_cidr: str, psk: str) -> str:
     srv_pub = server_pubkey(protocol)
 
@@ -5412,6 +5442,7 @@ def api_peer_payload(c, live: dict | None = None, include_config: bool = False) 
     endpoint = client_endpoint(protocol)
     lp = live.get(protocol, {}).get(c['public_key']) if live else None
     active, handshake_age = api_recent_handshake(lp)
+    enabled = bool(c['enabled'])
     payload = {
         'id': int(c['id']),
         'name': c['name'],
@@ -5419,11 +5450,11 @@ def api_peer_payload(c, live: dict | None = None, include_config: bool = False) 
         'protocol_title': p['title'],
         'ip_cidr': c['ip_cidr'],
         'public_key': c['public_key'],
-        'enabled': bool(c['enabled']),
+        'enabled': enabled,
         'created_at': int(c['created_at']),
         'deleted_at': int(c['deleted_at']) if 'deleted_at' in c.keys() else 0,
         'endpoint': endpoint,
-        'status': 'active' if active else 'offline',
+        'status': 'active' if enabled and active else ('offline' if enabled else 'disabled'),
         'online_window_seconds': ONLINE_HANDSHAKE_WINDOW_SECONDS,
         'handshake_age_seconds': handshake_age,
         'live': lp or None,
@@ -5435,6 +5466,9 @@ def api_peer_payload(c, live: dict | None = None, include_config: bool = False) 
             'qr_native_png': f"/client/{c['id']}/qr/native/download",
             'qr_amnezia_vpn': f"/client/{c['id']}/qr/amnezia-vpn" if protocol == 'amneziawg' else None,
             'qr_amnezia_vpn_png': f"/client/{c['id']}/qr/amnezia-vpn/download" if protocol == 'amneziawg' else None,
+            'enable': f"/api/peers/{c['id']}/enable",
+            'disable': f"/api/peers/{c['id']}/disable",
+            'delete': f"/api/peers/{c['id']}",
         },
     }
     if include_config:
@@ -5557,6 +5591,30 @@ def api_peer_config(client_id: int, user=Depends(api_require_auth)):
     return PlainTextResponse(read_conf(c))
 
 
+@app.post('/api/peers/{client_id}/enable')
+def api_peer_enable(client_id: int, user=Depends(api_require_auth)):
+    c = load_client(client_id)
+    try:
+        enable_peer(c)
+    except Exception as e:
+        return api_error(str(e), status_code=500)
+    live, _ = api_live_maps()
+    c = load_client(client_id)
+    return {'ok': True, 'peer': api_peer_payload(c, live=live)}
+
+
+@app.post('/api/peers/{client_id}/disable')
+def api_peer_disable(client_id: int, user=Depends(api_require_auth)):
+    c = load_client(client_id)
+    try:
+        disable_peer(c)
+    except Exception as e:
+        return api_error(str(e), status_code=500)
+    live, _ = api_live_maps()
+    c = load_client(client_id)
+    return {'ok': True, 'peer': api_peer_payload(c, live=live)}
+
+
 @app.delete('/api/peers/{client_id}')
 def api_peer_delete(client_id: int, user=Depends(api_require_auth)):
     c = load_client(client_id)
@@ -5586,13 +5644,18 @@ def api_peer_view_model(peer: dict) -> dict:
         actions.insert(2, {'key': 'download_vpn', 'label': 'VPN', 'kind': 'download', 'url': peer['links']['download_vpn']})
     if peer['links'].get('qr_amnezia_vpn_png'):
         actions.append({'key': 'qr_amnezia_vpn', 'label': 'QR VPN', 'kind': 'qr', 'url': peer['links']['qr_amnezia_vpn_png']})
+    if peer.get('enabled'):
+        actions.append({'key': 'disable', 'label': 'Отключить', 'kind': 'block', 'url': peer['links']['disable']})
+    else:
+        actions.append({'key': 'enable', 'label': 'Включить', 'kind': 'enable', 'url': peer['links']['enable']})
+    actions.append({'key': 'delete', 'label': 'Удалить', 'kind': 'danger', 'url': peer['links']['delete']})
 
     return {
         **peer,
         'ui': {
-            'state': 'online' if peer['status'] == 'active' else 'offline',
-            'status_label': 'ACTIVE' if peer['status'] == 'active' else 'OFFLINE',
-            'status_tone': 'success' if peer['status'] == 'active' else 'muted',
+            'state': 'online' if peer['status'] == 'active' else ('blocked' if peer['status'] == 'disabled' else 'offline'),
+            'status_label': 'ACTIVE' if peer['status'] == 'active' else ('BLOCKED' if peer['status'] == 'disabled' else 'OFFLINE'),
+            'status_tone': 'success' if peer['status'] == 'active' else ('warning' if peer['status'] == 'disabled' else 'muted'),
             'actions': actions,
         },
     }

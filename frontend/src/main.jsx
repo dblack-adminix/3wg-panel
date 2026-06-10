@@ -9,9 +9,11 @@ import {
   Home,
   LogOut,
   Network,
+  Power,
   Plus,
   QrCode,
   RefreshCw,
+  Trash2,
   X,
   ShieldCheck,
   Terminal,
@@ -39,12 +41,12 @@ const api = async (path, options = {}) => {
   return data;
 };
 
-function IconButton({ href, onClick, title, tone = 'default', children }) {
+function IconButton({ href, onClick, title, tone = 'default', disabled = false, children }) {
   const className = `icon-button ${tone}`;
   if (href) {
     return <a className={className} href={href} title={title} aria-label={title}>{children}</a>;
   }
-  return <button className={className} onClick={onClick} title={title} aria-label={title} type="button">{children}</button>;
+  return <button className={className} onClick={onClick} title={title} aria-label={title} type="button" disabled={disabled}>{children}</button>;
 }
 
 function Login({ onLogin }) {
@@ -209,6 +211,29 @@ function CreateClient({ protocols, onCreated }) {
 
 function ClientsTable({ peers, onRefresh }) {
   const [qrPeer, setQrPeer] = useState(null);
+  const [busyId, setBusyId] = useState(null);
+
+  const mutatePeer = async (peer, action) => {
+    const messages = {
+      disable: `Отключить peer "${peer.name}"? Клиент останется в панели, но подключаться не сможет.`,
+      enable: `Включить peer "${peer.name}"?`,
+      delete: `Удалить peer "${peer.name}" окончательно?`,
+    };
+    if (!window.confirm(messages[action])) return;
+    setBusyId(peer.id);
+    try {
+      if (action === 'delete') {
+        await api(peer.links?.delete || `/api/peers/${peer.id}`, { method: 'DELETE' });
+      } else {
+        await api(peer.links?.[action] || `/api/peers/${peer.id}/${action}`, { method: 'POST' });
+      }
+      await onRefresh();
+    } catch (err) {
+      window.alert(err.message || 'Ошибка операции');
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   return (
     <section className="card clients-card">
@@ -228,7 +253,7 @@ function ClientsTable({ peers, onRefresh }) {
             <col style={{ width: 170 }} />
             <col style={{ width: 105 }} />
             <col style={{ width: 105 }} />
-            <col style={{ width: 102 }} />
+            <col style={{ width: 154 }} />
           </colgroup>
           <thead>
             <tr>
@@ -251,7 +276,7 @@ function ClientsTable({ peers, onRefresh }) {
                 <td><b>{p.name}</b><small>создан панелью</small></td>
                 <td><span className={`proto ${p.protocol === 'wireguard' ? 'proto-wireguard' : ''}`}>{p.protocol_title || p.protocol}</span></td>
                 <td><code>{p.ip_cidr}</code></td>
-                <td><span className={p.status === 'active' ? 'active-text' : 'muted'}>{p.status === 'active' ? 'ONLINE' : 'OFFLINE'}</span></td>
+                <td><PeerStatus peer={p} /></td>
                 <td title={p.live?.endpoint || ''}>{p.live?.endpoint || '(none)'}</td>
                 <td>{p.live?.latest_handshake && p.live.latest_handshake !== '0' ? new Date(Number(p.live.latest_handshake) * 1000).toLocaleString('ru-RU') : '-'}</td>
                 <td>{formatBytes(p.live?.rx)}</td>
@@ -261,6 +286,12 @@ function ClientsTable({ peers, onRefresh }) {
                     <IconButton href={p.links?.html || '#'} title="Открыть клиента" tone="open"><ArrowUpRight size={14} /></IconButton>
                     <IconButton href={p.links?.download || '#'} title="Скачать config" tone="download"><Download size={14} /></IconButton>
                     <IconButton onClick={() => setQrPeer(p)} title="Показать QR" tone="qr"><QrCode size={14} /></IconButton>
+                    {p.enabled ? (
+                      <IconButton onClick={() => mutatePeer(p, 'disable')} title="Отключить peer" tone="block" disabled={busyId === p.id}><Power size={14} /></IconButton>
+                    ) : (
+                      <IconButton onClick={() => mutatePeer(p, 'enable')} title="Включить peer" tone="enable" disabled={busyId === p.id}><Power size={14} /></IconButton>
+                    )}
+                    <IconButton onClick={() => mutatePeer(p, 'delete')} title="Удалить peer" tone="danger" disabled={busyId === p.id}><Trash2 size={14} /></IconButton>
                   </div>
                 </td>
               </tr>
@@ -271,6 +302,16 @@ function ClientsTable({ peers, onRefresh }) {
       {qrPeer && <QrModal peer={qrPeer} onClose={() => setQrPeer(null)} />}
     </section>
   );
+}
+
+function PeerStatus({ peer }) {
+  if (!peer.enabled || peer.status === 'disabled') {
+    return <span className="blocked-text">BLOCKED</span>;
+  }
+  if (peer.status === 'active') {
+    return <span className="active-text">ONLINE</span>;
+  }
+  return <span className="muted">OFFLINE</span>;
 }
 
 function QrModal({ peer, onClose }) {

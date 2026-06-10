@@ -206,6 +206,7 @@ def api_peer_payload(c, live: dict | None = None, include_config: bool = False) 
     endpoint = client_endpoint(protocol)
     lp = live.get(protocol, {}).get(c['public_key']) if live else None
     active, handshake_age = api_recent_handshake(lp)
+    enabled = bool(c['enabled'])
     payload = {
         'id': int(c['id']),
         'name': c['name'],
@@ -213,11 +214,11 @@ def api_peer_payload(c, live: dict | None = None, include_config: bool = False) 
         'protocol_title': p['title'],
         'ip_cidr': c['ip_cidr'],
         'public_key': c['public_key'],
-        'enabled': bool(c['enabled']),
+        'enabled': enabled,
         'created_at': int(c['created_at']),
         'deleted_at': int(c['deleted_at']) if 'deleted_at' in c.keys() else 0,
         'endpoint': endpoint,
-        'status': 'active' if active else 'offline',
+        'status': 'active' if enabled and active else ('offline' if enabled else 'disabled'),
         'online_window_seconds': ONLINE_HANDSHAKE_WINDOW_SECONDS,
         'handshake_age_seconds': handshake_age,
         'live': lp or None,
@@ -229,6 +230,9 @@ def api_peer_payload(c, live: dict | None = None, include_config: bool = False) 
             'qr_native_png': f"/client/{c['id']}/qr/native/download",
             'qr_amnezia_vpn': f"/client/{c['id']}/qr/amnezia-vpn" if protocol == 'amneziawg' else None,
             'qr_amnezia_vpn_png': f"/client/{c['id']}/qr/amnezia-vpn/download" if protocol == 'amneziawg' else None,
+            'enable': f"/api/peers/{c['id']}/enable",
+            'disable': f"/api/peers/{c['id']}/disable",
+            'delete': f"/api/peers/{c['id']}",
         },
     }
     if include_config:
@@ -349,6 +353,30 @@ def api_peer_get(client_id: int, user=Depends(api_require_auth)):
 def api_peer_config(client_id: int, user=Depends(api_require_auth)):
     c = load_client(client_id)
     return PlainTextResponse(read_conf(c))
+
+
+@app.post('/api/peers/{client_id}/enable')
+def api_peer_enable(client_id: int, user=Depends(api_require_auth)):
+    c = load_client(client_id)
+    try:
+        enable_peer(c)
+    except Exception as e:
+        return api_error(str(e), status_code=500)
+    live, _ = api_live_maps()
+    c = load_client(client_id)
+    return {'ok': True, 'peer': api_peer_payload(c, live=live)}
+
+
+@app.post('/api/peers/{client_id}/disable')
+def api_peer_disable(client_id: int, user=Depends(api_require_auth)):
+    c = load_client(client_id)
+    try:
+        disable_peer(c)
+    except Exception as e:
+        return api_error(str(e), status_code=500)
+    live, _ = api_live_maps()
+    c = load_client(client_id)
+    return {'ok': True, 'peer': api_peer_payload(c, live=live)}
 
 
 @app.delete('/api/peers/{client_id}')
