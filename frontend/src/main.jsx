@@ -211,15 +211,10 @@ function CreateClient({ protocols, onCreated }) {
 
 function ClientsTable({ peers, onRefresh }) {
   const [qrPeer, setQrPeer] = useState(null);
+  const [pendingAction, setPendingAction] = useState(null);
   const [busyId, setBusyId] = useState(null);
 
   const mutatePeer = async (peer, action) => {
-    const messages = {
-      disable: `Отключить peer "${peer.name}"? Клиент останется в панели, но подключаться не сможет.`,
-      enable: `Включить peer "${peer.name}"?`,
-      delete: `Удалить peer "${peer.name}" окончательно?`,
-    };
-    if (!window.confirm(messages[action])) return;
     setBusyId(peer.id);
     try {
       if (action === 'delete') {
@@ -234,6 +229,10 @@ function ClientsTable({ peers, onRefresh }) {
       setBusyId(null);
     }
   };
+
+  const askPeerAction = (peer, action) => setPendingAction({ peer, action });
+
+  const confirmMeta = pendingAction ? getPeerConfirmMeta(pendingAction.peer, pendingAction.action) : null;
 
   return (
     <section className="card clients-card">
@@ -287,11 +286,11 @@ function ClientsTable({ peers, onRefresh }) {
                     <IconButton href={p.links?.download || '#'} title="Скачать config" tone="download"><Download size={14} /></IconButton>
                     <IconButton onClick={() => setQrPeer(p)} title="Показать QR" tone="qr"><QrCode size={14} /></IconButton>
                     {p.enabled ? (
-                      <IconButton onClick={() => mutatePeer(p, 'disable')} title="Отключить peer" tone="block" disabled={busyId === p.id}><Power size={14} /></IconButton>
+                      <IconButton onClick={() => askPeerAction(p, 'disable')} title="Отключить peer" tone="block" disabled={busyId === p.id}><Power size={14} /></IconButton>
                     ) : (
-                      <IconButton onClick={() => mutatePeer(p, 'enable')} title="Включить peer" tone="enable" disabled={busyId === p.id}><Power size={14} /></IconButton>
+                      <IconButton onClick={() => askPeerAction(p, 'enable')} title="Включить peer" tone="enable" disabled={busyId === p.id}><Power size={14} /></IconButton>
                     )}
-                    <IconButton onClick={() => mutatePeer(p, 'delete')} title="Удалить peer" tone="danger" disabled={busyId === p.id}><Trash2 size={14} /></IconButton>
+                    <IconButton onClick={() => askPeerAction(p, 'delete')} title="Удалить peer" tone="danger" disabled={busyId === p.id}><Trash2 size={14} /></IconButton>
                   </div>
                 </td>
               </tr>
@@ -300,7 +299,74 @@ function ClientsTable({ peers, onRefresh }) {
         </table>
       </div>
       {qrPeer && <QrModal peer={qrPeer} onClose={() => setQrPeer(null)} />}
+      {pendingAction && (
+        <ConfirmModal
+          title={confirmMeta.title}
+          message={confirmMeta.message}
+          details={confirmMeta.details}
+          tone={confirmMeta.tone}
+          confirmLabel={confirmMeta.confirmLabel}
+          loading={busyId === pendingAction.peer.id}
+          onCancel={() => setPendingAction(null)}
+          onConfirm={async () => {
+            await mutatePeer(pendingAction.peer, pendingAction.action);
+            setPendingAction(null);
+          }}
+        />
+      )}
     </section>
+  );
+}
+
+function getPeerConfirmMeta(peer, action) {
+  if (action === 'delete') {
+    return {
+      title: 'Удалить peer',
+      message: `Удалить "${peer.name}" окончательно?`,
+      details: 'Peer будет удален из контейнера, server config и скрыт из панели. Конфиг будет переименован как deleted.',
+      tone: 'danger',
+      confirmLabel: 'Удалить',
+    };
+  }
+  if (action === 'disable') {
+    return {
+      title: 'Отключить peer',
+      message: `Отключить "${peer.name}"?`,
+      details: 'Клиент останется в панели, но peer будет снят с интерфейса и не сможет подключаться.',
+      tone: 'block',
+      confirmLabel: 'Отключить',
+    };
+  }
+  return {
+    title: 'Включить peer',
+    message: `Включить "${peer.name}"?`,
+    details: 'Peer будет возвращен в live-интерфейс и server config.',
+    tone: 'enable',
+    confirmLabel: 'Включить',
+  };
+}
+
+function ConfirmModal({ title, message, details, tone = 'default', confirmLabel, loading, onCancel, onConfirm }) {
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={onCancel}>
+      <div className={`modal-card confirm-modal ${tone}`} role="dialog" aria-modal="true" aria-label={title} onMouseDown={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <div>
+            <h2>{title}</h2>
+            <p>Подтверждение действия</p>
+          </div>
+          <button className="modal-close" type="button" onClick={onCancel} aria-label="Закрыть"><X size={17} /></button>
+        </div>
+        <div className="confirm-body">
+          <strong>{message}</strong>
+          <p>{details}</p>
+        </div>
+        <div className="confirm-actions">
+          <button className="confirm-cancel" type="button" onClick={onCancel} disabled={loading}>Отмена</button>
+          <button className={`confirm-submit ${tone}`} type="button" onClick={onConfirm} disabled={loading}>{loading ? 'Выполняю...' : confirmLabel}</button>
+        </div>
+      </div>
+    </div>
   );
 }
 
