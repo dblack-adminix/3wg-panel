@@ -57,7 +57,13 @@ def api_dashboard_payload() -> dict:
 
     with db() as conn:
         rows = conn.execute(
-            'SELECT * FROM clients WHERE COALESCE(deleted_at, 0) = 0 ORDER BY id DESC'
+            """
+            SELECT c.*, cat.name AS category_name
+            FROM clients c
+            LEFT JOIN categories cat ON cat.id = c.category_id
+            WHERE COALESCE(c.deleted_at, 0) = 0
+            ORDER BY c.id DESC
+            """
         ).fetchall()
 
     peers = [api_peer_payload(c, live=live) for c in rows]
@@ -87,6 +93,7 @@ def api_dashboard_payload() -> dict:
             {'key': 'primary_protocol', 'label': 'Основной протокол', 'value': primary_protocol, 'tone': 'accent'},
         ],
         'protocols': [api_protocol_view_model(p) for p in protocols.values()],
+        'categories': api_categories_payload(),
         'peers': [api_peer_view_model(p) for p in peers],
         'errors': errors,
         'actions': {

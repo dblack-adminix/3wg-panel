@@ -6,6 +6,8 @@ import {
   ChevronLeft,
   Copy,
   Download,
+  Folder,
+  FolderPlus,
   Home,
   LogOut,
   Network,
@@ -154,8 +156,9 @@ function StatCard({ value, label, icon: Icon }) {
   );
 }
 
-function CreateClient({ protocols, onCreated }) {
+function CreateClient({ protocols, categories, onCreated }) {
   const [name, setName] = useState('');
+  const [categoryId, setCategoryId] = useState('');
   const available = protocols?.amneziawg?.available;
   const wgAvailable = protocols?.wireguard?.available;
   const [amnezia, setAmnezia] = useState(true);
@@ -172,7 +175,7 @@ function CreateClient({ protocols, onCreated }) {
     setError('');
     setLoading(true);
     try {
-      await api('/api/peers', { method: 'POST', body: JSON.stringify({ name, protocols: selected }) });
+      await api('/api/peers', { method: 'POST', body: JSON.stringify({ name, protocols: selected, category_id: categoryId || null }) });
       setName('');
       await onCreated();
     } catch (err) {
@@ -187,6 +190,10 @@ function CreateClient({ protocols, onCreated }) {
       <h2>Создать клиента</h2>
       <form onSubmit={submit}>
         <input className="name-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Например: Ivan iPhone" />
+        <select className="category-select create-category-select" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+          <option value="">Без категории</option>
+          {(categories || []).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+        </select>
         <div className="protocol-row">
           <label className={!wgAvailable ? 'muted' : ''}><input type="checkbox" checked={wireguard} disabled={!wgAvailable} onChange={(e) => setWireguard(e.target.checked)} /> WireGuard {!wgAvailable && <span className="pill bad">не установлен</span>}</label>
           <label><input type="checkbox" checked={amnezia} disabled={!available} onChange={(e) => setAmnezia(e.target.checked)} /> AmneziaWG</label>
@@ -213,10 +220,57 @@ function CreateClient({ protocols, onCreated }) {
   );
 }
 
-function ClientsTable({ peers, onRefresh }) {
+function ClientsTable({ peers, categories, onRefresh }) {
   const [qrPeer, setQrPeer] = useState(null);
   const [pendingAction, setPendingAction] = useState(null);
   const [busyId, setBusyId] = useState(null);
+  const [activeCategory, setActiveCategory] = useState('all');
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [categoryBusy, setCategoryBusy] = useState(false);
+
+  const filteredPeers = useMemo(() => {
+    if (activeCategory === 'all') return peers;
+    if (activeCategory === 'none') return peers.filter((peer) => !peer.category_id);
+    return peers.filter((peer) => String(peer.category_id || '') === activeCategory);
+  }, [peers, activeCategory]);
+
+  const categoryCounts = useMemo(() => {
+    const counts = { all: peers.length, none: 0 };
+    for (const peer of peers) {
+      if (peer.category_id) counts[peer.category_id] = (counts[peer.category_id] || 0) + 1;
+      else counts.none += 1;
+    }
+    return counts;
+  }, [peers]);
+
+  const createCategory = async (e) => {
+    e.preventDefault();
+    const name = newCategoryName.trim();
+    if (!name) return;
+    setCategoryBusy(true);
+    try {
+      const data = await api('/api/categories', { method: 'POST', body: JSON.stringify({ name }) });
+      setNewCategoryName('');
+      if (data.category?.id) setActiveCategory(String(data.category.id));
+      await onRefresh();
+    } catch (err) {
+      window.alert(err.message || 'Ошибка создания категории');
+    } finally {
+      setCategoryBusy(false);
+    }
+  };
+
+  const changePeerCategory = async (peer, categoryId) => {
+    setBusyId(peer.id);
+    try {
+      await api(`/api/peers/${peer.id}`, { method: 'PATCH', body: JSON.stringify({ category_id: categoryId || null }) });
+      await onRefresh();
+    } catch (err) {
+      window.alert(err.message || 'Ошибка изменения категории');
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   const mutatePeer = async (peer, action) => {
     setBusyId(peer.id);
@@ -244,11 +298,32 @@ function ClientsTable({ peers, onRefresh }) {
         <h2>Клиенты</h2>
         <IconButton onClick={onRefresh} title="Обновить таблицу" tone="ghost"><RefreshCw size={15} /></IconButton>
       </div>
+      <div className="category-panel">
+        <div className="category-filters" aria-label="Категории клиентов">
+          <button className={activeCategory === 'all' ? 'category-chip active' : 'category-chip'} onClick={() => setActiveCategory('all')} type="button">
+            <Folder size={14} /> Все <span>{categoryCounts.all}</span>
+          </button>
+          <button className={activeCategory === 'none' ? 'category-chip active' : 'category-chip'} onClick={() => setActiveCategory('none')} type="button">
+            Без категории <span>{categoryCounts.none}</span>
+          </button>
+          {(categories || []).map((category) => (
+            <button className={activeCategory === String(category.id) ? 'category-chip active' : 'category-chip'} key={category.id} onClick={() => setActiveCategory(String(category.id))} type="button">
+              {category.name} <span>{categoryCounts[category.id] || 0}</span>
+            </button>
+          ))}
+        </div>
+        <form className="category-create" onSubmit={createCategory}>
+          <FolderPlus size={15} />
+          <input value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} placeholder="Новая категория" maxLength={64} />
+          <button disabled={categoryBusy || !newCategoryName.trim()} type="submit">Создать</button>
+        </form>
+      </div>
       <div className="table-wrap">
         <table className="clients-table">
           <colgroup>
             <col style={{ width: 46 }} />
             <col style={{ width: 170 }} />
+            <col style={{ width: 145 }} />
             <col style={{ width: 125 }} />
             <col style={{ width: 130 }} />
             <col style={{ width: 110 }} />
@@ -262,6 +337,7 @@ function ClientsTable({ peers, onRefresh }) {
             <tr>
               <th>ID</th>
               <th>Имя пользователя</th>
+              <th>Категория</th>
               <th>Протокол</th>
               <th>Внутренний IP</th>
               <th>Статус</th>
@@ -273,10 +349,16 @@ function ClientsTable({ peers, onRefresh }) {
             </tr>
           </thead>
           <tbody>
-            {peers.map((p) => (
+            {filteredPeers.map((p) => (
               <tr key={p.id}>
                 <td>{p.id}</td>
                 <td><b>{p.name}</b><small>создан панелью</small></td>
+                <td>
+                  <select className="category-select table-category-select" value={p.category_id || ''} disabled={busyId === p.id} onChange={(e) => changePeerCategory(p, e.target.value)}>
+                    <option value="">Без категории</option>
+                    {(categories || []).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                  </select>
+                </td>
                 <td><span className={`proto ${p.protocol === 'wireguard' ? 'proto-wireguard' : ''}`}>{p.protocol_title || p.protocol}</span></td>
                 <td><code>{p.ip_cidr}</code></td>
                 <td><PeerStatus peer={p} /></td>
@@ -299,6 +381,11 @@ function ClientsTable({ peers, onRefresh }) {
                 </td>
               </tr>
             ))}
+            {filteredPeers.length === 0 && (
+              <tr>
+                <td colSpan={11} className="empty-table">В этой категории пока нет peer'ов</td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -861,20 +948,21 @@ function TrafficPage({ protocol, onLogout }) {
 }
 
 function Dashboard({ onLogout }) {
-  const [state, setState] = useState({ loading: true, peers: [], status: null, protocols: {}, error: '' });
+  const [state, setState] = useState({ loading: true, peers: [], categories: [], status: null, protocols: {}, error: '' });
   const [trafficHistory, setTrafficHistory] = useState([]);
 
   const load = async () => {
     try {
       const data = await api('/api/dashboard');
       const nextPeers = data.peers || [];
+      const categories = data.categories || [];
       const cards = Object.fromEntries((data.cards || []).map((item) => [item.key, item]));
       const protocols = Object.fromEntries((data.protocols || []).map((item) => [item.protocol, item]));
       const status = {
         clients_total: cards.clients_total?.value ?? nextPeers.length,
         peers_total: cards.peers_total?.value ?? 0,
       };
-      setState({ loading: false, peers: nextPeers, status, protocols, error: '' });
+      setState({ loading: false, peers: nextPeers, categories, status, protocols, error: '' });
       const totals = nextPeers.reduce((acc, peer) => ({
         rx: acc.rx + Number(peer.live?.rx || 0),
         tx: acc.tx + Number(peer.live?.tx || 0),
@@ -918,10 +1006,10 @@ function Dashboard({ onLogout }) {
         <StatCard value={available} label="доступных протокола" icon={ShieldCheck} />
       </div>
       <div className="dashboard-row">
-        <CreateClient protocols={state.protocols} onCreated={load} />
+        <CreateClient protocols={state.protocols} categories={state.categories} onCreated={load} />
         <TrafficWidget peers={state.peers} protocols={state.protocols} history={trafficHistory} />
       </div>
-      <ClientsTable peers={state.peers} onRefresh={load} />
+      <ClientsTable peers={state.peers} categories={state.categories} onRefresh={load} />
       <section className="card status-card" id="status"><h2>Статус</h2><div className="status-grid">{Object.values(state.protocols || {}).map((p) => <div className="status-item" key={p.protocol}><b>{p.title}</b><span className={p.available ? 'status-ok' : 'status-bad'}>{p.available ? <Wifi size={14} /> : <WifiOff size={14} />}{p.available ? 'ONLINE' : 'OFFLINE'}</span><small>{p.container} / {p.interface}</small></div>)}</div></section>
     </Shell>
   );

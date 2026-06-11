@@ -419,6 +419,16 @@ def init_db():
         cols = [r["name"] for r in conn.execute("PRAGMA table_info(clients)").fetchall()]
         if "deleted_at" not in cols:
             conn.execute("ALTER TABLE clients ADD COLUMN deleted_at INTEGER NOT NULL DEFAULT 0")
+        if "category_id" not in cols:
+            conn.execute("ALTER TABLE clients ADD COLUMN category_id INTEGER")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS categories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                created_at INTEGER NOT NULL
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_clients_category_id ON clients(category_id)")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS traffic_snapshots (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -735,7 +745,7 @@ PersistentKeepalive = 25
     return text
 
 
-def create_client(name: str, protocol: str) -> int:
+def create_client(name: str, protocol: str, category_id: int | None = None) -> int:
     p = proto(protocol)
 
     ip_cidr = next_ip(protocol)
@@ -758,10 +768,10 @@ def create_client(name: str, protocol: str) -> int:
         cur = conn.execute(
             """
             INSERT INTO clients
-            (name, protocol, ip_cidr, private_key, public_key, preshared_key, config_path, enabled, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
+            (name, protocol, ip_cidr, private_key, public_key, preshared_key, config_path, enabled, created_at, category_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
             """,
-            (name, protocol, ip_cidr, private_key, public_key, psk, str(path), ts),
+            (name, protocol, ip_cidr, private_key, public_key, psk, str(path), ts, category_id),
         )
         conn.commit()
         runtime_cache_clear()
@@ -5472,6 +5482,50 @@ def api_recent_handshake(lp: dict | None) -> tuple[bool, int | None]:
     return age <= ONLINE_HANDSHAKE_WINDOW_SECONDS, age
 
 
+def api_clean_category_name(name: str) -> str:
+    return re.sub(r'\s+', ' ', str(name or '').strip())[:64]
+
+
+def api_category_id(value) -> int | None:
+    if value in (None, '', 'null', 'none', 0, '0'):
+        return None
+    try:
+        category_id = int(value)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail='Некорректная категория')
+    with db() as conn:
+        row = conn.execute('SELECT id FROM categories WHERE id = ?', (category_id,)).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail='Категория не найдена')
+    return category_id
+
+
+def api_categories_payload() -> list[dict]:
+    with db() as conn:
+        rows = conn.execute("""
+            SELECT
+                cat.id,
+                cat.name,
+                cat.created_at,
+                COUNT(c.id) AS peers_count
+            FROM categories cat
+            LEFT JOIN clients c
+                ON c.category_id = cat.id
+                AND COALESCE(c.deleted_at, 0) = 0
+            GROUP BY cat.id
+            ORDER BY lower(cat.name)
+        """).fetchall()
+    return [
+        {
+            'id': int(row['id']),
+            'name': row['name'],
+            'created_at': int(row['created_at']),
+            'peers_count': int(row['peers_count']),
+        }
+        for row in rows
+    ]
+
+
 def api_peer_payload(c, live: dict | None = None, include_config: bool = False) -> dict:
     protocol = c['protocol']
     p = PROTOCOLS[protocol]
@@ -5484,6 +5538,8 @@ def api_peer_payload(c, live: dict | None = None, include_config: bool = False) 
         'name': c['name'],
         'protocol': protocol,
         'protocol_title': p['title'],
+        'category_id': int(c['category_id']) if 'category_id' in c.keys() and c['category_id'] is not None else None,
+        'category_name': c['category_name'] if 'category_name' in c.keys() else None,
         'ip_cidr': c['ip_cidr'],
         'public_key': c['public_key'],
         'enabled': enabled,
@@ -5577,8 +5633,67 @@ def api_peers(user=Depends(api_require_auth)):
     live, errors = api_live_maps()
     api_record_traffic_snapshot(live)
     with db() as conn:
-        rows = conn.execute('SELECT * FROM clients WHERE COALESCE(deleted_at, 0) = 0 ORDER BY id DESC').fetchall()
-    return {'ok': True, 'peers': [api_peer_payload(c, live=live) for c in rows], 'errors': errors}
+        rows = conn.execute("""
+            SELECT c.*, cat.name AS category_name
+            FROM clients c
+            LEFT JOIN categories cat ON cat.id = c.category_id
+            WHERE COALESCE(c.deleted_at, 0) = 0
+            ORDER BY c.id DESC
+        """).fetchall()
+    return {'ok': True, 'peers': [api_peer_payload(c, live=live) for c in rows], 'categories': api_categories_payload(), 'errors': errors}
+
+
+@app.get('/api/categories')
+def api_categories(user=Depends(api_require_auth)):
+    return {'ok': True, 'categories': api_categories_payload()}
+
+
+@app.post('/api/categories')
+async def api_category_create(request: Request, user=Depends(api_require_auth)):
+    data = await api_read_payload(request)
+    name = api_clean_category_name(data.get('name', ''))
+    if not name:
+        return api_error('Пустое имя категории', status_code=400)
+    try:
+        with db() as conn:
+            cur = conn.execute(
+                'INSERT INTO categories(name, created_at) VALUES (?, ?)',
+                (name, int(time.time())),
+            )
+            conn.commit()
+            category_id = int(cur.lastrowid)
+    except sqlite3.IntegrityError:
+        return api_error('Такая категория уже есть', status_code=409)
+    return {'ok': True, 'category': next((c for c in api_categories_payload() if c['id'] == category_id), None)}
+
+
+@app.patch('/api/categories/{category_id}')
+async def api_category_update(category_id: int, request: Request, user=Depends(api_require_auth)):
+    data = await api_read_payload(request)
+    name = api_clean_category_name(data.get('name', ''))
+    if not name:
+        return api_error('Пустое имя категории', status_code=400)
+    try:
+        with db() as conn:
+            cur = conn.execute('UPDATE categories SET name = ? WHERE id = ?', (name, category_id))
+            if cur.rowcount == 0:
+                return api_error('Категория не найдена', status_code=404)
+            conn.commit()
+    except sqlite3.IntegrityError:
+        return api_error('Такая категория уже есть', status_code=409)
+    return {'ok': True, 'categories': api_categories_payload()}
+
+
+@app.delete('/api/categories/{category_id}')
+def api_category_delete(category_id: int, user=Depends(api_require_auth)):
+    with db() as conn:
+        row = conn.execute('SELECT id FROM categories WHERE id = ?', (category_id,)).fetchone()
+        if not row:
+            return api_error('Категория не найдена', status_code=404)
+        conn.execute('UPDATE clients SET category_id = NULL WHERE category_id = ?', (category_id,))
+        conn.execute('DELETE FROM categories WHERE id = ?', (category_id,))
+        conn.commit()
+    return {'ok': True, 'categories': api_categories_payload()}
 
 
 @app.get('/api/traffic/history')
@@ -5590,6 +5705,10 @@ def api_traffic_history(protocol: str = 'amneziawg', days: int = 30, user=Depend
 async def api_create_peers(request: Request, user=Depends(api_require_auth)):
     data = await api_read_payload(request)
     name = str(data.get('name', '')).strip()
+    try:
+        category_id = api_category_id(data.get('category_id'))
+    except HTTPException as e:
+        return api_error(str(e.detail), status_code=e.status_code)
     protocols = data.get('protocols', data.get('protocol', []))
     if isinstance(protocols, str):
         protocols = [protocols]
@@ -5603,15 +5722,47 @@ async def api_create_peers(request: Request, user=Depends(api_require_auth)):
     created_ids = []
     try:
         for protocol in protocols:
-            created_ids.append(create_client(name, protocol))
+            created_ids.append(create_client(name, protocol, category_id=category_id))
     except Exception as e:
         return api_error(str(e), status_code=500, created_ids=created_ids)
 
     live, _ = api_live_maps()
     with db() as conn:
         qmarks = ','.join('?' for _ in created_ids)
-        rows = conn.execute(f'SELECT * FROM clients WHERE id IN ({qmarks}) ORDER BY id DESC', created_ids).fetchall()
+        rows = conn.execute(f"""
+            SELECT c.*, cat.name AS category_name
+            FROM clients c
+            LEFT JOIN categories cat ON cat.id = c.category_id
+            WHERE c.id IN ({qmarks})
+            ORDER BY c.id DESC
+        """, created_ids).fetchall()
     return {'ok': True, 'created_ids': created_ids, 'peers': [api_peer_payload(c, live=live) for c in rows]}
+
+
+@app.patch('/api/peers/{client_id}')
+async def api_peer_update(client_id: int, request: Request, user=Depends(api_require_auth)):
+    data = await api_read_payload(request)
+    try:
+        category_id = api_category_id(data.get('category_id'))
+    except HTTPException as e:
+        return api_error(str(e.detail), status_code=e.status_code)
+    with db() as conn:
+        cur = conn.execute(
+            'UPDATE clients SET category_id = ? WHERE id = ? AND COALESCE(deleted_at, 0) = 0',
+            (category_id, client_id),
+        )
+        if cur.rowcount == 0:
+            return api_error('Клиент не найден', status_code=404)
+        conn.commit()
+    live, _ = api_live_maps()
+    with db() as conn:
+        c = conn.execute("""
+            SELECT c.*, cat.name AS category_name
+            FROM clients c
+            LEFT JOIN categories cat ON cat.id = c.category_id
+            WHERE c.id = ?
+        """, (client_id,)).fetchone()
+    return {'ok': True, 'peer': api_peer_payload(c, live=live), 'categories': api_categories_payload()}
 
 
 @app.get('/api/peers/{client_id}')
@@ -5716,7 +5867,13 @@ def api_dashboard_payload() -> dict:
 
     with db() as conn:
         rows = conn.execute(
-            'SELECT * FROM clients WHERE COALESCE(deleted_at, 0) = 0 ORDER BY id DESC'
+            """
+            SELECT c.*, cat.name AS category_name
+            FROM clients c
+            LEFT JOIN categories cat ON cat.id = c.category_id
+            WHERE COALESCE(c.deleted_at, 0) = 0
+            ORDER BY c.id DESC
+            """
         ).fetchall()
 
     peers = [api_peer_payload(c, live=live) for c in rows]
@@ -5746,6 +5903,7 @@ def api_dashboard_payload() -> dict:
             {'key': 'primary_protocol', 'label': 'Основной протокол', 'value': primary_protocol, 'tone': 'accent'},
         ],
         'protocols': [api_protocol_view_model(p) for p in protocols.values()],
+        'categories': api_categories_payload(),
         'peers': [api_peer_view_model(p) for p in peers],
         'errors': errors,
         'actions': {
