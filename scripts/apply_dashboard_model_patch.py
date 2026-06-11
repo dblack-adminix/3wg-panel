@@ -109,5 +109,10 @@ def api_ui_dashboard(user=Depends(api_require_auth)):
 
 text = APP_PATH.read_text(encoding='utf-8')
 text = re.sub(re.escape(START) + r'.*?' + re.escape(END) + r'\n?', '', text, flags=re.S).rstrip() + '\n\n' + BLOCK
+text = re.sub(
+    r'(# === 3WG REACT FRONTEND END ===)\n{3,}(# === 3WG REACT API START ===)',
+    r'\1\n\n\2',
+    text,
+)
 APP_PATH.write_text(text, encoding='utf-8')
 print('Dashboard model API patched into app.py')

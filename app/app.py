@@ -34,6 +34,9 @@ ENDPOINT_HOST = os.getenv("ENDPOINT_HOST", "cz-prg-01.nodax.eu")
 DNS_SERVERS = os.getenv("DNS_SERVERS", "1.1.1.1, 1.0.0.1")
 SESSION_SECRET = os.getenv("SESSION_SECRET", PANEL_PASSWORD + ENDPOINT_HOST)
 SESSION_COOKIE = "3wg_session"
+RUNTIME_CACHE = {}
+RUNTIME_CACHE_TTL_SECONDS = float(os.getenv("RUNTIME_CACHE_TTL_SECONDS", "3"))
+PORT_CACHE_TTL_SECONDS = float(os.getenv("PORT_CACHE_TTL_SECONDS", "30"))
 
 PROTOCOLS = {
     "wireguard": {
@@ -314,48 +317,69 @@ def sh(container_name: str, script: str, check=True) -> str:
     return exec_c(container_name, ["sh", "-lc", script], check=check)
 
 
+def cache_value(key, ttl: float, loader):
+    now = time.monotonic()
+    item = RUNTIME_CACHE.get(key)
+    if item and item["expires"] > now:
+        return item["value"]
+
+    value = loader()
+    RUNTIME_CACHE[key] = {"expires": now + ttl, "value": value}
+    return value
+
+
+def runtime_cache_clear():
+    RUNTIME_CACHE.clear()
+
+
 def interface_listen_port(protocol: str) -> str:
-    p = proto(protocol)
-    try:
-        port = exec_c(p["container"], [p["tool"], "show", p["interface"], "listen-port"], check=True)
-        if port.strip().isdigit():
-            return port.strip()
-    except Exception:
-        pass
-    return str(p["port"])
+    def load():
+        p = proto(protocol)
+        try:
+            port = exec_c(p["container"], [p["tool"], "show", p["interface"], "listen-port"], check=True)
+            if port.strip().isdigit():
+                return port.strip()
+        except Exception:
+            pass
+        return str(p["port"])
+
+    return cache_value(("listen_port", protocol), PORT_CACHE_TTL_SECONDS, load)
 
 
 def docker_published_udp_port(protocol: str) -> str:
-    p = proto(protocol)
-    fallback_port = str(p["port"])
-    internal_port = interface_listen_port(protocol)
+    def load():
+        p = proto(protocol)
+        fallback_port = str(p["port"])
+        internal_port = interface_listen_port(protocol)
 
-    try:
-        container = dc().containers.get(p["container"])
-        ports = (container.attrs.get("NetworkSettings") or {}).get("Ports") or {}
-    except Exception:
+        try:
+            container = dc().containers.get(p["container"])
+            ports = (container.attrs.get("NetworkSettings") or {}).get("Ports") or {}
+        except Exception:
+            return internal_port or fallback_port
+
+        candidates = []
+        for port in (internal_port, fallback_port):
+            key = f"{port}/udp"
+            bindings = ports.get(key) or []
+            for binding in bindings:
+                host_port = str((binding or {}).get("HostPort") or "").strip()
+                if host_port:
+                    return host_port
+
+        for key, bindings in ports.items():
+            if not str(key).endswith("/udp"):
+                continue
+            for binding in bindings or []:
+                host_port = str((binding or {}).get("HostPort") or "").strip()
+                if host_port and host_port not in candidates:
+                    candidates.append(host_port)
+
+        if len(candidates) == 1:
+            return candidates[0]
         return internal_port or fallback_port
 
-    candidates = []
-    for port in (internal_port, fallback_port):
-        key = f"{port}/udp"
-        bindings = ports.get(key) or []
-        for binding in bindings:
-            host_port = str((binding or {}).get("HostPort") or "").strip()
-            if host_port:
-                return host_port
-
-    for key, bindings in ports.items():
-        if not str(key).endswith("/udp"):
-            continue
-        for binding in bindings or []:
-            host_port = str((binding or {}).get("HostPort") or "").strip()
-            if host_port and host_port not in candidates:
-                candidates.append(host_port)
-
-    if len(candidates) == 1:
-        return candidates[0]
-    return internal_port or fallback_port
+    return cache_value(("published_udp_port", protocol), PORT_CACHE_TTL_SECONDS, load)
 
 
 def client_endpoint(protocol: str) -> str:
@@ -442,31 +466,34 @@ def server_pubkey(protocol: str) -> str:
 
 
 def live_peers(protocol: str):
-    p = proto(protocol)
-    out = exec_c(p["container"], [p["tool"], "show", "all", "dump"])
-    peers = []
+    def load():
+        p = proto(protocol)
+        out = exec_c(p["container"], [p["tool"], "show", "all", "dump"])
+        peers = []
 
-    for line in out.splitlines():
-        parts = line.split()
-        if len(parts) < 8:
-            continue
-        if parts[0] != p["interface"]:
-            continue
+        for line in out.splitlines():
+            parts = line.split()
+            if len(parts) < 8:
+                continue
+            if parts[0] != p["interface"]:
+                continue
 
-        allowed = parts[4]
-        if "/" not in allowed:
-            continue
+            allowed = parts[4]
+            if "/" not in allowed:
+                continue
 
-        peers.append({
-            "public_key": parts[1],
-            "endpoint": parts[3],
-            "allowed_ips": allowed,
-            "latest_handshake": parts[5],
-            "rx": parts[6],
-            "tx": parts[7],
-        })
+            peers.append({
+                "public_key": parts[1],
+                "endpoint": parts[3],
+                "allowed_ips": allowed,
+                "latest_handshake": parts[5],
+                "rx": parts[6],
+                "tx": parts[7],
+            })
 
-    return peers
+        return peers
+
+    return cache_value(("live_peers", protocol), RUNTIME_CACHE_TTL_SECONDS, load)
 
 
 def used_ips(protocol: str):
@@ -641,6 +668,7 @@ def remove_peer(protocol: str, public_key: str):
 
     if new != old:
         write_server_config(protocol, new)
+    runtime_cache_clear()
 
 
 def config_has_peer(protocol: str, public_key: str) -> bool:
@@ -664,6 +692,7 @@ def enable_peer(c):
     with db() as conn:
         conn.execute("UPDATE clients SET enabled = 1 WHERE id = ?", (int(c["id"]),))
         conn.commit()
+    runtime_cache_clear()
 
 
 def disable_peer(c):
@@ -671,6 +700,7 @@ def disable_peer(c):
     with db() as conn:
         conn.execute("UPDATE clients SET enabled = 0 WHERE id = ?", (int(c["id"]),))
         conn.commit()
+    runtime_cache_clear()
 
 
 def build_client_conf(protocol: str, private_key: str, ip_cidr: str, psk: str) -> str:
@@ -734,6 +764,7 @@ def create_client(name: str, protocol: str) -> int:
             (name, protocol, ip_cidr, private_key, public_key, psk, str(path), ts),
         )
         conn.commit()
+        runtime_cache_clear()
         return int(cur.lastrowid)
 
 
@@ -5287,37 +5318,42 @@ async def api_read_payload(request: Request) -> dict:
 
 
 def api_protocol_state(protocol: str, include_raw: bool = False) -> dict:
-    p = proto(protocol)
-    endpoint_port = docker_published_udp_port(protocol)
-    item = {
-        'protocol': protocol,
-        'title': p['title'],
-        'container': p['container'],
-        'interface': p['interface'],
-        'tool': p['tool'],
-        'port': int(str(endpoint_port)),
-        'configured_port': int(str(p['port'])),
-        'endpoint_host': ENDPOINT_HOST,
-        'endpoint': f"{ENDPOINT_HOST}:{endpoint_port}",
-        'network': p['network'],
-        'available': False,
-        'container_status': 'unknown',
-        'reason': 'not checked',
-    }
-    try:
-        container = dc().containers.get(p['container'])
-        item['container_status'] = getattr(container, 'status', 'unknown') or 'unknown'
-    except Exception as e:
-        item['reason'] = 'container unavailable: ' + str(e)
-        return item
-    try:
-        raw = exec_c(p['container'], [p['tool'], 'show', p['interface']], check=True)
-        item['available'] = True
-        item['reason'] = 'ok'
-        if include_raw:
+    def load():
+        p = proto(protocol)
+        endpoint_port = docker_published_udp_port(protocol)
+        item = {
+            'protocol': protocol,
+            'title': p['title'],
+            'container': p['container'],
+            'interface': p['interface'],
+            'tool': p['tool'],
+            'port': int(str(endpoint_port)),
+            'configured_port': int(str(p['port'])),
+            'endpoint_host': ENDPOINT_HOST,
+            'endpoint': f"{ENDPOINT_HOST}:{endpoint_port}",
+            'network': p['network'],
+            'available': False,
+            'container_status': 'unknown',
+            'reason': 'not checked',
+        }
+        try:
+            container = dc().containers.get(p['container'])
+            item['container_status'] = getattr(container, 'status', 'unknown') or 'unknown'
+        except Exception as e:
+            item['reason'] = 'container unavailable: ' + str(e)
+            return item
+        try:
+            raw = exec_c(p['container'], [p['tool'], 'show', p['interface']], check=True)
+            item['available'] = True
+            item['reason'] = 'ok'
             item['raw'] = raw
-    except Exception as e:
-        item['reason'] = str(e)
+        except Exception as e:
+            item['reason'] = str(e)
+        return item
+
+    item = dict(cache_value(("protocol_state", protocol), RUNTIME_CACHE_TTL_SECONDS, load))
+    if not include_raw:
+        item.pop('raw', None)
     return item
 
 

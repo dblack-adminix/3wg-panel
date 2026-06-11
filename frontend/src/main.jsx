@@ -87,18 +87,22 @@ function Login({ onLogin }) {
   );
 }
 
-function Sidebar({ onLogout }) {
+function Sidebar({ onLogout, protocols: initialProtocols = null }) {
   const path = window.location.pathname;
   const isHome = path === '/' || path === '/ui';
-  const [protocols, setProtocols] = useState(null);
+  const [protocols, setProtocols] = useState(initialProtocols);
 
   useEffect(() => {
+    if (initialProtocols) {
+      setProtocols(initialProtocols);
+      return undefined;
+    }
     let alive = true;
     api('/api/node/protocols')
       .then((data) => { if (alive) setProtocols(data.protocols || {}); })
       .catch(() => { if (alive) setProtocols({}); });
     return () => { alive = false; };
-  }, []);
+  }, [initialProtocols]);
 
   const showWireGuardStatus = Boolean(protocols?.wireguard?.available);
   const showAmneziaStatus = protocols?.amneziawg?.available !== false;
@@ -118,10 +122,10 @@ function Sidebar({ onLogout }) {
   );
 }
 
-function Shell({ title, subtitle, onLogout, children }) {
+function Shell({ title, subtitle, onLogout, protocols, children }) {
   return (
     <div className="layout" id="top">
-      <Sidebar onLogout={onLogout} />
+      <Sidebar onLogout={onLogout} protocols={protocols} />
       <main className="main">
         <header className="topbar">
           <div>
@@ -857,18 +861,20 @@ function TrafficPage({ protocol, onLogout }) {
 }
 
 function Dashboard({ onLogout }) {
-  const [state, setState] = useState({ loading: true, peers: [], status: null, protocols: null, error: '' });
+  const [state, setState] = useState({ loading: true, peers: [], status: null, protocols: {}, error: '' });
   const [trafficHistory, setTrafficHistory] = useState([]);
 
   const load = async () => {
     try {
-      const [status, peers, proto] = await Promise.all([
-        api('/api/node/status'),
-        api('/api/peers'),
-        api('/api/node/protocols'),
-      ]);
-      const nextPeers = peers.peers || [];
-      setState({ loading: false, peers: nextPeers, status, protocols: proto.protocols || {}, error: '' });
+      const data = await api('/api/dashboard');
+      const nextPeers = data.peers || [];
+      const cards = Object.fromEntries((data.cards || []).map((item) => [item.key, item]));
+      const protocols = Object.fromEntries((data.protocols || []).map((item) => [item.protocol, item]));
+      const status = {
+        clients_total: cards.clients_total?.value ?? nextPeers.length,
+        peers_total: cards.peers_total?.value ?? 0,
+      };
+      setState({ loading: false, peers: nextPeers, status, protocols, error: '' });
       const totals = nextPeers.reduce((acc, peer) => ({
         rx: acc.rx + Number(peer.live?.rx || 0),
         tx: acc.tx + Number(peer.live?.tx || 0),
@@ -903,7 +909,7 @@ function Dashboard({ onLogout }) {
   const available = Object.values(state.protocols || {}).filter((p) => p.available).length;
 
   return (
-    <Shell title="3WG Panel" subtitle="WireGuard / AmneziaWG node management" onLogout={onLogout}>
+    <Shell title="3WG Panel" subtitle="WireGuard / AmneziaWG node management" onLogout={onLogout} protocols={state.protocols}>
       {state.error && <div className="warning">{state.error}</div>}
       <div className="stats-grid">
         <StatCard value={state.status?.clients_total ?? state.peers.length} label="клиентов в панели" icon={Users} />

@@ -1,9 +1,13 @@
 .env
+.env.backup.*
 data/
 clients/
 backups/
 *.backup
 *.deleted.*
+app/app.py.*backup*
+app/app.py.v*-before*
+app/app.py.v*
 __pycache__/
 *.pyc
 .DS_Store

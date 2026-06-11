@@ -51,37 +51,42 @@ async def api_read_payload(request: Request) -> dict:
 
 
 def api_protocol_state(protocol: str, include_raw: bool = False) -> dict:
-    p = proto(protocol)
-    endpoint_port = docker_published_udp_port(protocol)
-    item = {
-        'protocol': protocol,
-        'title': p['title'],
-        'container': p['container'],
-        'interface': p['interface'],
-        'tool': p['tool'],
-        'port': int(str(endpoint_port)),
-        'configured_port': int(str(p['port'])),
-        'endpoint_host': ENDPOINT_HOST,
-        'endpoint': f"{ENDPOINT_HOST}:{endpoint_port}",
-        'network': p['network'],
-        'available': False,
-        'container_status': 'unknown',
-        'reason': 'not checked',
-    }
-    try:
-        container = dc().containers.get(p['container'])
-        item['container_status'] = getattr(container, 'status', 'unknown') or 'unknown'
-    except Exception as e:
-        item['reason'] = 'container unavailable: ' + str(e)
-        return item
-    try:
-        raw = exec_c(p['container'], [p['tool'], 'show', p['interface']], check=True)
-        item['available'] = True
-        item['reason'] = 'ok'
-        if include_raw:
+    def load():
+        p = proto(protocol)
+        endpoint_port = docker_published_udp_port(protocol)
+        item = {
+            'protocol': protocol,
+            'title': p['title'],
+            'container': p['container'],
+            'interface': p['interface'],
+            'tool': p['tool'],
+            'port': int(str(endpoint_port)),
+            'configured_port': int(str(p['port'])),
+            'endpoint_host': ENDPOINT_HOST,
+            'endpoint': f"{ENDPOINT_HOST}:{endpoint_port}",
+            'network': p['network'],
+            'available': False,
+            'container_status': 'unknown',
+            'reason': 'not checked',
+        }
+        try:
+            container = dc().containers.get(p['container'])
+            item['container_status'] = getattr(container, 'status', 'unknown') or 'unknown'
+        except Exception as e:
+            item['reason'] = 'container unavailable: ' + str(e)
+            return item
+        try:
+            raw = exec_c(p['container'], [p['tool'], 'show', p['interface']], check=True)
+            item['available'] = True
+            item['reason'] = 'ok'
             item['raw'] = raw
-    except Exception as e:
-        item['reason'] = str(e)
+        except Exception as e:
+            item['reason'] = str(e)
+        return item
+
+    item = dict(cache_value(("protocol_state", protocol), RUNTIME_CACHE_TTL_SECONDS, load))
+    if not include_raw:
+        item.pop('raw', None)
     return item
 
 
@@ -400,6 +405,11 @@ text = APP_PATH.read_text(encoding='utf-8')
 block_re = re.compile(re.escape(START) + r'.*?' + re.escape(END) + r'\n?', flags=re.S)
 cleaned = block_re.sub('', text).rstrip() + '\n\n'
 patched = cleaned + API_BLOCK
+patched = re.sub(
+    r'(# === 3WG REACT FRONTEND END ===)\n{3,}(# === 3WG REACT API START ===)',
+    r'\1\n\n\2',
+    patched,
+)
 
 if patched != text:
     APP_PATH.write_text(patched, encoding='utf-8')
