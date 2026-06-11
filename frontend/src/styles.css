@@ -52,7 +52,7 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 .topbar h1 { font-size: 26px; line-height: 1; margin: 0; }
 .topbar p { margin: 6px 0 0; color: #a9bad1; }
 .top-actions { display: flex; gap: 8px; }
-.top-actions span, .top-actions button { border: 1px solid #2e3d51; border-radius: 6px; background: #0c141e; color: #e9f2ff; font-weight: 900; padding: 6px 10px; }
+.top-actions button { border: 1px solid #2e3d51; border-radius: 6px; background: #0c141e; color: #e9f2ff; font-weight: 900; padding: 6px 10px; }
 .top-actions button { cursor: pointer; }
 
 .app-footer { display: grid; gap: 5px; justify-items: center; margin: 18px 0 0; padding: 14px 16px; border-top: 1px solid #1f2e41; color: #8fa3bd; font-size: 12px; font-weight: 400; line-height: 1.45; text-align: center; }

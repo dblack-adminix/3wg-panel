@@ -132,7 +132,7 @@ function Shell({ title, subtitle, onLogout, protocols, children }) {
             <h1>{title}</h1>
             <p>{subtitle}</p>
           </div>
-          <div className="top-actions"><span>AWG</span><button onClick={onLogout} title="Выйти"><LogOut size={15} /></button></div>
+          <div className="top-actions"><button onClick={onLogout} title="Выйти"><LogOut size={15} /></button></div>
         </header>
         {children}
         <footer className="app-footer">
