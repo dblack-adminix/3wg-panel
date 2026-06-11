@@ -4,6 +4,7 @@ import {
   Activity,
   ArrowUpRight,
   ChevronLeft,
+  Check,
   Copy,
   Download,
   Folder,
@@ -12,6 +13,7 @@ import {
   LogOut,
   Network,
   Power,
+  Pencil,
   Plus,
   QrCode,
   RefreshCw,
@@ -227,6 +229,8 @@ function ClientsTable({ peers, categories, onRefresh }) {
   const [activeCategory, setActiveCategory] = useState('all');
   const [newCategoryName, setNewCategoryName] = useState('');
   const [categoryBusy, setCategoryBusy] = useState(false);
+  const [editingCategory, setEditingCategory] = useState(null);
+  const [categoryToDelete, setCategoryToDelete] = useState(null);
 
   const filteredPeers = useMemo(() => {
     if (activeCategory === 'all') return peers;
@@ -247,7 +251,7 @@ function ClientsTable({ peers, categories, onRefresh }) {
     e.preventDefault();
     const name = newCategoryName.trim();
     if (!name) return;
-    setCategoryBusy(true);
+    setCategoryBusy('create');
     try {
       const data = await api('/api/categories', { method: 'POST', body: JSON.stringify({ name }) });
       setNewCategoryName('');
@@ -255,6 +259,37 @@ function ClientsTable({ peers, categories, onRefresh }) {
       await onRefresh();
     } catch (err) {
       window.alert(err.message || 'Ошибка создания категории');
+    } finally {
+      setCategoryBusy(false);
+    }
+  };
+
+  const updateCategory = async (e) => {
+    e.preventDefault();
+    const id = editingCategory?.id;
+    const name = editingCategory?.name?.trim();
+    if (!id || !name) return;
+    setCategoryBusy(`edit-${id}`);
+    try {
+      await api(`/api/categories/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) });
+      setEditingCategory(null);
+      await onRefresh();
+    } catch (err) {
+      window.alert(err.message || 'Ошибка изменения категории');
+    } finally {
+      setCategoryBusy(false);
+    }
+  };
+
+  const deleteCategory = async (category) => {
+    setCategoryBusy(`delete-${category.id}`);
+    try {
+      await api(`/api/categories/${category.id}`, { method: 'DELETE' });
+      if (activeCategory === String(category.id)) setActiveCategory('none');
+      setCategoryToDelete(null);
+      await onRefresh();
+    } catch (err) {
+      window.alert(err.message || 'Ошибка удаления категории');
     } finally {
       setCategoryBusy(false);
     }
@@ -307,15 +342,29 @@ function ClientsTable({ peers, categories, onRefresh }) {
             Без категории <span>{categoryCounts.none}</span>
           </button>
           {(categories || []).map((category) => (
-            <button className={activeCategory === String(category.id) ? 'category-chip active' : 'category-chip'} key={category.id} onClick={() => setActiveCategory(String(category.id))} type="button">
-              {category.name} <span>{categoryCounts[category.id] || 0}</span>
-            </button>
+            <div className={activeCategory === String(category.id) ? 'category-item active' : 'category-item'} key={category.id}>
+              {editingCategory?.id === category.id ? (
+                <form className="category-edit" onSubmit={updateCategory}>
+                  <input value={editingCategory.name} onChange={(e) => setEditingCategory({ ...editingCategory, name: e.target.value })} autoFocus maxLength={64} />
+                  <button className="category-tool save" type="submit" title="Сохранить" disabled={categoryBusy === `edit-${category.id}`}><Check size={13} /></button>
+                  <button className="category-tool" type="button" title="Отмена" onClick={() => setEditingCategory(null)}><X size={13} /></button>
+                </form>
+              ) : (
+                <>
+                  <button className="category-chip" onClick={() => setActiveCategory(String(category.id))} type="button">
+                    {category.name} <span>{categoryCounts[category.id] || 0}</span>
+                  </button>
+                  <button className="category-tool" type="button" title="Переименовать категорию" onClick={() => setEditingCategory({ id: category.id, name: category.name })}><Pencil size={13} /></button>
+                  <button className="category-tool danger" type="button" title="Удалить категорию" onClick={() => setCategoryToDelete(category)}><Trash2 size={13} /></button>
+                </>
+              )}
+            </div>
           ))}
         </div>
         <form className="category-create" onSubmit={createCategory}>
           <FolderPlus size={15} />
           <input value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} placeholder="Новая категория" maxLength={64} />
-          <button disabled={categoryBusy || !newCategoryName.trim()} type="submit">Создать</button>
+          <button disabled={Boolean(categoryBusy) || !newCategoryName.trim()} type="submit">Создать</button>
         </form>
       </div>
       <div className="table-wrap">
@@ -390,6 +439,18 @@ function ClientsTable({ peers, categories, onRefresh }) {
         </table>
       </div>
       {qrPeer && <QrModal peer={qrPeer} onClose={() => setQrPeer(null)} />}
+      {categoryToDelete && (
+        <ConfirmModal
+          title="Удалить категорию"
+          message={`Удалить категорию "${categoryToDelete.name}"?`}
+          details={`Peer'ы внутри категории не удалятся. Они перейдут в "Без категории": ${categoryCounts[categoryToDelete.id] || 0} шт.`}
+          tone="danger"
+          confirmLabel="Удалить"
+          loading={categoryBusy === `delete-${categoryToDelete.id}`}
+          onCancel={() => setCategoryToDelete(null)}
+          onConfirm={() => deleteCategory(categoryToDelete)}
+        />
+      )}
       {pendingAction && (
         <ConfirmModal
           title={confirmMeta.title}

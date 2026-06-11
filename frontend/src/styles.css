@@ -134,10 +134,22 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 
 .category-panel { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 0 0 12px; }
 .category-filters { display: flex; flex-wrap: wrap; gap: 7px; min-width: 0; }
+.category-item { height: 30px; display: inline-flex; align-items: center; overflow: hidden; border: 1px solid #26384d; border-radius: 7px; background: #07101a; }
 .category-chip { height: 30px; display: inline-flex; align-items: center; gap: 7px; border: 1px solid #26384d; border-radius: 7px; background: #07101a; color: #b8c9dd; font-weight: 800; font-size: 12px; cursor: pointer; padding: 0 10px; }
+.category-item .category-chip { border: 0; border-radius: 0; background: transparent; }
 .category-chip span { display: inline-grid; place-items: center; min-width: 20px; height: 20px; border-radius: 5px; background: #0f1b29; color: #e7f1ff; font-size: 11px; }
 .category-chip.active { border-color: #078766; background: #06261f; color: #f3f7ff; }
+.category-item.active { border-color: #078766; background: #06261f; }
+.category-item.active .category-chip { color: #f3f7ff; }
 .category-chip.active span { background: #0b5a45; color: #9affdf; }
+.category-item.active .category-chip span { background: #0b5a45; color: #9affdf; }
+.category-tool { width: 28px; height: 30px; display: grid; place-items: center; border: 0; border-left: 1px solid #26384d; background: transparent; color: #92a6c0; cursor: pointer; }
+.category-tool:hover { color: #f3f7ff; background: #0d1a28; }
+.category-tool.save { color: var(--green); }
+.category-tool.danger { color: #ff8aa0; }
+.category-tool:disabled { opacity: .45; cursor: wait; }
+.category-edit { height: 30px; display: inline-flex; align-items: center; }
+.category-edit input { width: 150px; height: 30px; border: 0; background: transparent; color: #f3f7ff; font: inherit; font-size: 12px; font-weight: 800; outline: none; padding: 0 8px; }
 .category-create { display: flex; align-items: center; gap: 7px; flex: 0 0 auto; min-width: 300px; height: 34px; border: 1px solid #26384d; border-radius: 8px; background: #07101a; padding: 0 6px 0 9px; color: #8fa3bd; }
 .category-create input { width: 150px; height: 26px; border: 0; background: transparent; color: #f3f7ff; outline: none; }
 .category-create button { height: 26px; border: 0; border-radius: 6px; background: #102d22; color: var(--green); font-weight: 900; cursor: pointer; padding: 0 10px; }
