@@ -12,6 +12,8 @@ sudo apt install -y git curl python3 nodejs npm docker.io
 sudo systemctl enable --now docker
 ```
 
+Для frontend-сборки нужен Node.js `>=20.19.0` или `>=22.12.0`. На старых Debian/Ubuntu пакет `nodejs` из стандартного репозитория может быть слишком старым.
+
 Проверьте, что protocol-контейнеры уже существуют:
 
 ```bash
@@ -86,12 +88,13 @@ Installer выполняет:
 3. опрос настроек установки
 4. создание `.env`
 5. применение backend API patches
-6. сборку React frontend
-7. сборку Docker image `3wg-panel:local`
-8. пересоздание контейнера `3wg-panel`
-9. проверку `/health`
-10. опциональную настройку Caddy reverse proxy
-11. вывод URL, логина и пароля
+6. установку frontend-зависимостей через `npm ci` при наличии `package-lock.json`
+7. сборку React frontend
+8. сборку Docker image `3wg-panel:local`
+9. пересоздание контейнера `3wg-panel`
+10. проверку `/health`
+11. опциональную настройку Caddy reverse proxy
+12. вывод URL, логина и пароля
 
 Для последующих обновлений используйте `scripts/update.sh`, чтобы не перезаписывать `.env`.
 
@@ -107,7 +110,7 @@ nano .env
 python3 scripts/apply_api_patch.py
 python3 scripts/apply_dashboard_model_patch.py
 cd frontend
-npm install
+npm ci
 npm run build
 cd ..
 docker build -f app/Dockerfile -t 3wg-panel:local .

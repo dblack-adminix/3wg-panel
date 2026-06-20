@@ -12,6 +12,26 @@ say() { printf '\n\033[1;32m%s\033[0m\n' "$*"; }
 warn() { printf '\n\033[1;33m%s\033[0m\n' "$*"; }
 fail() { printf '\n\033[1;31m%s\033[0m\n' "$*" >&2; exit 1; }
 need_cmd() { command -v "$1" >/dev/null 2>&1 || fail "Не найдено: $1. Установите $1 и запустите скрипт снова."; }
+node_major() { node -p "Number(process.versions.node.split('.')[0])" 2>/dev/null || printf '0'; }
+node_minor() { node -p "Number(process.versions.node.split('.')[1])" 2>/dev/null || printf '0'; }
+check_node_version() {
+  local major minor
+  major="$(node_major)"
+  minor="$(node_minor)"
+  if [ "$major" -lt 20 ] || { [ "$major" -eq 20 ] && [ "$minor" -lt 19 ]; }; then
+    fail "Node.js $(node --version) слишком старый. Нужен Node.js >=20.19.0 или >=22.12.0 для сборки frontend."
+  fi
+}
+install_frontend_deps() {
+  if [ -f package-lock.json ]; then
+    npm ci
+  else
+    npm install
+  fi
+}
+check_python_sources() {
+  python3 -m py_compile app/app.py app/api_keys_store.py scripts/apply_api_patch.py scripts/apply_dashboard_model_patch.py
+}
 prepare_git_worktree() {
   local app_status tracked_status app_backup
 
@@ -38,8 +58,10 @@ fi
 need_cmd git
 need_cmd docker
 need_cmd npm
+need_cmd node
 need_cmd curl
 need_cmd python3
+check_node_version
 
 INSTALL_DIR="${INSTALL_DIR:-$INSTALL_DIR_DEFAULT}"
 BRANCH="${BRANCH:-$BRANCH_DEFAULT}"
@@ -68,11 +90,11 @@ git pull --ff-only
 say "Applying backend API patches"
 python3 scripts/apply_api_patch.py
 python3 scripts/apply_dashboard_model_patch.py
-python3 -c "import py_compile; py_compile.compile('app/app.py', cfile='/tmp/3wg-panel-app.pyc', doraise=True)"
+check_python_sources
 
 say "Building React frontend"
 cd frontend
-npm install
+install_frontend_deps
 npm run build
 cd "$INSTALL_DIR"
 

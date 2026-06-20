@@ -559,6 +559,11 @@ patched = re.sub(
     r'\1\n\n\2',
     patched,
 )
+patched = re.sub(
+    r'(# === 3WG REACT API END ===)\n{3,}(# === 3WG SYSTEM STATUS API START ===)',
+    r'\1\n\n\2',
+    patched,
+)
 
 if patched != text:
     APP_PATH.write_text(patched, encoding='utf-8')

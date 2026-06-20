@@ -21,6 +21,7 @@
 - `/status/amneziawg` — статус AmneziaWG
 - `/traffic/wireguard` — история трафика WireGuard
 - `/traffic/amneziawg` — история трафика AmneziaWG
+- `/apikeys` — API-ключи для интеграций через `X-API-Key`
 - `/health` — health-check
 
 ## Требования
@@ -30,7 +31,7 @@
 - Linux server, рекомендуется Debian/Ubuntu
 - Docker
 - Git
-- Node.js/npm для сборки React
+- Node.js `>=20.19.0` или `>=22.12.0` и npm для сборки React
 - Python 3
 - curl
 - уже существующие WireGuard и/или AmneziaWG контейнеры

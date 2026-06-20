@@ -13,6 +13,43 @@ say() { printf '\n\033[1;32m%s\033[0m\n' "$*"; }
 warn() { printf '\n\033[1;33m%s\033[0m\n' "$*"; }
 fail() { printf '\n\033[1;31m%s\033[0m\n' "$*" >&2; exit 1; }
 need_cmd() { command -v "$1" >/dev/null 2>&1 || fail "Не найдено: $1. Установите $1 и запустите скрипт снова."; }
+node_major() { node -p "Number(process.versions.node.split('.')[0])" 2>/dev/null || printf '0'; }
+node_minor() { node -p "Number(process.versions.node.split('.')[1])" 2>/dev/null || printf '0'; }
+check_node_version() {
+  local major minor
+  major="$(node_major)"
+  minor="$(node_minor)"
+  if [ "$major" -lt 20 ] || { [ "$major" -eq 20 ] && [ "$minor" -lt 19 ]; }; then
+    fail "Node.js $(node --version) слишком старый. Нужен Node.js >=20.19.0 или >=22.12.0 для сборки frontend."
+  fi
+}
+install_frontend_deps() {
+  if [ -f package-lock.json ]; then
+    npm ci
+  else
+    npm install
+  fi
+}
+check_python_sources() {
+  python3 -m py_compile app/app.py app/api_keys_store.py scripts/apply_api_patch.py scripts/apply_dashboard_model_patch.py
+}
+prepare_existing_worktree() {
+  local app_status tracked_status app_backup
+  app_status="$(git status --porcelain -- app/app.py || true)"
+  if [ -n "$app_status" ]; then
+    mkdir -p backups/install
+    app_backup="backups/install/app.py.local.$(date +%F_%H-%M-%S).backup"
+    warn "app/app.py содержит локальные generated-изменения. Сохраняю копию и возвращаю tracked-версию перед git pull."
+    cp app/app.py "$app_backup"
+    git restore app/app.py
+    printf 'Source backup: %s\n' "$INSTALL_DIR/$app_backup"
+  fi
+  tracked_status="$(git status --porcelain --untracked-files=no)"
+  if [ -n "$tracked_status" ]; then
+    printf '%s\n' "$tracked_status" >&2
+    fail "Есть локальные изменения в tracked-файлах. Installer не будет их перетирать автоматически."
+  fi
+}
 ask() {
   local prompt="$1" default="${2:-}" value
   if [ -n "$default" ]; then
@@ -116,8 +153,10 @@ fi
 need_cmd git
 need_cmd docker
 need_cmd npm
+need_cmd node
 need_cmd curl
 need_cmd python3
+check_node_version
 
 say "3WG Panel installer"
 REPO_URL="$(ask 'Git repository' "$REPO_URL_DEFAULT")"
@@ -155,9 +194,11 @@ HIDE_EXISTING_PEERS="$(ask 'Hide peers not created by panel? 1=yes, 0=no' '1')"
 say "Preparing source"
 mkdir -p "$(dirname "$INSTALL_DIR")"
 if [ -d "$INSTALL_DIR/.git" ]; then
+  cd "$INSTALL_DIR"
+  prepare_existing_worktree
   git -C "$INSTALL_DIR" fetch --all --tags
   git -C "$INSTALL_DIR" checkout "$BRANCH"
-  git -C "$INSTALL_DIR" pull --ff-only || warn "Не удалось сделать fast-forward pull. Проверьте локальные изменения в $INSTALL_DIR."
+  git -C "$INSTALL_DIR" pull --ff-only
 elif [ -e "$INSTALL_DIR" ]; then
   fail "$INSTALL_DIR уже существует, но это не git repository"
 else
@@ -198,11 +239,11 @@ chmod 600 .env
 say "Applying backend API patches"
 python3 scripts/apply_api_patch.py
 python3 scripts/apply_dashboard_model_patch.py
-python3 -c "import py_compile; py_compile.compile('app/app.py', cfile='/tmp/3wg-panel-app.pyc', doraise=True)"
+check_python_sources
 
 say "Building React frontend"
 cd frontend
-npm install
+install_frontend_deps
 npm run build
 cd "$INSTALL_DIR"
 

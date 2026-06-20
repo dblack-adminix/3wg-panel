@@ -5823,14 +5823,6 @@ def api_peer_delete(client_id: int, user=Depends(api_require_auth)):
     return {'ok': True, 'deleted_id': client_id}
 # === 3WG REACT API END ===
 
-
-
-
-
-
-
-
-
 # === 3WG SYSTEM STATUS API START ===
 import shutil as _shutil
 

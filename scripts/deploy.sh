@@ -7,22 +7,45 @@ FRONT="$BASE/frontend"
 IMAGE="3wg-panel:local"
 CONTAINER="3wg-panel"
 
+fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+node_major() { node -p "Number(process.versions.node.split('.')[0])" 2>/dev/null || printf '0'; }
+node_minor() { node -p "Number(process.versions.node.split('.')[1])" 2>/dev/null || printf '0'; }
+check_node_version() {
+  local major minor
+  major="$(node_major)"
+  minor="$(node_minor)"
+  if [ "$major" -lt 20 ] || { [ "$major" -eq 20 ] && [ "$minor" -lt 19 ]; }; then
+    fail "Node.js $(node --version) слишком старый. Нужен Node.js >=20.19.0 или >=22.12.0 для сборки frontend."
+  fi
+}
+install_frontend_deps() {
+  if [ -f package-lock.json ]; then
+    npm ci
+  else
+    npm install
+  fi
+}
+check_python_sources() {
+  python3 -m py_compile "$APP" "$BASE/app/api_keys_store.py" "$BASE/scripts/apply_api_patch.py" "$BASE/scripts/apply_dashboard_model_patch.py"
+}
+
 printf '\n======================================================\n'
 printf ' 3WG PANEL DEV DEPLOY - REACT FRONTEND\n'
 printf '======================================================\n'
 
 cd "$BASE"
+check_node_version
 
 printf '\n===== Backend/API patches =====\n'
 python3 "$BASE/scripts/apply_api_patch.py"
 python3 "$BASE/scripts/apply_dashboard_model_patch.py"
 
 printf '\n===== Backend syntax check =====\n'
-python3 -c "import py_compile; py_compile.compile('$APP', cfile='/tmp/3wg-panel-app.pyc', doraise=True)"
+check_python_sources
 
 printf '\n===== Frontend build =====\n'
 cd "$FRONT"
-npm install
+install_frontend_deps
 npm run build
 cd "$BASE"
 
