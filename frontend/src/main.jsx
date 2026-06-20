@@ -10,6 +10,7 @@ import {
   Folder,
   FolderPlus,
   Home,
+  Key,
   LogOut,
   Network,
   Power,
@@ -121,6 +122,7 @@ function Sidebar({ onLogout, protocols: initialProtocols = null }) {
       {showWireGuardStatus && <a className={`nav ${path === '/status/wireguard' ? 'active' : ''}`} href="/status/wireguard"><Activity size={14} /> <span>WG status</span></a>}
       {showAmneziaStatus && <a className={`nav ${path === '/status/amneziawg' ? 'active' : ''}`} href="/status/amneziawg"><Activity size={14} /> <span>AWG status</span></a>}
       <div className="nav-title">УПРАВЛЕНИЕ</div>
+      <a className={`nav ${path === '/apikeys' ? 'active' : ''}`} href="/apikeys"><Key size={14} /> <span>API-ключи</span></a>
       <button className="nav logout" onClick={onLogout}><LogOut size={14} /> <span>Выход</span></button>
     </aside>
   );
@@ -1076,6 +1078,79 @@ function Dashboard({ onLogout }) {
   );
 }
 
+function ApiKeysPage({ onLogout }) {
+  const [keys, setKeys] = useState([]);
+  const [name, setName] = useState('');
+  const [newToken, setNewToken] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const load = async () => {
+    try { const d = await api('/api/apikeys'); setKeys(d.keys || []); setError(''); }
+    catch (e) { setError(String(e.message || e)); }
+  };
+  useEffect(() => { load(); }, []);
+  const create = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      const d = await api('/api/apikeys', { method: 'POST', body: JSON.stringify({ name }) });
+      setNewToken(d.token);
+      setName('');
+      await load();
+    } catch (e2) { setError(String(e2.message || e2)); }
+    finally { setBusy(false); }
+  };
+  const remove = async (id) => {
+    if (!window.confirm('Удалить ключ? Интеграции, использующие его, перестанут работать.')) return;
+    try { await api(`/api/apikeys/${id}`, { method: 'DELETE' }); await load(); }
+    catch (e) { setError(String(e.message || e)); }
+  };
+  const fmt = (ts) => (ts ? new Date(ts * 1000).toLocaleString('ru-RU') : '—');
+  return (
+    <Shell title="API-ключи" subtitle="Доступ внешних систем по заголовку X-API-Key" onLogout={onLogout}>
+      <div className="card create-card compact-create">
+        <h2>Создать ключ</h2>
+        <form onSubmit={create}>
+          <input className="name-input" placeholder="Название (например: 3wg.ru backend)" value={name} onChange={(e) => setName(e.target.value)} />
+          <button className="orange-btn" type="submit" disabled={busy}><Plus size={15} /> Создать ключ</button>
+        </form>
+        {newToken && (
+          <div className="success" style={{ wordBreak: 'break-all' }}>
+            Новый ключ (скопируйте сейчас — он больше не будет показан):<br />
+            <code>{newToken}</code>
+            <button className="copy-button" type="button" style={{ marginLeft: 8 }} onClick={() => navigator.clipboard?.writeText(newToken)}><Copy size={13} /> Copy</button>
+          </div>
+        )}
+        {error && <div className="warning">{error}</div>}
+      </div>
+      <div className="card">
+        <h2>Активные ключи</h2>
+        <div className="table-wrap">
+          <table className="clients-table" style={{ width: '100%', minWidth: 640 }}>
+            <thead><tr><th>ID</th><th>Название</th><th>Ключ</th><th>Создан</th><th>Использован</th><th></th></tr></thead>
+            <tbody>
+              {keys.length === 0 && <tr><td className="empty-table" colSpan={6}>Ключей пока нет</td></tr>}
+              {keys.map((k) => (
+                <tr key={k.id}>
+                  <td>{k.id}</td>
+                  <td>{k.name}</td>
+                  <td><code>{k.token_masked}</code></td>
+                  <td>{fmt(k.created_at)}</td>
+                  <td>{fmt(k.last_used_at)}</td>
+                  <td className="actions-cell"><div className="actions">
+                    <button className="icon-button danger" title="Удалить" onClick={() => remove(k.id)}><Trash2 size={14} /></button>
+                  </div></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </Shell>
+  );
+}
+
+
 function App() {
   const [auth, setAuth] = useState({ loading: true, ok: false });
   const check = async () => {
@@ -1092,6 +1167,7 @@ function App() {
   if (clientMatch) return <ClientPage clientId={clientMatch[1]} onLogout={logout} />;
   if (statusMatch) return <StatusPage protocol={statusMatch[1]} onLogout={logout} />;
   if (trafficMatch) return <TrafficPage protocol={trafficMatch[1]} onLogout={logout} />;
+  if (window.location.pathname === '/apikeys') return <ApiKeysPage onLogout={logout} />;
   return <Dashboard onLogout={logout} />;
 }
 

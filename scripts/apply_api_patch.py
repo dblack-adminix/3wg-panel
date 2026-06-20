@@ -6,6 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 APP_PATH = ROOT / 'app/app.py'
 START = '# === 3WG REACT API START ==='
 END = '# === 3WG REACT API END ==='
+FRONTEND_END = '# === 3WG REACT FRONTEND END ==='
 
 API_BLOCK = '''
 # === 3WG REACT API START ===
@@ -14,6 +15,10 @@ from fastapi.responses import JSONResponse
 
 
 def api_is_authenticated(request: Request) -> bool:
+    header_key = request.headers.get('x-api-key', '')
+    validator = globals().get('api_key_valid')
+    if header_key and callable(validator) and validator(header_key):
+        return True
     cookie_token = request.cookies.get(SESSION_COOKIE)
     return bool(cookie_token and secrets.compare_digest(cookie_token, make_session_token()))
 
@@ -544,8 +549,11 @@ def api_peer_delete(client_id: int, user=Depends(api_require_auth)):
 
 text = APP_PATH.read_text(encoding='utf-8')
 block_re = re.compile(re.escape(START) + r'.*?' + re.escape(END) + r'\n?', flags=re.S)
-cleaned = block_re.sub('', text).rstrip() + '\n\n'
-patched = cleaned + API_BLOCK
+cleaned = block_re.sub('', text).rstrip()
+if FRONTEND_END in cleaned:
+    patched = cleaned.replace(FRONTEND_END, FRONTEND_END + '\n\n' + API_BLOCK, 1)
+else:
+    patched = cleaned + '\n\n' + API_BLOCK
 patched = re.sub(
     r'(# === 3WG REACT FRONTEND END ===)\n{3,}(# === 3WG REACT API START ===)',
     r'\1\n\n\2',

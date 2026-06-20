@@ -17,6 +17,7 @@ from pathlib import Path
 
 import docker
 import qrcode
+from api_keys_store import create_api_key, delete_api_key, init_api_keys, list_api_keys, valid_api_key
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
@@ -128,8 +129,8 @@ def login_html(error: str = "") -> str:
   --line:#283247;
   --text:#e9eefc;
   --muted:#8d9ab0;
-  --orange:#f4a340;
-  --green:#14f0a0;
+  --orange:#ff8c00;
+  --green:#c8ff00;
   --red:#ff5b6c;
 }}
 *{{box-sizing:border-box}}
@@ -141,7 +142,7 @@ body{{
   justify-content:center;
   background:
     radial-gradient(circle at 20% 20%, rgba(39,217,255,.12), transparent 28%),
-    radial-gradient(circle at 80% 70%, rgba(20,240,160,.09), transparent 28%),
+    radial-gradient(circle at 80% 70%, rgba(200,255,0,.09), transparent 28%),
     var(--bg);
   color:var(--text);
   font-family:Inter,Arial,sans-serif;
@@ -213,8 +214,8 @@ button{{
 .badge{{
   display:inline-block;
   color:var(--green);
-  border:1px solid rgba(20,240,160,.4);
-  background:rgba(20,240,160,.08);
+  border:1px solid rgba(200,255,0,.4);
+  background:rgba(200,255,0,.08);
   padding:5px 9px;
   border-radius:999px;
   font-size:12px;
@@ -900,17 +901,17 @@ def page(title: str, body: str) -> str:
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
 :root {{
-  --bg:#080d14;
+  --bg:#000000;
   --card:#111822;
   --card2:#0d131c;
   --line:#2a3441;
   --text:#dce7f5;
   --muted:#7e8ba0;
-  --green:#14f0a0;
+  --green:#c8ff00;
   --cyan:#27d9ff;
   --red:#ff5b6c;
-  --yellow:#f8b62d;
-  --orange:#f4a340;
+  --yellow:#ff8c00;
+  --orange:#ff8c00;
 }}
 *{{box-sizing:border-box}}
 body{{margin:0;background:var(--bg);color:var(--text);font-family:Inter,Arial,sans-serif}}
@@ -930,7 +931,7 @@ table{{width:100%;border-collapse:collapse;font-size:14px}}
 th,td{{border-bottom:1px solid var(--line);padding:13px 10px;text-align:left;vertical-align:middle;white-space:nowrap}}
 th{{color:#98a6b9;font-weight:800}}
 tr:hover{{background:#101927}}
-code,pre{{background:#070c13;color:#e9eefc;border:1px solid var(--line);border-radius:12px}}
+code,pre{{background:#070707;color:#e9eefc;border:1px solid var(--line);border-radius:12px}}
 code{{padding:3px 7px}}
 pre{{padding:16px;overflow-x:auto;white-space:pre-wrap;line-height:1.45}}
 .muted{{color:var(--muted)}}
@@ -1517,17 +1518,17 @@ def page(title: str, body: str) -> str:
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
 :root {{
-  --bg:#080d14;
+  --bg:#000000;
   --card:#111822;
   --card2:#0d131c;
   --line:#2a3441;
   --text:#dce7f5;
   --muted:#7e8ba0;
-  --green:#14f0a0;
+  --green:#c8ff00;
   --cyan:#27d9ff;
   --red:#ff5b6c;
-  --yellow:#f8b62d;
-  --orange:#f4a340;
+  --yellow:#ff8c00;
+  --orange:#ff8c00;
 }}
 *{{box-sizing:border-box}}
 body{{margin:0;background:var(--bg);color:var(--text);font-family:Inter,Arial,sans-serif}}
@@ -1547,14 +1548,14 @@ table{{width:100%;border-collapse:collapse;font-size:14px}}
 th,td{{border-bottom:1px solid var(--line);padding:13px 10px;text-align:left;vertical-align:middle;white-space:nowrap}}
 th{{color:#98a6b9;font-weight:800}}
 tr:hover{{background:#101927}}
-code,pre{{background:#070c13;color:#e9eefc;border:1px solid var(--line);border-radius:12px}}
+code,pre{{background:#070707;color:#e9eefc;border:1px solid var(--line);border-radius:12px}}
 code{{padding:3px 7px}}
 pre{{padding:16px;overflow-x:auto;white-space:pre-wrap;line-height:1.45}}
 .muted{{color:var(--muted)}}
 .ok{{color:var(--green);font-weight:900}}
 .bad{{color:var(--red);font-weight:900}}
 .dot{{display:inline-block;width:12px;height:12px;border-radius:50%;background:var(--yellow);box-shadow:0 0 16px rgba(248,182,45,.5);margin-right:8px}}
-.dot-green{{background:var(--green);box-shadow:0 0 16px rgba(20,240,160,.5)}}
+.dot-green{{background:var(--green);box-shadow:0 0 16px rgba(200,255,0,.5)}}
 .dot-red{{background:var(--red)}}
 .proto{{padding:5px 10px;border-radius:999px;background:#1d2a3b;color:#eaf4ff;font-weight:900}}
 .proto-awg{{background:#102d39;color:#30dfff}}
@@ -1565,7 +1566,7 @@ pre{{padding:16px;overflow-x:auto;white-space:pre-wrap;line-height:1.45}}
 
 .modal-bg{{display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:9999;padding:30px;overflow:auto}}
 .modal-bg.open{{display:block}}
-.modal-window{{max-width:1350px;margin:20px auto;background:#0b111b;border:1px solid #344052;border-radius:22px;box-shadow:0 30px 100px rgba(0,0,0,.65);overflow:hidden}}
+.modal-window{{max-width:1350px;margin:20px auto;background:#0a0a0a;border:1px solid #344052;border-radius:22px;box-shadow:0 30px 100px rgba(0,0,0,.65);overflow:hidden}}
 .modal-head{{display:flex;align-items:center;justify-content:space-between;padding:18px 22px;background:#111a28;border-bottom:1px solid var(--line)}}
 .modal-head b{{font-size:18px}}
 .modal-body{{padding:22px}}
@@ -1651,24 +1652,24 @@ document.getElementById('statusModal').addEventListener('click', function(e) {{
 def theme_css():
     return PlainTextResponse(r"""
 :root {
-  --neo-bg: #080d14;
-  --neo-bg2: #0b111b;
-  --neo-sidebar: #070c13;
-  --neo-card: #111a26;
-  --neo-card2: #0e1621;
-  --neo-border: #263342;
-  --neo-border2: #314255;
-  --neo-text: #e8f0fb;
-  --neo-muted: #8c9aac;
-  --neo-muted2: #667489;
-  --neo-green: #14f0a0;
-  --neo-green2: #0bbd80;
-  --neo-cyan: #25d9ff;
-  --neo-blue: #4a7cff;
+  --neo-bg: #000000;
+  --neo-bg2: #0a0a0a;
+  --neo-sidebar: #070707;
+  --neo-card: #0d0d0d;
+  --neo-card2: #111111;
+  --neo-border: #262626;
+  --neo-border2: #333333;
+  --neo-text: #ffffff;
+  --neo-muted: #999999;
+  --neo-muted2: #666666;
+  --neo-green: #c8ff00;
+  --neo-green2: #a3d100;
+  --neo-cyan: #ff8c00;
+  --neo-blue: #ff8c00;
   --neo-red: #ff5b73;
   --neo-red2: #4a121d;
-  --neo-yellow: #f8b62d;
-  --neo-orange: #f4a340;
+  --neo-yellow: #ff8c00;
+  --neo-orange: #ff8c00;
   --neo-shadow: 0 18px 70px rgba(0,0,0,.38);
 }
 
@@ -1678,9 +1679,9 @@ html {
 
 body {
   background:
-    radial-gradient(circle at 20% -10%, rgba(37,217,255,.08), transparent 32%),
-    radial-gradient(circle at 100% 0%, rgba(20,240,160,.06), transparent 28%),
-    linear-gradient(180deg, #080d14 0%, #0a1018 100%) !important;
+    radial-gradient(circle at 20% -10%, rgba(255,140,0,.08), transparent 32%),
+    radial-gradient(circle at 100% 0%, rgba(200,255,0,.06), transparent 28%),
+    linear-gradient(180deg, #000000 0%, #0a0a0a 100%) !important;
   color: var(--neo-text) !important;
   min-height: 100vh;
 }
@@ -1696,9 +1697,9 @@ body {
   inset: 0 auto 0 0;
   width: 230px;
   background:
-    linear-gradient(180deg, rgba(9,16,25,.98), rgba(6,10,16,.98)),
-    radial-gradient(circle at top, rgba(37,217,255,.08), transparent 38%);
-  border-right: 1px solid rgba(49,66,85,.75);
+    linear-gradient(180deg, rgba(7,7,7,.98), rgba(5,5,5,.98)),
+    radial-gradient(circle at top, rgba(255,140,0,.08), transparent 38%);
+  border-right: 1px solid rgba(51,51,51,.75);
   z-index: 1000;
   padding: 18px 14px;
   box-shadow: 18px 0 60px rgba(0,0,0,.25);
@@ -1709,7 +1710,7 @@ body {
   align-items: center;
   gap: 11px;
   padding: 6px 8px 22px;
-  border-bottom: 1px dashed rgba(37,217,255,.18);
+  border-bottom: 1px dashed rgba(255,140,0,.18);
   margin-bottom: 18px;
 }
 
@@ -1719,11 +1720,11 @@ body {
   border-radius: 11px;
   display: grid;
   place-items: center;
-  background: rgba(20,240,160,.1);
+  background: rgba(200,255,0,.1);
   color: var(--neo-green);
-  border: 1px solid rgba(20,240,160,.35);
+  border: 1px solid rgba(200,255,0,.35);
   font-weight: 900;
-  box-shadow: 0 0 22px rgba(20,240,160,.12);
+  box-shadow: 0 0 22px rgba(200,255,0,.12);
 }
 
 .neo-brand-title {
@@ -1754,7 +1755,7 @@ body {
   min-height: 39px;
   padding: 0 12px;
   border-radius: 11px;
-  color: #b9c5d6;
+  color: #cccccc;
   text-decoration: none;
   font-weight: 700;
   font-size: 14px;
@@ -1764,9 +1765,9 @@ body {
 
 .neo-nav a:hover,
 .neo-nav a.active {
-  background: rgba(20,240,160,.08);
-  border-color: rgba(20,240,160,.22);
-  color: #eafff6;
+  background: rgba(200,255,0,.08);
+  border-color: rgba(200,255,0,.22);
+  color: #f5ffe0;
 }
 
 .neo-nav .ico {
@@ -1795,8 +1796,8 @@ body {
   width: 42px;
   height: 42px;
   border-radius: 14px;
-  background: rgba(37,217,255,.08);
-  border: 1px solid rgba(37,217,255,.25);
+  background: rgba(255,140,0,.08);
+  border: 1px solid rgba(255,140,0,.25);
   color: var(--neo-cyan);
   font-weight: 900;
 }
@@ -1814,7 +1815,7 @@ body {
   display: grid;
   place-items: center;
   background: rgba(17,26,38,.86);
-  border: 1px solid rgba(49,66,85,.9);
+  border: 1px solid rgba(51,51,51,.9);
   color: var(--neo-text);
   box-shadow: 0 10px 30px rgba(0,0,0,.18);
 }
@@ -1836,7 +1837,7 @@ h2 {
 .st-card {
   background:
     linear-gradient(180deg, rgba(18,27,40,.94), rgba(12,19,29,.94)) !important;
-  border: 1px solid rgba(49,66,85,.75) !important;
+  border: 1px solid rgba(51,51,51,.75) !important;
   box-shadow: var(--neo-shadow) !important;
 }
 
@@ -1864,14 +1865,14 @@ h2 {
   width: 40px;
   height: 40px;
   border-radius: 14px;
-  background: rgba(20,240,160,.08);
-  border: 1px solid rgba(20,240,160,.18);
+  background: rgba(200,255,0,.08);
+  border: 1px solid rgba(200,255,0,.18);
 }
 
 .stat .n {
   color: var(--neo-green) !important;
   font-size: 24px !important;
-  text-shadow: 0 0 18px rgba(20,240,160,.22);
+  text-shadow: 0 0 18px rgba(200,255,0,.22);
 }
 
 .stat .l {
@@ -1890,8 +1891,8 @@ input {
 }
 
 input:focus {
-  border-color: rgba(37,217,255,.65) !important;
-  box-shadow: 0 0 0 4px rgba(37,217,255,.08) !important;
+  border-color: rgba(255,140,0,.65) !important;
+  box-shadow: 0 0 0 4px rgba(255,140,0,.08) !important;
 }
 
 button,
@@ -1921,8 +1922,8 @@ thead th {
 }
 
 tbody tr {
-  background: rgba(9,16,25,.66);
-  border: 1px solid rgba(49,66,85,.55);
+  background: rgba(7,7,7,.66);
+  border: 1px solid rgba(51,51,51,.55);
 }
 
 tbody tr:hover {
@@ -1930,23 +1931,23 @@ tbody tr:hover {
 }
 
 tbody td {
-  border-bottom: 1px solid rgba(49,66,85,.45) !important;
+  border-bottom: 1px solid rgba(51,51,51,.45) !important;
   padding: 13px 10px !important;
 }
 
 tbody td:first-child {
-  border-left: 1px solid rgba(49,66,85,.45);
+  border-left: 1px solid rgba(51,51,51,.45);
   border-radius: 12px 0 0 12px;
 }
 
 tbody td:last-child {
-  border-right: 1px solid rgba(49,66,85,.45);
+  border-right: 1px solid rgba(51,51,51,.45);
   border-radius: 0 12px 12px 0;
 }
 
 code {
   background: #070d15 !important;
-  border: 1px solid rgba(49,66,85,.72) !important;
+  border: 1px solid rgba(51,51,51,.72) !important;
   color: #e8f3ff !important;
   border-radius: 9px !important;
 }
@@ -1958,15 +1959,15 @@ code {
 }
 
 .proto-awg {
-  background: rgba(37,217,255,.11) !important;
+  background: rgba(255,140,0,.11) !important;
   color: #42e4ff !important;
-  border: 1px solid rgba(37,217,255,.22);
+  border: 1px solid rgba(255,140,0,.22);
 }
 
 .proto-wg {
-  background: rgba(20,240,160,.11) !important;
+  background: rgba(200,255,0,.11) !important;
   color: #55ffb5 !important;
-  border: 1px solid rgba(20,240,160,.22);
+  border: 1px solid rgba(200,255,0,.22);
 }
 
 .ok {
@@ -1981,7 +1982,7 @@ code {
 
 .dot-green {
   background: var(--neo-green) !important;
-  box-shadow: 0 0 18px rgba(20,240,160,.62) !important;
+  box-shadow: 0 0 18px rgba(200,255,0,.62) !important;
 }
 
 .btn.icon-btn,
@@ -2015,9 +2016,9 @@ button.icon-delete {
 }
 
 .btn.icon-status {
-  background: rgba(37,217,255,.10) !important;
+  background: rgba(255,140,0,.10) !important;
   color: #54e8ff !important;
-  border-color: rgba(37,217,255,.28) !important;
+  border-color: rgba(255,140,0,.28) !important;
 }
 
 form[method="post"] {
@@ -2039,7 +2040,7 @@ form[method="post"] {
 
 .modal-window {
   border-radius: 20px !important;
-  border: 1px solid rgba(49,66,85,.9) !important;
+  border: 1px solid rgba(51,51,51,.9) !important;
   background: #0a111b !important;
 }
 
@@ -2070,9 +2071,9 @@ form[method="post"] {
 }
 
 @keyframes neoPulse {
-  0% { box-shadow: 0 0 0 0 rgba(20,240,160,.26); }
-  70% { box-shadow: 0 0 0 9px rgba(20,240,160,0); }
-  100% { box-shadow: 0 0 0 0 rgba(20,240,160,0); }
+  0% { box-shadow: 0 0 0 0 rgba(200,255,0,.26); }
+  70% { box-shadow: 0 0 0 9px rgba(200,255,0,0); }
+  100% { box-shadow: 0 0 0 0 rgba(200,255,0,0); }
 }
 
 @media (max-width: 1000px) {
@@ -2237,19 +2238,19 @@ def page(title: str, body: str) -> str:
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
 :root {
-  --bg:#070c13;
-  --bg2:#0b111b;
-  --sidebar:#070c13;
-  --card:#111a26;
+  --bg:#070707;
+  --bg2:#0a0a0a;
+  --sidebar:#070707;
+  --card:#0d0d0d;
   --card2:#0d1622;
-  --line:#263342;
+  --line:#262626;
   --line2:#334357;
-  --text:#e8f0fb;
+  --text:#ffffff;
   --muted:#8795aa;
   --muted2:#5f6d80;
-  --green:#14f0a0;
-  --cyan:#25d9ff;
-  --orange:#f4a340;
+  --green:#c8ff00;
+  --cyan:#ff8c00;
+  --orange:#ff8c00;
   --red:#ff5b73;
   --redbg:#4a121d;
 }
@@ -2262,9 +2263,9 @@ html, body {
   margin:0;
   min-height:100vh;
   background:
-    radial-gradient(circle at 24% -10%, rgba(37,217,255,.10), transparent 30%),
-    radial-gradient(circle at 100% 0%, rgba(20,240,160,.07), transparent 28%),
-    linear-gradient(180deg, #070c13, #0a1018);
+    radial-gradient(circle at 24% -10%, rgba(255,140,0,.10), transparent 30%),
+    radial-gradient(circle at 100% 0%, rgba(200,255,0,.07), transparent 28%),
+    linear-gradient(180deg, #070707, #0a0a0a);
   color:var(--text);
   font-family:Inter, Arial, sans-serif;
 }
@@ -2281,7 +2282,7 @@ a {
   width:238px;
   background:
     linear-gradient(180deg, rgba(8,14,22,.98), rgba(5,9,15,.98)),
-    radial-gradient(circle at 40% 0%, rgba(37,217,255,.10), transparent 38%);
+    radial-gradient(circle at 40% 0%, rgba(255,140,0,.10), transparent 38%);
   border-right:1px solid rgba(51,67,87,.75);
   padding:18px 14px;
   z-index:1000;
@@ -2294,7 +2295,7 @@ a {
   gap:12px;
   padding:7px 8px 22px;
   margin-bottom:16px;
-  border-bottom:1px dashed rgba(37,217,255,.18);
+  border-bottom:1px dashed rgba(255,140,0,.18);
 }
 
 .neo-logo {
@@ -2303,11 +2304,11 @@ a {
   display:grid;
   place-items:center;
   border-radius:13px;
-  background:rgba(20,240,160,.10);
+  background:rgba(200,255,0,.10);
   color:var(--green);
-  border:1px solid rgba(20,240,160,.34);
+  border:1px solid rgba(200,255,0,.34);
   font-weight:900;
-  box-shadow:0 0 24px rgba(20,240,160,.14);
+  box-shadow:0 0 24px rgba(200,255,0,.14);
 }
 
 .neo-brand-title {
@@ -2348,8 +2349,8 @@ a {
 
 .neo-nav a:hover,
 .neo-nav a.active {
-  background:rgba(20,240,160,.08);
-  border-color:rgba(20,240,160,.22);
+  background:rgba(200,255,0,.08);
+  border-color:rgba(200,255,0,.22);
   color:#eafff7;
 }
 
@@ -2385,11 +2386,11 @@ a {
   display:grid;
   place-items:center;
   border-radius:15px;
-  background:rgba(37,217,255,.08);
+  background:rgba(255,140,0,.08);
   color:var(--cyan);
-  border:1px solid rgba(37,217,255,.25);
+  border:1px solid rgba(255,140,0,.25);
   font-weight:900;
-  box-shadow:0 0 24px rgba(37,217,255,.08);
+  box-shadow:0 0 24px rgba(255,140,0,.08);
 }
 
 .neo-title h1 {
@@ -2425,7 +2426,7 @@ a {
 }
 
 .neo-round:hover {
-  background:rgba(37,217,255,.10);
+  background:rgba(255,140,0,.10);
   color:#67eaff;
 }
 
@@ -2476,14 +2477,14 @@ h2 {
   width:38px;
   height:38px;
   border-radius:13px;
-  background:rgba(20,240,160,.08);
-  border:1px solid rgba(20,240,160,.18);
+  background:rgba(200,255,0,.08);
+  border:1px solid rgba(200,255,0,.18);
 }
 
 .stat .n {
   color:var(--green) !important;
   font-size:24px !important;
-  text-shadow:0 0 18px rgba(20,240,160,.22);
+  text-shadow:0 0 18px rgba(200,255,0,.22);
 }
 
 .stat .l {
@@ -2502,8 +2503,8 @@ input {
 }
 
 input:focus {
-  border-color:rgba(37,217,255,.65) !important;
-  box-shadow:0 0 0 4px rgba(37,217,255,.08) !important;
+  border-color:rgba(255,140,0,.65) !important;
+  box-shadow:0 0 0 4px rgba(255,140,0,.08) !important;
 }
 
 button,
@@ -2536,7 +2537,7 @@ thead th {
 }
 
 tbody tr {
-  background:rgba(9,16,25,.68);
+  background:rgba(7,7,7,.68);
 }
 
 tbody tr:hover {
@@ -2596,15 +2597,15 @@ pre {
 }
 
 .proto-awg {
-  background:rgba(37,217,255,.11) !important;
+  background:rgba(255,140,0,.11) !important;
   color:#42e4ff !important;
-  border:1px solid rgba(37,217,255,.22);
+  border:1px solid rgba(255,140,0,.22);
 }
 
 .proto-wg {
-  background:rgba(20,240,160,.11) !important;
+  background:rgba(200,255,0,.11) !important;
   color:#55ffb5 !important;
-  border:1px solid rgba(20,240,160,.22);
+  border:1px solid rgba(200,255,0,.22);
 }
 
 .dot {
@@ -2615,7 +2616,7 @@ pre {
 
 .dot-green {
   background:var(--green) !important;
-  box-shadow:0 0 18px rgba(20,240,160,.62) !important;
+  box-shadow:0 0 18px rgba(200,255,0,.62) !important;
 }
 
 .btn.icon-btn,
@@ -2650,9 +2651,9 @@ button.icon-delete {
 }
 
 .btn.icon-status {
-  background:rgba(37,217,255,.10) !important;
+  background:rgba(255,140,0,.10) !important;
   color:#54e8ff !important;
-  border-color:rgba(37,217,255,.28) !important;
+  border-color:rgba(255,140,0,.28) !important;
 }
 
 .qrgrid {
@@ -2937,7 +2938,7 @@ def page(title: str, body: str) -> str:
 
 <style>
 :root {
-  --bg: #080d14;
+  --bg: #000000;
   --bg-2: #0b111a;
   --side: #070b11;
   --panel: #101821;
@@ -2945,8 +2946,8 @@ def page(title: str, body: str) -> str:
   --row: #09111a;
   --row-hover: #0e1925;
   --border: #243140;
-  --border-2: #314255;
-  --text: #e8f0fb;
+  --border-2: #333333;
+  --text: #ffffff;
   --muted: #8493a8;
   --muted-2: #5f6f82;
   --green: #19e99a;
@@ -2970,7 +2971,7 @@ body {
   background:
     radial-gradient(circle at 26% -12%, rgba(32, 215, 255, .07), transparent 30%),
     radial-gradient(circle at 100% 0%, rgba(25, 233, 154, .045), transparent 28%),
-    linear-gradient(180deg, #070c13, #091018);
+    linear-gradient(180deg, #070707, #091018);
   color: var(--text);
   font-family: Inter, "Segoe UI", Arial, sans-serif;
   font-size: 14px;
@@ -2988,7 +2989,7 @@ a {
   bottom: 0;
   width: 218px;
   background: linear-gradient(180deg, rgba(8,13,20,.98), rgba(5,8,13,.98));
-  border-right: 1px solid rgba(49,66,85,.65);
+  border-right: 1px solid rgba(51,51,51,.65);
   z-index: 1000;
   padding: 14px 10px;
 }
@@ -3142,7 +3143,7 @@ a {
   border-radius: 6px;
   background: rgba(16,24,33,.92);
   color: var(--text);
-  border: 1px solid rgba(49,66,85,.85);
+  border: 1px solid rgba(51,51,51,.85);
   text-decoration: none;
   font-weight: 900;
   font-size: 11px;
@@ -3169,7 +3170,7 @@ h2 {
 .qrbox,
 .st-card {
   background: linear-gradient(180deg, rgba(16,24,33,.96), rgba(12,19,28,.96)) !important;
-  border: 1px solid rgba(49,66,85,.72) !important;
+  border: 1px solid rgba(51,51,51,.72) !important;
   box-shadow: none !important;
 }
 
@@ -3272,7 +3273,7 @@ thead th {
   text-transform: uppercase;
   letter-spacing: .045em;
   padding: 9px 9px !important;
-  border-bottom: 1px solid rgba(49,66,85,.72) !important;
+  border-bottom: 1px solid rgba(51,51,51,.72) !important;
   white-space: nowrap;
 }
 
@@ -3285,7 +3286,7 @@ tbody tr:hover {
 }
 
 tbody td {
-  border-bottom: 1px solid rgba(49,66,85,.48) !important;
+  border-bottom: 1px solid rgba(51,51,51,.48) !important;
   padding: 10px 9px !important;
   vertical-align: middle;
   white-space: nowrap;
@@ -3336,7 +3337,7 @@ tbody td:nth-last-child(3) {
 
 code {
   background: #070d15 !important;
-  border: 1px solid rgba(49,66,85,.72) !important;
+  border: 1px solid rgba(51,51,51,.72) !important;
   color: #e8f3ff !important;
   border-radius: 5px !important;
   padding: 2px 6px !important;
@@ -3345,7 +3346,7 @@ code {
 
 pre {
   background: #070d15 !important;
-  border: 1px solid rgba(49,66,85,.72) !important;
+  border: 1px solid rgba(51,51,51,.72) !important;
   border-radius: 6px !important;
   padding: 12px !important;
   line-height: 1.45;
@@ -3476,7 +3477,7 @@ button.icon-delete {
   max-width: 1280px;
   margin: 18px auto;
   background: #0a111a;
-  border: 1px solid rgba(49,66,85,.9);
+  border: 1px solid rgba(51,51,51,.9);
   border-radius: 8px;
   box-shadow: 0 20px 70px rgba(0,0,0,.56);
   overflow: hidden;
@@ -3557,7 +3558,7 @@ button.icon-delete {
   border-radius: 5px !important;
   padding: 8px !important;
   background: #08111a !important;
-  border: 1px solid rgba(49,66,85,.65) !important;
+  border: 1px solid rgba(51,51,51,.65) !important;
 }
 
 .st-mini span {
@@ -3577,7 +3578,7 @@ button.icon-delete {
 .raw-box {
   margin-top: 12px;
   background: #08111a !important;
-  border: 1px solid rgba(49,66,85,.65) !important;
+  border: 1px solid rgba(51,51,51,.65) !important;
   border-radius: 6px !important;
   padding: 10px !important;
 }
@@ -5275,7 +5276,7 @@ async def react_frontend_middleware(request: Request, call_next):
         if asset_file.exists() and asset_file.is_file():
             return ReactFileResponse(asset_file)
 
-    if (path in ('/', '/login', '/ui') or re.match(r'^/client/\d+$', path) or re.match(r'^/status/(wireguard|amneziawg)$', path) or re.match(r'^/traffic/(wireguard|amneziawg)$', path)) and index_file.exists():
+    if (path in ('/', '/login', '/ui', '/apikeys') or re.match(r'^/client/\d+$', path) or re.match(r'^/status/(wireguard|amneziawg)$', path) or re.match(r'^/traffic/(wireguard|amneziawg)$', path)) and index_file.exists():
         return ReactFileResponse(
             index_file,
             media_type='text/html; charset=utf-8',
@@ -5291,6 +5292,10 @@ from fastapi.responses import JSONResponse
 
 
 def api_is_authenticated(request: Request) -> bool:
+    header_key = request.headers.get('x-api-key', '')
+    validator = globals().get('api_key_valid')
+    if header_key and callable(validator) and validator(header_key):
+        return True
     cookie_token = request.cookies.get(SESSION_COOKIE)
     return bool(cookie_token and secrets.compare_digest(cookie_token, make_session_token()))
 
@@ -5817,6 +5822,95 @@ def api_peer_delete(client_id: int, user=Depends(api_require_auth)):
         return api_error(str(e), status_code=500)
     return {'ok': True, 'deleted_id': client_id}
 # === 3WG REACT API END ===
+
+
+
+
+
+
+
+
+
+# === 3WG SYSTEM STATUS API START ===
+import shutil as _shutil
+
+def _read_proc_stat():
+    with open('/proc/stat') as f:
+        parts = f.readline().split()
+    vals = [int(x) for x in parts[1:11]]
+    idle = vals[3] + vals[4]
+    total = sum(vals)
+    return idle, total
+
+@app.get('/api/node/system')
+def api_node_system(user=Depends(api_require_auth)):
+    # CPU: два замера /proc/stat с паузой
+    idle1, total1 = _read_proc_stat()
+    time.sleep(0.2)
+    idle2, total2 = _read_proc_stat()
+    dt = total2 - total1
+    cpu_percent = round((1 - (idle2 - idle1) / dt) * 100, 1) if dt > 0 else 0.0
+
+    # Память: /proc/meminfo (в контейнере отражает хост)
+    mem = {}
+    with open('/proc/meminfo') as f:
+        for line in f:
+            k, v = line.split(':', 1)
+            mem[k] = int(v.strip().split()[0]) * 1024
+    mem_total = mem.get('MemTotal', 0)
+    mem_available = mem.get('MemAvailable', 0)
+    mem_used = mem_total - mem_available
+    mem_percent = round(mem_used / mem_total * 100, 1) if mem_total else 0.0
+
+    # Диск: корень контейнера (overlay поверх корня хоста)
+    du = _shutil.disk_usage('/')
+    disk_percent = round(du.used / du.total * 100, 1) if du.total else 0.0
+
+    return {
+        'ok': True,
+        'cpu_percent': cpu_percent,
+        'memory': {'total': mem_total, 'available': mem_available, 'used': mem_used, 'percent': mem_percent},
+        'disk': {'total': du.total, 'used': du.used, 'free': du.free, 'percent': disk_percent},
+    }
+# === 3WG SYSTEM STATUS API END ===
+
+
+# === 3WG API KEYS START ===
+def api_key_valid(token: str) -> bool:
+    return valid_api_key(DB_PATH, token)
+
+
+init_api_keys(DB_PATH)
+
+
+def _apikey_session_only(request: Request):
+    """Управление ключами — только через cookie-сессию (не по самому ключу)."""
+    cookie_token = request.cookies.get(SESSION_COOKIE)
+    if cookie_token and secrets.compare_digest(cookie_token, make_session_token()):
+        return PANEL_USER
+    raise HTTPException(status_code=401, detail='Unauthorized')
+
+
+@app.get('/api/apikeys')
+def api_apikeys_list(user=Depends(_apikey_session_only)):
+    return {'ok': True, 'keys': list_api_keys(DB_PATH)}
+
+
+@app.post('/api/apikeys')
+async def api_apikeys_create(request: Request, user=Depends(_apikey_session_only)):
+    data = await api_read_payload(request)
+    created = create_api_key(DB_PATH, data.get('name', ''))
+    return {'ok': True, **created}
+
+
+@app.delete('/api/apikeys/{key_id}')
+def api_apikeys_delete(key_id: int, user=Depends(_apikey_session_only)):
+    if not delete_api_key(DB_PATH, key_id):
+        return api_error('Ключ не найден', status_code=404)
+    return {'ok': True, 'deleted_id': key_id}
+
+
+# === 3WG API KEYS END ===
 
 # === 3WG DASHBOARD MODEL API START ===
 # API-модель экрана для будущего React: React должен повторять текущий красивый /.

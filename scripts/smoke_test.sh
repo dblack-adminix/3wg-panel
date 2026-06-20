@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 echo "== Python syntax =="
-python3 -m py_compile app/app.py scripts/apply_api_patch.py scripts/apply_dashboard_model_patch.py
+python3 -m py_compile app/app.py app/api_keys_store.py scripts/apply_api_patch.py scripts/apply_dashboard_model_patch.py
 
 echo "== Frontend build =="
 npm --prefix frontend run build
