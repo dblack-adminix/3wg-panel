@@ -60,26 +60,49 @@ Git repository [https://github.com/dblack-adminix/3wg-panel.git]:
 Git branch/tag [dev]:
 ```
 
+## 3. Поля installer: что вводить
+
+Если в квадратных скобках уже стоит подходящее значение, просто нажимайте Enter. Вводить нужно только то, что отличается на вашем сервере.
+
+| Поле | Что вводить | Пример | Когда оставить Enter |
+| --- | --- | --- | --- |
+| `Git repository` | HTTPS или SSH адрес Git-репозитория с кодом панели. | `https://github.com/dblack-adminix/3wg-panel.git` | Для обычной установки из основного публичного репозитория. |
+| `Git branch/tag` | Ветка или tag, который нужно установить. | `dev` | Сейчас основная рабочая ветка — `dev`, её и оставляем. |
+| `Install directory` | Папка на сервере, куда будет установлен проект. | `/opt/3wg-panel` | Почти всегда оставляем `/opt/3wg-panel`. |
+| `Docker image name` | Имя Docker image, который соберёт installer. | `3wg-panel:local` | Если на сервере одна панель. |
+| `Docker container name` | Имя контейнера панели. | `3wg-panel` | Если на сервере одна панель. |
+| `Bind host` | На каком IP слушать HTTP-панель. | `127.0.0.1` | Если панель будет открываться через Caddy/Nginx и HTTPS. |
+| `Bind port` | Локальный TCP-порт панели. | `18080` | Если порт свободен. |
+| `Public endpoint host / domain` | Публичный домен или hostname сервера. Он попадёт в клиентские конфиги как endpoint. | `nl-ams-02.nodax.eu` | Только если предложенное имя уже правильное. |
+| `Configure Caddy reverse proxy for this domain? 1=yes, 0=no` | Настраивать ли HTTPS через Caddy автоматически. | `1` | Ставьте `1`, если домен уже указывает на сервер и хотите открыть панель по HTTPS. |
+| `Panel admin username` | Логин администратора панели. | `admin` | Если устраивает логин `admin`. |
+| `Panel admin password, empty = auto-generate` | Пароль администратора. Можно оставить пустым, installer сгенерирует сам. | `MyStrongPassword` | Для авто-пароля нажмите Enter. Installer покажет пароль в конце. |
+| `WireGuard container name` | Имя уже существующего Docker-контейнера WireGuard. | `amnezia-wireguard` | Если контейнер WireGuard называется так же. Проверьте через `docker ps`. |
+| `WireGuard interface` | Имя интерфейса WireGuard внутри контейнера. | `wg0` | Если в контейнере интерфейс `wg0`. |
+| `WireGuard UDP port` | UDP-порт WireGuard, который открыт наружу. | `45630` | Не оставляйте `51820`, если контейнер реально проброшен на другой порт. Смотрите `docker ps`. |
+| `WireGuard config path inside container` | Путь к конфигу WireGuard внутри контейнера. | `/opt/amnezia/wireguard/wg0.conf` | Если контейнер создан AmneziaVPN стандартно. |
+| `WireGuard network CIDR` | Подсеть, из которой выдаются IP клиентам WireGuard. | `10.8.1.0/24` | Если текущий контейнер использует эту сеть. |
+| `AmneziaWG container name` | Имя уже существующего Docker-контейнера AmneziaWG. | `amnezia-awg2` | Если контейнер AmneziaWG называется так же. |
+| `AmneziaWG interface` | Имя интерфейса AmneziaWG внутри контейнера. | `awg0` | Если в контейнере интерфейс `awg0`. |
+| `AmneziaWG UDP port` | UDP-порт AmneziaWG, который открыт наружу. | `40184` | Вводите порт из `docker ps`, а не случайный дефолт. |
+| `AmneziaWG config path inside container` | Путь к конфигу AmneziaWG внутри контейнера. | `/opt/amnezia/awg/awg0.conf` | Если контейнер создан AmneziaVPN стандартно. |
+| `AmneziaWG network CIDR` | Подсеть, из которой выдаются IP клиентам AmneziaWG. | `10.8.1.0/24` | Если текущий контейнер использует эту сеть. |
+| `Client DNS servers` | DNS, которые будут прописываться в клиентские конфиги. | `1.1.1.1, 1.0.0.1` | Если Cloudflare DNS подходит. |
+| `Hide peers not created by panel? 1=yes, 0=no` | Скрывать ли peer’ы, которые были созданы не через 3WG Panel. | `1` | Для чистой таблицы оставьте `1`. Поставьте `0`, если хотите видеть все peer’ы из контейнеров. |
+
+Самое важное при установке на новой ноде:
+
+- `Public endpoint host / domain` должен быть доменом или IP именно этой ноды.
+- UDP-порты WireGuard и AmneziaWG надо брать из `docker ps`, из колонки `PORTS`.
+- `container name` должен совпадать с именем контейнера из `docker ps`, иначе панель не сможет управлять peer’ами.
+- `network CIDR` должен совпадать с сетью уже установленного протокола, иначе новые peer’ы могут получить неправильные IP.
+
 Альтернативно можно сначала клонировать репозиторий:
 
 ```bash
 git clone --branch dev https://github.com/dblack-adminix/3wg-panel.git /opt/3wg-panel
 cd /opt/3wg-panel
 sudo bash scripts/install.sh
-```
-
-У большинства вопросов есть значения по умолчанию. Если значение подходит, нажмите Enter.
-
-Рекомендуемая папка установки:
-
-```text
-/opt/3wg-panel
-```
-
-Рекомендуемый bind address при работе за reverse proxy:
-
-```text
-127.0.0.1:18080
 ```
 
 Если указан публичный домен и bind host оставлен `127.0.0.1`, installer предложит настроить Caddy:
@@ -96,7 +119,7 @@ Configure Caddy reverse proxy for this domain? 1=yes, 0=no [1]:
 - порты `80/tcp` и `443/tcp` открыты в firewall/provider security group
 - домен уже резолвится снаружи
 
-## 3. Что делает installer
+## 4. Что делает installer
 
 Installer выполняет:
 
@@ -115,7 +138,7 @@ Installer выполняет:
 
 Для последующих обновлений используйте `scripts/update.sh`, чтобы не перезаписывать `.env`.
 
-## 4. Ручная установка
+## 5. Ручная установка
 
 Ручной вариант полезен для отладки:
 
@@ -136,7 +159,7 @@ docker run -d   --name 3wg-panel   --restart unless-stopped   --env-file /opt/3w
 curl -fsS http://127.0.0.1:18080/health
 ```
 
-## 5. HTTPS через Caddy
+## 6. HTTPS через Caddy
 
 Если Caddy не включали в installer, его можно настроить вручную. Пример Caddyfile:
 
@@ -155,7 +178,7 @@ curl -I http://panel.example.com/
 curl -I https://panel.example.com/
 ```
 
-## 6. Первый вход
+## 7. Первый вход
 
 Откройте URL, который напечатал installer, и войдите в панель.
 
