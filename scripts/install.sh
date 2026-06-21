@@ -108,6 +108,73 @@ is_local_host() {
       ;;
   esac
 }
+docker_container_exists() {
+  docker container inspect "$1" >/dev/null 2>&1
+}
+docker_udp_port() {
+  docker port "$1" 2>/dev/null | awk '$1 ~ /\/udp$/ { port=$3; sub(/^.*:/, "", port); print port; exit }'
+}
+find_protocol_config_path() {
+  local container="$1" protocol="$2"
+  case "$protocol" in
+    wireguard)
+      docker exec "$container" sh -c 'for f in /opt/amnezia/wireguard/*.conf /etc/wireguard/*.conf /config/*.conf; do [ -f "$f" ] && printf "%s\n" "$f" && exit 0; done; exit 1' 2>/dev/null || true
+      ;;
+    amneziawg)
+      docker exec "$container" sh -c 'for f in /opt/amnezia/awg/*.conf /opt/amnezia/amneziawg/*.conf /etc/wireguard/*.conf /config/*.conf; do [ -f "$f" ] && printf "%s\n" "$f" && exit 0; done; exit 1' 2>/dev/null || true
+      ;;
+  esac
+}
+config_interface_name() {
+  local path="$1" name
+  name="${path##*/}"
+  printf '%s' "${name%.conf}"
+}
+config_listen_port() {
+  local container="$1" path="$2"
+  [ -n "$path" ] || return 0
+  docker exec "$container" sh -c 'awk -F= "tolower(\$1) ~ /^[[:space:]]*listenport[[:space:]]*$/ { gsub(/[[:space:]]/, \"\", \$2); print \$2; exit }" "$1"' sh "$path" 2>/dev/null || true
+}
+config_network_cidr() {
+  local container="$1" path="$2" address
+  [ -n "$path" ] || return 0
+  address="$(docker exec "$container" sh -c 'awk -F= "tolower(\$1) ~ /^[[:space:]]*address[[:space:]]*$/ { gsub(/[[:space:]]/, \"\", \$2); split(\$2, a, \",\"); print a[1]; exit }" "$1"' sh "$path" 2>/dev/null || true)"
+  [ -n "$address" ] || return 0
+  python3 - "$address" <<'PY' 2>/dev/null || true
+import ipaddress
+import sys
+
+print(ipaddress.ip_interface(sys.argv[1]).network)
+PY
+}
+detect_or_ask() {
+  local label="$1" detected="$2" fallback="$3"
+  if [ -n "$detected" ]; then
+    printf 'Detected %s: %s\n' "$label" "$detected" >&2
+    printf '%s' "$detected"
+  else
+    ask "$label" "$fallback"
+  fi
+}
+detect_protocol_settings() {
+  local title="$1" protocol="$2" container="$3" default_interface="$4" default_port="$5" default_config_path="$6" default_network="$7"
+  local config_path interface port network
+
+  docker_container_exists "$container" || fail "$title container '$container' не найден. Проверьте имя контейнера через docker ps."
+
+  config_path="$(find_protocol_config_path "$container" "$protocol" | head -n 1)"
+  interface=""
+  [ -n "$config_path" ] && interface="$(config_interface_name "$config_path")"
+  port="$(docker_udp_port "$container")"
+  [ -n "$port" ] || port="$(config_listen_port "$container" "$config_path")"
+  network="$(config_network_cidr "$container" "$config_path")"
+
+  printf '\n%s detected settings\n' "$title" >&2
+  DETECTED_INTERFACE="$(detect_or_ask "$title interface" "$interface" "$default_interface")"
+  DETECTED_PORT="$(detect_or_ask "$title UDP port" "$port" "$default_port")"
+  DETECTED_CONFIG_PATH="$(detect_or_ask "$title config path inside container" "$config_path" "$default_config_path")"
+  DETECTED_NETWORK="$(detect_or_ask "$title network CIDR" "$network" "$default_network")"
+}
 setup_caddy_proxy() {
   local domain="$1" upstream_host="$2" upstream_port="$3"
   local caddyfile="/etc/caddy/Caddyfile"
@@ -195,18 +262,22 @@ PANEL_PASSWORD="$(ask_secret 'Panel admin password, empty = auto-generate' "$(ge
 SESSION_SECRET="$(gen_secret)"
 
 WG_CONTAINER="$(ask 'WireGuard container name' 'amnezia-wireguard')"
-WG_INTERFACE="$(ask 'WireGuard interface' 'wg0')"
-WG_PORT="$(ask 'WireGuard UDP port' '51820')"
-WG_CONFIG_PATH="$(ask 'WireGuard config path inside container' '/opt/amnezia/wireguard/wg0.conf')"
-WG_NETWORK="$(ask 'WireGuard network CIDR' '10.8.1.0/24')"
-
 AWG_CONTAINER="$(ask 'AmneziaWG container name' 'amnezia-awg2')"
-AWG_INTERFACE="$(ask 'AmneziaWG interface' 'awg0')"
-AWG_PORT="$(ask 'AmneziaWG UDP port' '42300')"
-AWG_CONFIG_PATH="$(ask 'AmneziaWG config path inside container' '/opt/amnezia/awg/awg0.conf')"
-AWG_NETWORK="$(ask 'AmneziaWG network CIDR' '10.8.1.0/24')"
 DNS_SERVERS="$(ask 'Client DNS servers' '1.1.1.1, 1.0.0.1')"
 HIDE_EXISTING_PEERS="$(ask 'Hide peers not created by panel? 1=yes, 0=no' '1')"
+
+say "Detecting protocol settings"
+detect_protocol_settings "WireGuard" "wireguard" "$WG_CONTAINER" "wg0" "51820" "/opt/amnezia/wireguard/wg0.conf" "10.8.1.0/24"
+WG_INTERFACE="$DETECTED_INTERFACE"
+WG_PORT="$DETECTED_PORT"
+WG_CONFIG_PATH="$DETECTED_CONFIG_PATH"
+WG_NETWORK="$DETECTED_NETWORK"
+
+detect_protocol_settings "AmneziaWG" "amneziawg" "$AWG_CONTAINER" "awg0" "42300" "/opt/amnezia/awg/awg0.conf" "10.8.1.0/24"
+AWG_INTERFACE="$DETECTED_INTERFACE"
+AWG_PORT="$DETECTED_PORT"
+AWG_CONFIG_PATH="$DETECTED_CONFIG_PATH"
+AWG_NETWORK="$DETECTED_NETWORK"
 
 say "Preparing source"
 mkdir -p "$(dirname "$INSTALL_DIR")"

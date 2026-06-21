@@ -24,8 +24,7 @@ docker ps
 
 - публичный домен или endpoint host
 - логин и пароль панели
-- WireGuard container name, interface, UDP port, config path, CIDR
-- AmneziaWG container name, interface, UDP port, config path, CIDR
+- имена уже установленных WireGuard и AmneziaWG контейнеров из `docker ps`
 
 ## 2. Запустите installer
 
@@ -77,25 +76,25 @@ Git branch/tag [dev]:
 | `Configure Caddy reverse proxy for this domain? 1=yes, 0=no` | Настраивать ли HTTPS через Caddy автоматически. | `1` | Ставьте `1`, если домен уже указывает на сервер и хотите открыть панель по HTTPS. |
 | `Panel admin username` | Логин администратора панели. | `admin` | Если устраивает логин `admin`. |
 | `Panel admin password, empty = auto-generate` | Пароль администратора. Можно оставить пустым, installer сгенерирует сам. | `MyStrongPassword` | Для авто-пароля нажмите Enter. Installer покажет пароль в конце. |
-| `WireGuard container name` | Имя уже существующего Docker-контейнера WireGuard. | `amnezia-wireguard` | Если контейнер WireGuard называется так же. Проверьте через `docker ps`. |
-| `WireGuard interface` | Имя интерфейса WireGuard внутри контейнера. | `wg0` | Если в контейнере интерфейс `wg0`. |
-| `WireGuard UDP port` | UDP-порт WireGuard, который открыт наружу. | `45630` | Не оставляйте `51820`, если контейнер реально проброшен на другой порт. Смотрите `docker ps`. |
-| `WireGuard config path inside container` | Путь к конфигу WireGuard внутри контейнера. | `/opt/amnezia/wireguard/wg0.conf` | Если контейнер создан AmneziaVPN стандартно. |
-| `WireGuard network CIDR` | Подсеть, из которой выдаются IP клиентам WireGuard. | `10.8.1.0/24` | Если текущий контейнер использует эту сеть. |
-| `AmneziaWG container name` | Имя уже существующего Docker-контейнера AmneziaWG. | `amnezia-awg2` | Если контейнер AmneziaWG называется так же. |
-| `AmneziaWG interface` | Имя интерфейса AmneziaWG внутри контейнера. | `awg0` | Если в контейнере интерфейс `awg0`. |
-| `AmneziaWG UDP port` | UDP-порт AmneziaWG, который открыт наружу. | `40184` | Вводите порт из `docker ps`, а не случайный дефолт. |
-| `AmneziaWG config path inside container` | Путь к конфигу AmneziaWG внутри контейнера. | `/opt/amnezia/awg/awg0.conf` | Если контейнер создан AmneziaVPN стандартно. |
-| `AmneziaWG network CIDR` | Подсеть, из которой выдаются IP клиентам AmneziaWG. | `10.8.1.0/24` | Если текущий контейнер использует эту сеть. |
+| `WireGuard container name` | Имя уже существующего Docker-контейнера WireGuard. По нему installer сам найдёт interface, UDP port, config path и network CIDR. | `amnezia-wireguard` | Если контейнер WireGuard называется так же. Проверьте через `docker ps`. |
+| `AmneziaWG container name` | Имя уже существующего Docker-контейнера AmneziaWG. По нему installer сам найдёт interface, UDP port, config path и network CIDR. | `amnezia-awg2` | Если контейнер AmneziaWG называется так же. |
 | `Client DNS servers` | DNS, которые будут прописываться в клиентские конфиги. | `1.1.1.1, 1.0.0.1` | Если Cloudflare DNS подходит. |
 | `Hide peers not created by panel? 1=yes, 0=no` | Скрывать ли peer’ы, которые были созданы не через 3WG Panel. | `1` | Для чистой таблицы оставьте `1`. Поставьте `0`, если хотите видеть все peer’ы из контейнеров. |
+
+После ввода имён контейнеров installer автоматически проверит:
+
+- published UDP port через Docker
+- путь к `.conf` внутри контейнера
+- имя interface из имени `.conf`, например `wg0.conf` -> `wg0`
+- network CIDR из строки `Address` в `[Interface]`
+
+Если какое-то значение не удалось определить, installer спросит только это конкретное поле и подставит безопасный default.
 
 Самое важное при установке на новой ноде:
 
 - `Public endpoint host / domain` должен быть доменом или IP именно этой ноды.
-- UDP-порты WireGuard и AmneziaWG надо брать из `docker ps`, из колонки `PORTS`.
 - `container name` должен совпадать с именем контейнера из `docker ps`, иначе панель не сможет управлять peer’ами.
-- `network CIDR` должен совпадать с сетью уже установленного протокола, иначе новые peer’ы могут получить неправильные IP.
+- Убедитесь, что в `docker ps` у protocol-контейнеров опубликованы UDP-порты. Эти порты попадут в клиентские конфиги.
 
 Альтернативно можно сначала клонировать репозиторий:
 

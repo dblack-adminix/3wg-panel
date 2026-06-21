@@ -70,8 +70,7 @@ Installer спросит:
 - bind host и port
 - публичный endpoint host/domain
 - логин и пароль панели
-- параметры WireGuard: container, interface, port, config path, network
-- параметры AmneziaWG: container, interface, port, config path, network
+- имена WireGuard и AmneziaWG контейнеров; interface, UDP port, config path и network installer определит автоматически
 - DNS servers
 - скрывать ли peer'ы, созданные не панелью
 
