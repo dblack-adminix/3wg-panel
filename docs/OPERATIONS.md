@@ -33,6 +33,15 @@ cd /opt/3wg-panel
 sudo bash scripts/update.sh
 ```
 
+Если сервер был установлен раньше и локальный `scripts/update.sh` ещё старый, сначала запустите свежий updater напрямую из GitHub:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/dblack-adminix/3wg-panel/dev/scripts/update.sh -o /tmp/3wg-update.sh
+sudo bash /tmp/3wg-update.sh
+```
+
+Этот вариант нужен именно для старых установок: свежий updater сам зайдёт в `/opt/3wg-panel`, сделает backup, обновит исходники и уже после этого в проекте появится новый `scripts/update.sh`.
+
 По умолчанию updater использует:
 
 ```text
