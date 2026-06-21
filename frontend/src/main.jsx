@@ -142,7 +142,7 @@ function Shell({ title, subtitle, onLogout, protocols, children }) {
         </header>
         {children}
         <footer className="app-footer">
-          <div>© 2026 3WG Panel. Все права защищены. Связь: <a href="https://t.me/vorchiks" target="_blank" rel="noreferrer">@vorchiks</a>, <a href="mailto:vitaly@goreev.ru">vitaly@goreev.ru</a>, <a href="https://3wg.ru" target="_blank" rel="noreferrer">3wg.ru</a>.</div>
+          <div>© 2026 3WG Panel. Все права защищены. Связь: <a href="https://t.me/vorchiks" target="_blank" rel="noreferrer">@vorchiks</a>, <a href="mailto:vitaly@goreev.ru">vitaly@goreev.ru</a>, <a href="https://3wg.ru" target="_blank" rel="noreferrer">3wg.ru</a>, <a href="https://github.com/dblack-adminix/3wg-panel" target="_blank" rel="noreferrer">GitHub</a>.</div>
           <div>Вы используете последнюю версию <code>({APP_VERSION})</code></div>
         </footer>
       </main>

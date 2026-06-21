@@ -114,6 +114,6 @@ docs/                документация
 
 ## Copyright
 
-© 2026 3WG Panel. Контакты: [@vorchiks](https://t.me/vorchiks), [vitaly@goreev.ru](mailto:vitaly@goreev.ru), [3wg.ru](https://3wg.ru).
+© 2026 3WG Panel. Контакты: [@vorchiks](https://t.me/vorchiks), [vitaly@goreev.ru](mailto:vitaly@goreev.ru), [3wg.ru](https://3wg.ru), [GitHub](https://github.com/dblack-adminix/3wg-panel).
 
 WireGuard является зарегистрированным товарным знаком Jason A. Donenfeld.
