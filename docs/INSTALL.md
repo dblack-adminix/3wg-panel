@@ -43,6 +43,23 @@ Git repository: https://github.com/dblack-adminix/3wg-panel.git
 Git branch/tag: dev
 ```
 
+Что здесь выбирать:
+
+- `Git repository` — адрес репозитория, откуда installer будет брать код панели. Для обычной установки оставьте значение по умолчанию и просто нажмите Enter.
+- Используйте HTTPS-адрес `https://github.com/dblack-adminix/3wg-panel.git`, если репозиторий публичный. Это проще для серверов без SSH-ключей GitHub.
+- SSH-адрес вида `git@github.com:...` используйте только если на сервере уже настроен deploy key или ваш GitHub SSH-key.
+- `Git branch/tag` — ветка или tag, который нужно установить. Сейчас рабочая ветка проекта — `dev`, поэтому для актуальной версии оставьте `dev` и нажмите Enter.
+- Когда появится стабильный релиз, вместо `dev` можно будет указать tag, например `v1.0.0`, чтобы сервер не подтягивал текущие dev-изменения.
+- Если вы форкнули проект, укажите свой `Git repository`, а branch/tag выберите тот, из которого хотите ставить панель.
+
+Пример обычной установки: на оба вопроса нажмите Enter.
+
+```text
+3WG Panel installer
+Git repository [https://github.com/dblack-adminix/3wg-panel.git]:
+Git branch/tag [dev]:
+```
+
 Альтернативно можно сначала клонировать репозиторий:
 
 ```bash
