@@ -31,7 +31,7 @@
 - Linux server, рекомендуется Debian/Ubuntu
 - Docker
 - Git
-- Node.js `>=20.19.0` или `>=22.12.0` и npm для сборки React
+- Node.js `>=20.19.0` или `>=22.12.0` и npm для сборки React; installer/update умеют автоматически поставить Node.js 22.x на Debian/Ubuntu
 - Python 3
 - curl
 - уже существующие WireGuard и/или AmneziaWG контейнеры

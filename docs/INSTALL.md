@@ -12,7 +12,7 @@ sudo apt install -y git curl python3 nodejs npm docker.io
 sudo systemctl enable --now docker
 ```
 
-Для frontend-сборки нужен Node.js `>=20.19.0` или `>=22.12.0`. На старых Debian/Ubuntu пакет `nodejs` из стандартного репозитория может быть слишком старым.
+Для frontend-сборки нужен Node.js `>=20.19.0` или `>=22.12.0`. Если на Debian/Ubuntu найден старый Node.js, installer автоматически подключит NodeSource и установит Node.js 22.x.
 
 Проверьте, что protocol-контейнеры уже существуют:
 

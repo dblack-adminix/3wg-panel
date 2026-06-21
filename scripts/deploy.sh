@@ -10,13 +10,33 @@ CONTAINER="3wg-panel"
 fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 node_major() { node -p "Number(process.versions.node.split('.')[0])" 2>/dev/null || printf '0'; }
 node_minor() { node -p "Number(process.versions.node.split('.')[1])" 2>/dev/null || printf '0'; }
-check_node_version() {
+node_version_ok() {
   local major minor
   major="$(node_major)"
   minor="$(node_minor)"
-  if [ "$major" -lt 20 ] || { [ "$major" -eq 20 ] && [ "$minor" -lt 19 ]; }; then
-    fail "Node.js $(node --version) слишком старый. Нужен Node.js >=20.19.0 или >=22.12.0 для сборки frontend."
+  { [ "$major" -eq 20 ] && [ "$minor" -ge 19 ]; } || { [ "$major" -eq 22 ] && [ "$minor" -ge 12 ]; } || [ "$major" -gt 22 ]
+}
+install_node_runtime() {
+  command -v apt-get >/dev/null 2>&1 || fail "Node.js $(node --version 2>/dev/null || echo 'не найден') не подходит. Автоустановка доступна только на Debian/Ubuntu с apt-get."
+  command -v curl >/dev/null 2>&1 || fail "Не найдено: curl. Установите curl и запустите deploy снова."
+  printf '\n===== Installing Node.js 22.x =====\n'
+  local setup_script
+  setup_script="$(mktemp)"
+  curl -fsSL https://deb.nodesource.com/setup_22.x -o "$setup_script"
+  bash "$setup_script"
+  rm -f "$setup_script"
+  apt-get install -y nodejs
+  hash -r
+}
+ensure_node_runtime() {
+  if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 && node_version_ok; then
+    return 0
   fi
+  printf 'Node.js %s не подходит. Нужен Node.js >=20.19.0 или >=22.12.0.\n' "$(node --version 2>/dev/null || echo 'не найден')" >&2
+  install_node_runtime
+  command -v node >/dev/null 2>&1 || fail "Node.js не установлен после bootstrap."
+  command -v npm >/dev/null 2>&1 || fail "npm не установлен после bootstrap."
+  node_version_ok || fail "После установки найден $(node --version), но нужна версия >=20.19.0 или >=22.12.0."
 }
 install_frontend_deps() {
   if [ -f package-lock.json ]; then
@@ -34,7 +54,7 @@ printf ' 3WG PANEL DEV DEPLOY - REACT FRONTEND\n'
 printf '======================================================\n'
 
 cd "$BASE"
-check_node_version
+ensure_node_runtime
 
 printf '\n===== Backend/API patches =====\n'
 python3 "$BASE/scripts/apply_api_patch.py"

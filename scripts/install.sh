@@ -15,13 +15,32 @@ fail() { printf '\n\033[1;31m%s\033[0m\n' "$*" >&2; exit 1; }
 need_cmd() { command -v "$1" >/dev/null 2>&1 || fail "Не найдено: $1. Установите $1 и запустите скрипт снова."; }
 node_major() { node -p "Number(process.versions.node.split('.')[0])" 2>/dev/null || printf '0'; }
 node_minor() { node -p "Number(process.versions.node.split('.')[1])" 2>/dev/null || printf '0'; }
-check_node_version() {
+node_version_ok() {
   local major minor
   major="$(node_major)"
   minor="$(node_minor)"
-  if [ "$major" -lt 20 ] || { [ "$major" -eq 20 ] && [ "$minor" -lt 19 ]; }; then
-    fail "Node.js $(node --version) слишком старый. Нужен Node.js >=20.19.0 или >=22.12.0 для сборки frontend."
+  { [ "$major" -eq 20 ] && [ "$minor" -ge 19 ]; } || { [ "$major" -eq 22 ] && [ "$minor" -ge 12 ]; } || [ "$major" -gt 22 ]
+}
+install_node_runtime() {
+  command -v apt-get >/dev/null 2>&1 || fail "Node.js $(node --version 2>/dev/null || echo 'не найден') не подходит. Автоустановка доступна только на Debian/Ubuntu с apt-get."
+  say "Installing Node.js 22.x"
+  local setup_script
+  setup_script="$(mktemp)"
+  curl -fsSL https://deb.nodesource.com/setup_22.x -o "$setup_script"
+  bash "$setup_script"
+  rm -f "$setup_script"
+  apt-get install -y nodejs
+  hash -r
+}
+ensure_node_runtime() {
+  if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 && node_version_ok; then
+    return 0
   fi
+  warn "Node.js $(node --version 2>/dev/null || echo 'не найден') не подходит. Нужен Node.js >=20.19.0 или >=22.12.0."
+  install_node_runtime
+  command -v node >/dev/null 2>&1 || fail "Node.js не установлен после bootstrap."
+  command -v npm >/dev/null 2>&1 || fail "npm не установлен после bootstrap."
+  node_version_ok || fail "После установки найден $(node --version), но нужна версия >=20.19.0 или >=22.12.0."
 }
 install_frontend_deps() {
   if [ -f package-lock.json ]; then
@@ -152,11 +171,9 @@ fi
 
 need_cmd git
 need_cmd docker
-need_cmd npm
-need_cmd node
 need_cmd curl
 need_cmd python3
-check_node_version
+ensure_node_runtime
 
 say "3WG Panel installer"
 REPO_URL="$(ask 'Git repository' "$REPO_URL_DEFAULT")"
