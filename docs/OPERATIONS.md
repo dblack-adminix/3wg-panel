@@ -42,6 +42,39 @@ sudo bash /tmp/3wg-update.sh
 
 Этот вариант нужен именно для старых установок: свежий updater сам зайдёт в `/opt/3wg-panel`, сделает backup, обновит исходники и уже после этого в проекте появится новый `scripts/update.sh`.
 
+## Upgrade до v1.1.0
+
+Версия `v1.1.0` добавляет auto-create режим для WireGuard/AmneziaWG runtime-контейнеров, AmneziaWG профиль маскировки, `443/udp` как рекомендуемый порт AmneziaWG для новых auto-create установок и `MTU = 1420` в новых клиентских конфигах.
+
+Для уже установленного сервера используйте свежий updater:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/dblack-adminix/3wg-panel/dev/scripts/update.sh -o /tmp/3wg-update.sh
+sudo bash /tmp/3wg-update.sh
+```
+
+Что важно:
+
+- updater делает backup перед обновлением;
+- `.env` не перезаписывается;
+- уже существующие WireGuard/AmneziaWG контейнеры не пересоздаются;
+- auto-create режим включается только при новом запуске `scripts/install.sh` с выбором `Protocol containers: 1=auto create`;
+- уже созданные клиентские `.conf` файлы не переписываются автоматически;
+- новые клиентские `.conf` будут создаваться уже с `MTU = 1420`.
+
+После upgrade проверьте:
+
+```bash
+curl -fsS http://127.0.0.1:18080/health
+docker ps
+```
+
+Если хотите обновляться не с плавающей ветки `dev`, а с фиксированного релиза, используйте tag:
+
+```bash
+sudo BRANCH=v1.1.0 INSTALL_DIR=/opt/3wg-panel bash /tmp/3wg-update.sh
+```
+
 По умолчанию updater использует:
 
 ```text
@@ -56,7 +89,7 @@ BIND_PORT=18080
 Можно переопределить значения через переменные окружения:
 
 ```bash
-sudo BRANCH=v1.0.0 INSTALL_DIR=/opt/3wg-panel bash scripts/update.sh
+sudo BRANCH=v1.1.0 INSTALL_DIR=/opt/3wg-panel bash scripts/update.sh
 ```
 
 Updater делает backup, проверяет локальные изменения, обновляет Git, применяет backend patches, проверяет Python-модули, устанавливает frontend-зависимости через `npm ci`, собирает React, пересобирает Docker image, пересоздаёт контейнер и выполняет health-check.
@@ -112,8 +145,8 @@ X-API-Key: <token>
 ```bash
 git checkout dev
 git pull
-git tag v1.0.0
-git push origin v1.0.0
+git tag v1.1.0
+git push origin v1.1.0
 ```
 
 Для production-серверов лучше ставить tag, а не плавающую ветку.

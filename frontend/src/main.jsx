@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import './styles.css';
 
-const APP_VERSION = 'v1.0.0';
+const APP_VERSION = 'v1.1.0';
 
 const api = async (path, options = {}) => {
   const res = await fetch(path, {
