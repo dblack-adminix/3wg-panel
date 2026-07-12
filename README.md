@@ -34,10 +34,10 @@
 - Node.js `>=20.19.0` или `>=22.12.0` и npm для сборки React; installer/update умеют автоматически поставить Node.js 22.x на Debian/Ubuntu
 - Python 3
 - curl
-- уже существующие WireGuard и/или AmneziaWG контейнеры
+- уже существующие WireGuard/AmneziaWG контейнеры или auto-create режим installer
 - доступ контейнера панели к `/var/run/docker.sock`
 
-3WG Panel не устанавливает WireGuard или AmneziaWG самостоятельно. Панель управляет уже существующими protocol-контейнерами.
+3WG Panel может работать с уже существующими protocol-контейнерами или создать WireGuard/AmneziaWG контейнеры автоматически во время установки.
 
 ## Быстрая установка
 
@@ -70,7 +70,9 @@ Installer спросит:
 - bind host и port
 - публичный endpoint host/domain
 - логин и пароль панели
-- имена WireGuard и AmneziaWG контейнеров; interface, UDP port, config path и network installer определит автоматически
+- режим protocol-контейнеров: использовать уже установленные или создать автоматически
+- имена WireGuard и AmneziaWG контейнеров; в auto-create режиме WireGuard по умолчанию `wireguard-wg`, AmneziaWG по умолчанию `amnezia-awg2`
+- для auto-create режима: UDP ports и network CIDR; AmneziaWG по умолчанию использует `443/udp`
 - DNS servers
 - скрывать ли peer'ы, созданные не панелью
 
@@ -101,8 +103,10 @@ bash /srv/3wg-panel/scripts/deploy.sh
 ```text
 app/                 FastAPI backend и static assets
 frontend/            React frontend source
+runtimes/            Docker runtime для auto-create WireGuard/AmneziaWG
 scripts/deploy.sh    dev deploy script для cz-prg-01
 scripts/install.sh   интерактивный production installer
+scripts/provision_protocols.sh auto-create protocol containers
 scripts/update.sh    production updater без перезаписи .env
 docs/                документация
 .env.example         шаблон окружения

@@ -1,6 +1,6 @@
 # Установка
 
-Этот документ описывает установку 3WG Panel с GitHub на Linux-сервер.
+Этот документ описывает установку 3WG Panel с GitHub на Linux-сервер. Installer поддерживает два режима: подключиться к уже установленным WireGuard/AmneziaWG контейнерам или создать protocol-контейнеры автоматически.
 
 ## 1. Подготовьте сервер
 
@@ -14,7 +14,7 @@ sudo systemctl enable --now docker
 
 Для frontend-сборки нужен Node.js `>=20.19.0` или `>=22.12.0`. Если на Debian/Ubuntu найден старый Node.js, installer автоматически подключит NodeSource и установит Node.js 22.x.
 
-Проверьте, что protocol-контейнеры уже существуют:
+Если protocol-контейнеры уже существуют, проверьте их имена:
 
 ```bash
 docker ps
@@ -24,7 +24,9 @@ docker ps
 
 - публичный домен или endpoint host
 - логин и пароль панели
-- имена уже установленных WireGuard и AmneziaWG контейнеров из `docker ps`
+- хотите ли вы создать WireGuard/AmneziaWG контейнеры автоматически или подключиться к уже установленным
+- если контейнеры уже установлены: их имена из `docker ps`
+- если контейнеры создаёт installer: UDP-порты и сети, которые хотите использовать
 
 ## 2. Запустите installer
 
@@ -76,12 +78,17 @@ Git branch/tag [dev]:
 | `Configure Caddy reverse proxy for this domain? 1=yes, 0=no` | Настраивать ли HTTPS через Caddy автоматически. | `1` | Ставьте `1`, если домен уже указывает на сервер и хотите открыть панель по HTTPS. |
 | `Panel admin username` | Логин администратора панели. | `admin` | Если устраивает логин `admin`. |
 | `Panel admin password, empty = auto-generate` | Пароль администратора. Можно оставить пустым, installer сгенерирует сам. | `MyStrongPassword` | Для авто-пароля нажмите Enter. Installer покажет пароль в конце. |
-| `WireGuard container name` | Имя уже существующего Docker-контейнера WireGuard. По нему installer сам найдёт interface, UDP port, config path и network CIDR. | `amnezia-wireguard` | Если контейнер WireGuard называется так же. Проверьте через `docker ps`. |
-| `AmneziaWG container name` | Имя уже существующего Docker-контейнера AmneziaWG. По нему installer сам найдёт interface, UDP port, config path и network CIDR. | `amnezia-awg2` | Если контейнер AmneziaWG называется так же. |
+| `Protocol containers: 1=auto create, 0=already installed` | Выбор режима protocol-контейнеров. `0` — контейнеры уже созданы, `1` — installer создаст WireGuard и AmneziaWG сам. | `1` | Если контейнеры уже поставлены через AmneziaVPN app, оставьте `0`. |
+| `WireGuard container name` | Имя Docker-контейнера WireGuard. В auto-create режиме контейнер будет создан с этим именем. | `wireguard-wg` | В auto-create режиме оставьте `wireguard-wg`; в existing режиме введите имя из `docker ps`. |
+| `WireGuard UDP port` | Только для auto-create режима. UDP-порт WireGuard наружу. | `51820` | Если порт свободен и подходит. |
+| `WireGuard network CIDR` | Только для auto-create режима. Сеть WireGuard клиентов. Сервер получит первый IP, клиенты начнутся со второго. | `10.49.0.0/24` | Если сеть не конфликтует с другими VPN/локальными сетями. |
+| `AmneziaWG container name` | Имя Docker-контейнера AmneziaWG. В auto-create режиме контейнер будет создан с этим именем. | `amnezia-awg2` | Обычно оставляем `amnezia-awg2`. |
+| `AmneziaWG UDP port` | Только для auto-create режима. UDP-порт AmneziaWG наружу. | `443` | Рекомендуется `443/udp`: нестандартные порты чаще обнаруживаются DPI. |
+| `AmneziaWG network CIDR` | Только для auto-create режима. Сеть AmneziaWG клиентов. Сервер получит первый IP, клиенты начнутся со второго. | `10.50.0.0/24` | Если сеть не конфликтует с другими VPN/локальными сетями. |
 | `Client DNS servers` | DNS, которые будут прописываться в клиентские конфиги. | `1.1.1.1, 1.0.0.1` | Если Cloudflare DNS подходит. |
 | `Hide peers not created by panel? 1=yes, 0=no` | Скрывать ли peer’ы, которые были созданы не через 3WG Panel. | `1` | Для чистой таблицы оставьте `1`. Поставьте `0`, если хотите видеть все peer’ы из контейнеров. |
 
-После ввода имён контейнеров installer автоматически проверит:
+В existing режиме после ввода имён контейнеров installer автоматически проверит:
 
 - published UDP port через Docker
 - путь к `.conf` внутри контейнера
@@ -89,6 +96,35 @@ Git branch/tag [dev]:
 - network CIDR из строки `Address` в `[Interface]`
 
 Если какое-то значение не удалось определить, installer спросит только это конкретное поле и подставит безопасный default.
+
+В auto-create режиме installer:
+
+- соберёт runtime image для WireGuard из `runtimes/wireguard`
+- соберёт runtime image для AmneziaWG из `runtimes/amneziawg`
+- создаст серверные ключи
+- создаст `wg0.conf` и `awg0.conf`
+- включит host sysctl для forwarding
+- пересоздаст protocol-контейнеры
+- затем сам прочитает их реальные настройки и запишет их в `.env`
+
+AmneziaWG в auto-create режиме создаётся с маскировкой:
+
+```ini
+Jc = 120
+Jmin = 50
+Jmax = 1000
+S1 = 86
+S2 = 14
+H1 = 1
+H2 = 2
+H3 = 3
+H4 = 4
+I1 = 0
+I2 = 0
+I3 = 0
+I4 = 0
+I5 = 0
+```
 
 Самое важное при установке на новой ноде:
 
@@ -125,15 +161,17 @@ Installer выполняет:
 1. проверку нужных команд
 2. clone или update Git repository
 3. опрос настроек установки
-4. создание `.env`
-5. применение backend API patches
-6. установку frontend-зависимостей через `npm ci` при наличии `package-lock.json`
-7. сборку React frontend
-8. сборку Docker image `3wg-panel:local`
-9. пересоздание контейнера `3wg-panel`
-10. проверку `/health`
-11. опциональную настройку Caddy reverse proxy
-12. вывод URL, логина и пароля
+4. при выборе auto-create — создание WireGuard/AmneziaWG runtime containers
+5. autodetect protocol-настроек
+6. создание `.env`
+7. применение backend API patches
+8. установку frontend-зависимостей через `npm ci` при наличии `package-lock.json`
+9. сборку React frontend
+10. сборку Docker image `3wg-panel:local`
+11. пересоздание контейнера `3wg-panel`
+12. проверку `/health`
+13. опциональную настройку Caddy reverse proxy
+14. вывод URL, логина и пароля
 
 Для последующих обновлений используйте `scripts/update.sh`, чтобы не перезаписывать `.env`.
 

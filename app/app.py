@@ -507,8 +507,28 @@ def live_peers(protocol: str):
     return cache_value(("live_peers", protocol), RUNTIME_CACHE_TTL_SECONDS, load)
 
 
+def server_interface_ips(protocol: str) -> set[str]:
+    p = proto(protocol)
+    try:
+        cfg = sh(p["container"], f"cat {shlex.quote(p['config_path'])}")
+    except Exception:
+        return set()
+
+    ips = set()
+    for match in re.finditer(r"^Address\s*=\s*(.+?)\s*$", cfg, flags=re.M | re.I):
+        for item in match.group(1).split(","):
+            item = item.strip()
+            if not item:
+                continue
+            try:
+                ips.add(str(ipaddress.ip_interface(item).ip))
+            except Exception:
+                pass
+    return ips
+
+
 def used_ips(protocol: str):
-    used = set()
+    used = server_interface_ips(protocol)
 
     for peer in live_peers(protocol):
         allowed = peer["allowed_ips"].split(",")[0].strip()

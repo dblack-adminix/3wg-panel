@@ -261,23 +261,24 @@ PANEL_USER="$(ask 'Panel admin username' 'admin')"
 PANEL_PASSWORD="$(ask_secret 'Panel admin password, empty = auto-generate' "$(gen_secret | head -c 18)")"
 SESSION_SECRET="$(gen_secret)"
 
-WG_CONTAINER="$(ask 'WireGuard container name' 'amnezia-wireguard')"
-AWG_CONTAINER="$(ask 'AmneziaWG container name' 'amnezia-awg2')"
+PROVISION_PROTOCOLS="$(ask 'Protocol containers: 1=auto create, 0=already installed' '0')"
+if [ "$PROVISION_PROTOCOLS" = "1" ]; then
+  WG_CONTAINER="$(ask 'WireGuard container name' 'wireguard-wg')"
+  WG_PORT="$(ask 'WireGuard UDP port' '51820')"
+  WG_NETWORK="$(ask 'WireGuard network CIDR' '10.49.0.0/24')"
+  AWG_CONTAINER="$(ask 'AmneziaWG container name' 'amnezia-awg2')"
+  AWG_PORT="$(ask 'AmneziaWG UDP port' '443')"
+  AWG_NETWORK="$(ask 'AmneziaWG network CIDR' '10.50.0.0/24')"
+else
+  WG_CONTAINER="$(ask 'WireGuard container name' 'amnezia-wireguard')"
+  WG_PORT="51820"
+  WG_NETWORK="10.8.1.0/24"
+  AWG_CONTAINER="$(ask 'AmneziaWG container name' 'amnezia-awg2')"
+  AWG_PORT="42300"
+  AWG_NETWORK="10.8.1.0/24"
+fi
 DNS_SERVERS="$(ask 'Client DNS servers' '1.1.1.1, 1.0.0.1')"
 HIDE_EXISTING_PEERS="$(ask 'Hide peers not created by panel? 1=yes, 0=no' '1')"
-
-say "Detecting protocol settings"
-detect_protocol_settings "WireGuard" "wireguard" "$WG_CONTAINER" "wg0" "51820" "/opt/amnezia/wireguard/wg0.conf" "10.8.1.0/24"
-WG_INTERFACE="$DETECTED_INTERFACE"
-WG_PORT="$DETECTED_PORT"
-WG_CONFIG_PATH="$DETECTED_CONFIG_PATH"
-WG_NETWORK="$DETECTED_NETWORK"
-
-detect_protocol_settings "AmneziaWG" "amneziawg" "$AWG_CONTAINER" "awg0" "42300" "/opt/amnezia/awg/awg0.conf" "10.8.1.0/24"
-AWG_INTERFACE="$DETECTED_INTERFACE"
-AWG_PORT="$DETECTED_PORT"
-AWG_CONFIG_PATH="$DETECTED_CONFIG_PATH"
-AWG_NETWORK="$DETECTED_NETWORK"
 
 say "Preparing source"
 mkdir -p "$(dirname "$INSTALL_DIR")"
@@ -295,6 +296,30 @@ fi
 
 cd "$INSTALL_DIR"
 mkdir -p data clients backups/source
+
+if [ "$PROVISION_PROTOCOLS" = "1" ]; then
+  say "Provisioning protocol containers"
+  WG_CONTAINER="$WG_CONTAINER" \
+  WG_PORT="$WG_PORT" \
+  WG_NETWORK="$WG_NETWORK" \
+  AWG_CONTAINER="$AWG_CONTAINER" \
+  AWG_PORT="$AWG_PORT" \
+  AWG_NETWORK="$AWG_NETWORK" \
+  bash scripts/provision_protocols.sh
+fi
+
+say "Detecting protocol settings"
+detect_protocol_settings "WireGuard" "wireguard" "$WG_CONTAINER" "wg0" "$WG_PORT" "/opt/amnezia/wireguard/wg0.conf" "$WG_NETWORK"
+WG_INTERFACE="$DETECTED_INTERFACE"
+WG_PORT="$DETECTED_PORT"
+WG_CONFIG_PATH="$DETECTED_CONFIG_PATH"
+WG_NETWORK="$DETECTED_NETWORK"
+
+detect_protocol_settings "AmneziaWG" "amneziawg" "$AWG_CONTAINER" "awg0" "$AWG_PORT" "/opt/amnezia/awg/awg0.conf" "$AWG_NETWORK"
+AWG_INTERFACE="$DETECTED_INTERFACE"
+AWG_PORT="$DETECTED_PORT"
+AWG_CONFIG_PATH="$DETECTED_CONFIG_PATH"
+AWG_NETWORK="$DETECTED_NETWORK"
 
 if [ -f .env ]; then
   cp .env "backups/source/.env.$(date +%F_%H-%M-%S).backup"
