@@ -85,20 +85,17 @@ EOF_WGCONF
 cat > "$AWG_HOST_CONFIG" <<EOF_AWGCONF
 [Interface]
 PrivateKey = $AWG_PRIVATE_KEY
-Jc = ${AWG_JC:-120}
-Jmin = ${AWG_JMIN:-50}
-Jmax = ${AWG_JMAX:-1000}
-S1 = ${AWG_S1:-86}
-S2 = ${AWG_S2:-14}
-H1 = ${AWG_H1:-1}
-H2 = ${AWG_H2:-2}
-H3 = ${AWG_H3:-3}
-H4 = ${AWG_H4:-4}
-I2 = ${AWG_I2:-0}
-I3 = ${AWG_I3:-0}
-I4 = ${AWG_I4:-0}
-I5 = ${AWG_I5:-0}
-I1 = ${AWG_I1:-0}
+Jc = ${AWG_JC:-4}
+Jmin = ${AWG_JMIN:-10}
+Jmax = ${AWG_JMAX:-50}
+S1 = ${AWG_S1:-54}
+S2 = ${AWG_S2:-15}
+S3 = ${AWG_S3:-36}
+S4 = ${AWG_S4:-6}
+H1 = ${AWG_H1:-718013012-1127562760}
+H2 = ${AWG_H2:-1324176905-1725339417}
+H3 = ${AWG_H3:-1781297739-2028576119}
+H4 = ${AWG_H4:-2052615782-2092742079}
 Address = $AWG_ADDRESS
 ListenPort = $AWG_PORT
 EOF_AWGCONF

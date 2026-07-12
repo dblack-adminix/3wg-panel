@@ -65,17 +65,17 @@ PROTOCOLS = {
 }
 
 AWG_MASK = {
-    "Jc": "5",
+    "Jc": "4",
     "Jmin": "10",
     "Jmax": "50",
-    "S1": "19",
-    "S2": "68",
-    "S3": "45",
-    "S4": "5",
-    "H1": "19739311-1855633582",
-    "H2": "2039341897-2052921390",
-    "H3": "2097137237-2108606057",
-    "H4": "2135860310-2139015251",
+    "S1": "54",
+    "S2": "15",
+    "S3": "36",
+    "S4": "6",
+    "H1": "718013012-1127562760",
+    "H2": "1324176905-1725339417",
+    "H3": "1781297739-2028576119",
+    "H4": "2052615782-2092742079",
 }
 
 # Важно: для мобильного AmneziaWG убираем <r 2>, оставляем чистый <b ...>
@@ -738,8 +738,6 @@ def build_client_conf(protocol: str, private_key: str, ip_cidr: str, psk: str) -
     srv_pub = server_pubkey(protocol)
 
     text = f"""[Interface]
-Address = {ip_cidr}
-DNS = {DNS_SERVERS}
 PrivateKey = {private_key}
 """
 
@@ -753,6 +751,11 @@ PrivateKey = {private_key}
             v = i_values.get(k, "").strip()
             if v:
                 text += f"{k} = {v}\n"
+
+    text += f"""Address = {ip_cidr}
+DNS = {DNS_SERVERS}
+MTU = 1420
+"""
 
     text += f"""
 [Peer]
