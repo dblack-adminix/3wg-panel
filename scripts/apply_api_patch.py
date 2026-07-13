@@ -330,6 +330,11 @@ def api_auth_me(request: Request):
     return {'ok': True, 'authenticated': True, 'user': PANEL_USER}
 
 
+@app.get('/api/version')
+def api_version(user=Depends(api_require_auth)):
+    return cached_version_status()
+
+
 @app.get('/api/node/protocols')
 def api_node_protocols(user=Depends(api_require_auth)):
     return {
