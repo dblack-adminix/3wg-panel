@@ -9,6 +9,7 @@ COPY app/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
 COPY app /app
+COPY VERSION /app/VERSION
 COPY frontend/dist /app/frontend/dist
 RUN mkdir -p /app/data /app/clients/wireguard /app/clients/amneziawg /app/backups/wireguard /app/backups/amneziawg /app/static /app/frontend/dist
 

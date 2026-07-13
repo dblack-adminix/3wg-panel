@@ -28,8 +28,6 @@ import {
 } from 'lucide-react';
 import './styles.css';
 
-const APP_VERSION = 'v1.1.0';
-
 const api = async (path, options = {}) => {
   const res = await fetch(path, {
     credentials: 'same-origin',
@@ -52,6 +50,38 @@ function IconButton({ href, onClick, title, tone = 'default', disabled = false, 
     return <a className={className} href={href} title={title} aria-label={title}>{children}</a>;
   }
   return <button className={className} onClick={onClick} title={title} aria-label={title} type="button" disabled={disabled}>{children}</button>;
+}
+
+function VersionLine() {
+  const [version, setVersion] = useState({ loading: true, data: null });
+
+  useEffect(() => {
+    let alive = true;
+    api('/api/version')
+      .then((data) => { if (alive) setVersion({ loading: false, data }); })
+      .catch(() => { if (alive) setVersion({ loading: false, data: { state: 'unknown' } }); });
+    return () => { alive = false; };
+  }, []);
+
+  if (version.loading) {
+    return <div className="version-line muted-version">Проверяю версию...</div>;
+  }
+
+  const data = version.data || {};
+  if (data.state === 'outdated') {
+    return (
+      <div className="version-line update-available">
+        Доступно обновление <code>({data.latest})</code>. Установлена версия <code>({data.current})</code>
+      </div>
+    );
+  }
+  if (data.state === 'latest') {
+    return <div className="version-line">Вы используете последнюю версию <code>({data.current})</code></div>;
+  }
+  if (data.state === 'ahead') {
+    return <div className="version-line">Установлена dev-версия <code>({data.current})</code>, последний tag <code>({data.latest})</code></div>;
+  }
+  return <div className="version-line muted-version">Версия <code>({data.current || 'unknown'})</code>. Проверка обновлений недоступна</div>;
 }
 
 function Login({ onLogin }) {
@@ -143,7 +173,7 @@ function Shell({ title, subtitle, onLogout, protocols, children }) {
         {children}
         <footer className="app-footer">
           <div>© 2026 3WG Panel. Все права защищены. Связь: <a href="https://t.me/vorchiks" target="_blank" rel="noreferrer">@vorchiks</a>, <a href="mailto:vitaly@goreev.ru">vitaly@goreev.ru</a>, <a href="https://3wg.ru" target="_blank" rel="noreferrer">3wg.ru</a>, <a href="https://github.com/dblack-adminix/3wg-panel" target="_blank" rel="noreferrer">GitHub</a>.</div>
-          <div>Вы используете последнюю версию <code>({APP_VERSION})</code></div>
+          <VersionLine />
         </footer>
       </main>
     </div>

@@ -12,6 +12,8 @@ import shlex
 import sqlite3
 import struct
 import time
+import urllib.error
+import urllib.request
 import zlib
 from pathlib import Path
 
@@ -38,6 +40,12 @@ SESSION_COOKIE = "3wg_session"
 RUNTIME_CACHE = {}
 RUNTIME_CACHE_TTL_SECONDS = float(os.getenv("RUNTIME_CACHE_TTL_SECONDS", "3"))
 PORT_CACHE_TTL_SECONDS = float(os.getenv("PORT_CACHE_TTL_SECONDS", "30"))
+VERSION_FILE = APP_DIR / "VERSION"
+APP_VERSION = os.getenv("APP_VERSION", VERSION_FILE.read_text(encoding="utf-8").strip() if VERSION_FILE.exists() else "v1.1.1")
+VERSION_REPOSITORY = os.getenv("VERSION_REPOSITORY", "dblack-adminix/3wg-panel")
+VERSION_CHECK_URL = os.getenv("VERSION_CHECK_URL", f"https://api.github.com/repos/{VERSION_REPOSITORY}/tags")
+VERSION_CHECK_TTL_SECONDS = float(os.getenv("VERSION_CHECK_TTL_SECONDS", "3600"))
+VERSION_CACHE = {"checked_at": 0.0, "payload": None}
 
 PROTOCOLS = {
     "wireguard": {
@@ -90,6 +98,77 @@ def make_session_token() -> str:
     msg = f"{PANEL_USER}:{PANEL_PASSWORD}".encode("utf-8")
     key = SESSION_SECRET.encode("utf-8")
     return hmac.new(key, msg, hashlib.sha256).hexdigest()
+
+
+def version_tuple(value: str) -> tuple[int, int, int]:
+    match = re.search(r"v?(\d+)\.(\d+)\.(\d+)", str(value or ""))
+    if not match:
+        return (0, 0, 0)
+    return tuple(int(part) for part in match.groups())
+
+
+def fetch_latest_version() -> dict:
+    req = urllib.request.Request(
+        VERSION_CHECK_URL,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "User-Agent": f"3wg-panel/{APP_VERSION}",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=4) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+
+    tags = []
+    for item in data if isinstance(data, list) else []:
+        name = str(item.get("name", "")).strip()
+        if version_tuple(name) != (0, 0, 0):
+            tags.append(name)
+
+    if not tags:
+        raise RuntimeError("GitHub tags response does not contain semantic versions")
+
+    latest = max(tags, key=version_tuple)
+    current_tuple = version_tuple(APP_VERSION)
+    latest_tuple = version_tuple(latest)
+    if current_tuple < latest_tuple:
+        state = "outdated"
+    elif current_tuple > latest_tuple:
+        state = "ahead"
+    else:
+        state = "latest"
+
+    return {
+        "ok": True,
+        "current": APP_VERSION,
+        "latest": latest,
+        "state": state,
+        "repository": VERSION_REPOSITORY,
+        "checked_at": int(time.time()),
+    }
+
+
+def cached_version_status() -> dict:
+    now = time.time()
+    cached = VERSION_CACHE.get("payload")
+    if cached and now - float(VERSION_CACHE.get("checked_at", 0)) < VERSION_CHECK_TTL_SECONDS:
+        return cached
+
+    try:
+        payload = fetch_latest_version()
+    except (urllib.error.URLError, TimeoutError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
+        payload = {
+            "ok": False,
+            "current": APP_VERSION,
+            "latest": None,
+            "state": "unknown",
+            "repository": VERSION_REPOSITORY,
+            "checked_at": int(now),
+            "error": str(exc),
+        }
+
+    VERSION_CACHE["checked_at"] = now
+    VERSION_CACHE["payload"] = payload
+    return payload
 
 
 def auth(request: Request, credentials: HTTPBasicCredentials = Depends(security)):
@@ -5628,6 +5707,11 @@ def api_auth_me(request: Request):
     if not api_is_authenticated(request):
         return JSONResponse({'ok': False, 'authenticated': False}, status_code=401)
     return {'ok': True, 'authenticated': True, 'user': PANEL_USER}
+
+
+@app.get('/api/version')
+def api_version(user=Depends(api_require_auth)):
+    return cached_version_status()
 
 
 @app.get('/api/node/protocols')
