@@ -18,7 +18,7 @@ Options:
   --user USER             Set panel admin username. Default: admin
   --password PASSWORD     Set panel admin password.
   --password-file PATH    Read panel admin password from file.
-  --no-restart            Do not restart Docker container after .env update.
+  --no-restart            Do not recreate Docker container after .env update.
   -h, --help              Show this help.
 
 Environment:
@@ -141,9 +141,20 @@ chmod 600 "$ENV_FILE"
 if [ "$RESTART_CONTAINER" = "1" ]; then
   need_cmd docker
   if docker ps -a --format '{{.Names}}' | grep -Fxq "$CONTAINER"; then
-    docker restart "$CONTAINER" >/dev/null
+    image="$(docker inspect "$CONTAINER" --format '{{.Config.Image}}')"
+    docker rm -f "$CONTAINER" >/dev/null
+    docker run -d \
+      --name "$CONTAINER" \
+      --restart unless-stopped \
+      --env-file "$ENV_FILE" \
+      -p 127.0.0.1:18080:18080 \
+      -v /var/run/docker.sock:/var/run/docker.sock \
+      -v "$INSTALL_DIR/data:/app/data" \
+      -v "$INSTALL_DIR/clients:/app/clients" \
+      -v "$INSTALL_DIR/backups:/app/backups" \
+      "$image" >/dev/null
   else
-    printf 'Container %s not found, .env updated without restart.\n' "$CONTAINER" >&2
+    printf 'Container %s not found, .env updated without container recreate.\n' "$CONTAINER" >&2
   fi
 fi
 
@@ -153,7 +164,7 @@ Env:      $ENV_FILE
 Backup:   $BACKUP
 User:     $PANEL_USER_VALUE
 Password: $PANEL_PASSWORD_VALUE
-Restart:  $RESTART_CONTAINER
+Recreate: $RESTART_CONTAINER
 EOF
 
 if [ "$GENERATED_PASSWORD" = "1" ]; then
