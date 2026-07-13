@@ -41,7 +41,7 @@ RUNTIME_CACHE = {}
 RUNTIME_CACHE_TTL_SECONDS = float(os.getenv("RUNTIME_CACHE_TTL_SECONDS", "3"))
 PORT_CACHE_TTL_SECONDS = float(os.getenv("PORT_CACHE_TTL_SECONDS", "30"))
 VERSION_FILE = APP_DIR / "VERSION"
-APP_VERSION = os.getenv("APP_VERSION", VERSION_FILE.read_text(encoding="utf-8").strip() if VERSION_FILE.exists() else "v1.1.3")
+APP_VERSION = os.getenv("APP_VERSION", VERSION_FILE.read_text(encoding="utf-8").strip() if VERSION_FILE.exists() else "v1.1.4")
 VERSION_REPOSITORY = os.getenv("VERSION_REPOSITORY", "dblack-adminix/3wg-panel")
 VERSION_CHECK_URL = os.getenv("VERSION_CHECK_URL", f"https://api.github.com/repos/{VERSION_REPOSITORY}/tags")
 VERSION_CHECK_TTL_SECONDS = float(os.getenv("VERSION_CHECK_TTL_SECONDS", "3600"))

@@ -14,6 +14,15 @@ warn() { printf '\n\033[1;33m%s\033[0m\n' "$*"; }
 fail() { printf '\n\033[1;31m%s\033[0m\n' "$*" >&2; exit 1; }
 need_cmd() { command -v "$1" >/dev/null 2>&1 || fail "Не найдено: $1. Установите $1 и запустите скрипт снова."; }
 apt_run() { DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get "$@"; }
+run_timeout() {
+  local seconds="$1"
+  shift
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$seconds" "$@"
+  else
+    "$@"
+  fi
+}
 node_major() { node -p "Number(process.versions.node.split('.')[0])" 2>/dev/null || printf '0'; }
 node_minor() { node -p "Number(process.versions.node.split('.')[1])" 2>/dev/null || printf '0'; }
 node_version_ok() {
@@ -225,11 +234,24 @@ caddyfile.write_text(text, encoding="utf-8")
 PY
 
   caddy fmt --overwrite "$caddyfile" >/dev/null 2>&1 || true
+  if ! run_timeout 15s caddy validate --config "$caddyfile" >/dev/null; then
+    warn "Caddyfile не прошел проверку. Конфиг сохранен: $caddyfile"
+    return 0
+  fi
   if command -v systemctl >/dev/null 2>&1; then
-    systemctl enable --now caddy
-    systemctl reload caddy || systemctl restart caddy
+    if ! run_timeout 25s systemctl enable --now caddy; then
+      warn "systemctl enable/start caddy не завершился за 25 секунд. Проверьте: systemctl status caddy"
+      return 0
+    fi
+    if ! run_timeout 25s systemctl reload caddy; then
+      warn "systemctl reload caddy не завершился успешно. Пробую restart."
+      if ! run_timeout 25s systemctl restart caddy; then
+        warn "Caddy не удалось перезапустить автоматически. Проверьте: systemctl status caddy && journalctl -u caddy -n 80"
+        return 0
+      fi
+    fi
   else
-    caddy reload --config "$caddyfile" || warn "Caddyfile обновлен, но Caddy не удалось перезагрузить автоматически."
+    run_timeout 25s caddy reload --config "$caddyfile" || warn "Caddyfile обновлен, но Caddy не удалось перезагрузить автоматически."
   fi
 }
 
