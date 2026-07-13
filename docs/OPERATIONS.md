@@ -69,9 +69,9 @@ sudo bash /tmp/3wg-update.sh
 
 Этот вариант нужен именно для старых установок: свежий updater сам зайдёт в `/opt/3wg-panel`, сделает backup, обновит исходники и уже после этого в проекте появится новый `scripts/update.sh`.
 
-## Upgrade до v1.1.2
+## Upgrade до v1.1.3
 
-Версия `v1.1.2` добавляет проверку актуальности версии через GitHub tags в интерфейсе панели. Также включает изменения `v1.1.0`: auto-create режим для WireGuard/AmneziaWG runtime-контейнеров, AmneziaWG профиль маскировки, `443/udp` как рекомендуемый порт AmneziaWG для новых auto-create установок и `MTU = 1420` в новых клиентских конфигах.
+Версия `v1.1.3` добавляет проверку актуальности версии через GitHub tags в интерфейсе панели и переводит apt-установку Node.js/Caddy в non-interactive режим для Debian/Ubuntu, чтобы installer не зависал на `needrestart` после установки пакетов. Также включает изменения `v1.1.0`: auto-create режим для WireGuard/AmneziaWG runtime-контейнеров, AmneziaWG профиль маскировки, `443/udp` как рекомендуемый порт AmneziaWG для новых auto-create установок и `MTU = 1420` в новых клиентских конфигах.
 
 Для уже установленного сервера используйте свежий updater:
 
@@ -99,7 +99,7 @@ docker ps
 Если хотите обновляться не с плавающей ветки `dev`, а с фиксированного релиза, используйте tag:
 
 ```bash
-sudo BRANCH=v1.1.2 INSTALL_DIR=/opt/3wg-panel bash /tmp/3wg-update.sh
+sudo BRANCH=v1.1.3 INSTALL_DIR=/opt/3wg-panel bash /tmp/3wg-update.sh
 ```
 
 По умолчанию updater использует:
@@ -116,7 +116,7 @@ BIND_PORT=18080
 Можно переопределить значения через переменные окружения:
 
 ```bash
-sudo BRANCH=v1.1.2 INSTALL_DIR=/opt/3wg-panel bash scripts/update.sh
+sudo BRANCH=v1.1.3 INSTALL_DIR=/opt/3wg-panel bash scripts/update.sh
 ```
 
 Updater делает backup, проверяет локальные изменения, обновляет Git, применяет backend patches, проверяет Python-модули, устанавливает frontend-зависимости через `npm ci`, собирает React, пересобирает Docker image, пересоздаёт контейнер и выполняет health-check.
@@ -172,8 +172,8 @@ X-API-Key: <token>
 ```bash
 git checkout dev
 git pull
-git tag v1.1.2
-git push origin v1.1.2
+git tag v1.1.3
+git push origin v1.1.3
 ```
 
 Для production-серверов лучше ставить tag, а не плавающую ветку.

@@ -13,6 +13,7 @@ say() { printf '\n\033[1;32m%s\033[0m\n' "$*"; }
 warn() { printf '\n\033[1;33m%s\033[0m\n' "$*"; }
 fail() { printf '\n\033[1;31m%s\033[0m\n' "$*" >&2; exit 1; }
 need_cmd() { command -v "$1" >/dev/null 2>&1 || fail "Не найдено: $1. Установите $1 и запустите скрипт снова."; }
+apt_run() { DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get "$@"; }
 node_major() { node -p "Number(process.versions.node.split('.')[0])" 2>/dev/null || printf '0'; }
 node_minor() { node -p "Number(process.versions.node.split('.')[1])" 2>/dev/null || printf '0'; }
 node_version_ok() {
@@ -29,7 +30,7 @@ install_node_runtime() {
   curl -fsSL https://deb.nodesource.com/setup_22.x -o "$setup_script"
   bash "$setup_script"
   rm -f "$setup_script"
-  apt-get install -y nodejs
+  apt_run install -y nodejs
   hash -r
 }
 ensure_node_runtime() {
@@ -187,8 +188,8 @@ setup_caddy_proxy() {
   if ! command -v caddy >/dev/null 2>&1; then
     if command -v apt-get >/dev/null 2>&1; then
       say "Installing Caddy"
-      apt-get update
-      apt-get install -y caddy
+      apt_run update
+      apt_run install -y caddy
     else
       warn "Caddy не найден, а apt-get недоступен. Настройте reverse proxy вручную."
       return 0

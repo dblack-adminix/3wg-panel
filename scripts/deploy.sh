@@ -8,6 +8,7 @@ IMAGE="3wg-panel:local"
 CONTAINER="3wg-panel"
 
 fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+apt_run() { DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get "$@"; }
 node_major() { node -p "Number(process.versions.node.split('.')[0])" 2>/dev/null || printf '0'; }
 node_minor() { node -p "Number(process.versions.node.split('.')[1])" 2>/dev/null || printf '0'; }
 node_version_ok() {
@@ -25,7 +26,7 @@ install_node_runtime() {
   curl -fsSL https://deb.nodesource.com/setup_22.x -o "$setup_script"
   bash "$setup_script"
   rm -f "$setup_script"
-  apt-get install -y nodejs
+  apt_run install -y nodejs
   hash -r
 }
 ensure_node_runtime() {
