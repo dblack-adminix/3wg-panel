@@ -216,10 +216,20 @@ import sys
 caddyfile = Path(sys.argv[1])
 domain = sys.argv[2]
 upstream = sys.argv[3]
+global_start = "# 3wg-panel:global:start"
+global_end = "# 3wg-panel:global:end"
+global_block = f"{global_start}\n{{\n    servers {{\n        protocols h1 h2\n    }}\n}}\n{global_end}\n"
 start = f"# 3wg-panel:{domain}:start"
 end = f"# 3wg-panel:{domain}:end"
 block = f"{start}\n{domain} {{\n    reverse_proxy {upstream}\n}}\n{end}\n"
 text = caddyfile.read_text(encoding="utf-8")
+
+if global_start in text and global_end in text:
+    before, rest = text.split(global_start, 1)
+    _, after = rest.split(global_end, 1)
+    text = before.rstrip() + "\n\n" + global_block + after.lstrip("\n")
+elif not text.lstrip().startswith("{"):
+    text = global_block + ("\n" + text.lstrip("\n") if text.strip() else "")
 
 if start in text and end in text:
     before, rest = text.split(start, 1)
