@@ -107,6 +107,7 @@ runtimes/            Docker runtime для auto-create WireGuard/AmneziaWG
 scripts/deploy.sh    dev deploy script для cz-prg-01
 scripts/install.sh   интерактивный production installer
 scripts/provision_protocols.sh auto-create protocol containers
+scripts/reset_admin_password.sh смена пароля администратора панели
 scripts/update.sh    production updater без перезаписи .env
 docs/                документация
 .env.example         шаблон окружения

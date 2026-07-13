@@ -24,6 +24,33 @@ docker logs -f 3wg-panel
 docker restart 3wg-panel
 ```
 
+## Смена пароля администратора
+
+Если вход в панель не работает или пароль потерян, используйте скрипт сброса. Он обновит `PANEL_USER`, `PANEL_PASSWORD`, пересоздаст `SESSION_SECRET`, сохранит backup `.env` и перезапустит контейнер `3wg-panel`.
+
+Сгенерировать новый пароль автоматически:
+
+```bash
+cd /opt/3wg-panel
+sudo bash scripts/reset_admin_password.sh --user admin
+```
+
+Задать пароль вручную:
+
+```bash
+cd /opt/3wg-panel
+sudo bash scripts/reset_admin_password.sh --user admin --password 'new-strong-password'
+```
+
+Если на старой установке такого скрипта ещё нет, скачайте свежую версию напрямую:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/dblack-adminix/3wg-panel/dev/scripts/reset_admin_password.sh -o /tmp/3wg-reset-password.sh
+sudo INSTALL_DIR=/opt/3wg-panel bash /tmp/3wg-reset-password.sh --user admin
+```
+
+После смены пароля старые browser cookies станут недействительными. Откройте страницу входа заново и войдите новым паролем.
+
 ## Обновление
 
 Для обычного production-обновления используйте отдельный updater:
