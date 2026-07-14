@@ -1731,18 +1731,24 @@ function parseTraceSummary(output = '') {
   return { hops, lastHop: hops[hops.length - 1] || null };
 }
 
-function NetworkToolResult({ kind, result }) {
+function NetworkToolResult({ kind, result, peer }) {
   const isTrace = kind === 'traceroute';
   const ping = !isTrace ? parsePingSummary(result.output || '') : null;
   const trace = isTrace ? parseTraceSummary(result.output || '') : null;
   const healthy = result.ok;
+  const vpnActive = Boolean(peer && (peer.status === 'active' || peer.status === 'online' || peer.live?.latest_handshake));
+  const statusTitle = healthy
+    ? (isTrace ? 'Маршрут построен' : 'Host отвечает')
+    : vpnActive
+      ? 'VPN активен, ICMP не отвечает'
+      : (isTrace ? 'Маршрут не завершён' : 'Ответов нет');
 
   return (
     <>
-      <div className={healthy ? 'tool-result-hero ok' : 'tool-result-hero bad'}>
+      <div className={healthy ? 'tool-result-hero ok' : vpnActive ? 'tool-result-hero warn' : 'tool-result-hero bad'}>
         <div>
-          <span>{healthy ? 'Проверка успешна' : 'Есть проблема'}</span>
-          <b>{healthy ? (isTrace ? 'Маршрут построен' : 'Host отвечает') : (isTrace ? 'Маршрут не завершён' : 'Ответов нет')}</b>
+          <span>{healthy ? 'Проверка успешна' : vpnActive ? 'VPN peer online' : 'Есть проблема'}</span>
+          <b>{statusTitle}</b>
         </div>
         <strong>{result.duration_ms} ms</strong>
       </div>
@@ -1847,6 +1853,7 @@ function NetworkToolPage({ kind, onLogout, user }) {
 
   const title = isTrace ? 'Traceroute' : 'Ping';
   const subtitle = isTrace ? 'Проверка маршрута от панели до IP или hostname' : 'Проверка доступности IP или hostname от панели';
+  const selectedPeerData = peers.find((item) => String(item.id) === String(selectedPeer));
 
   return (
     <Shell title={title} subtitle={subtitle} onLogout={onLogout} user={user}>
@@ -1896,8 +1903,9 @@ function NetworkToolPage({ kind, onLogout, user }) {
                 <div><span>Команда</span><code>{result.command}</code></div>
                 <div><span>Время</span><b>{result.duration_ms} ms</b></div>
                 <div><span>Источник</span><b>{result.source?.label || '3wg-panel'}</b></div>
+                {selectedPeerData && <div><span>VPN статус</span><b className={selectedPeerData.status === 'active' ? 'active-text' : 'muted'}>{selectedPeerData.status === 'active' ? 'ONLINE' : selectedPeerData.status}</b></div>}
               </div>
-              <NetworkToolResult kind={kind} result={result} />
+              <NetworkToolResult kind={kind} result={result} peer={selectedPeerData} />
             </>
           ) : (
             <div className="tool-placeholder">
