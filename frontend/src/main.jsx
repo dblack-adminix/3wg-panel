@@ -1797,6 +1797,7 @@ function NetworkToolResult({ kind, result }) {
 function NetworkToolPage({ kind, onLogout, user }) {
   const isTrace = kind === 'traceroute';
   const [peers, setPeers] = useState([]);
+  const [selectedPeer, setSelectedPeer] = useState('');
   const [target, setTarget] = useState('');
   const [count, setCount] = useState(4);
   const [maxHops, setMaxHops] = useState(20);
@@ -1809,6 +1810,20 @@ function NetworkToolPage({ kind, onLogout, user }) {
       .then((data) => setPeers(data.peers || []))
       .catch(() => setPeers([]));
   }, []);
+
+  const selectPeer = (value) => {
+    setSelectedPeer(value);
+    setTarget(value);
+    setResult(null);
+    setError('');
+  };
+
+  const changeTarget = (value) => {
+    setTarget(value);
+    setSelectedPeer('');
+    setResult(null);
+    setError('');
+  };
 
   const run = async (e) => {
     e.preventDefault();
@@ -1838,7 +1853,7 @@ function NetworkToolPage({ kind, onLogout, user }) {
           <form onSubmit={run}>
             <label>
               <span>Peer из панели</span>
-              <select className="category-select" value="" onChange={(e) => setTarget(e.target.value)}>
+              <select className="category-select" value={selectedPeer} onChange={(e) => selectPeer(e.target.value)}>
                 <option value="">Выбрать клиента</option>
                 {peers.map((peer) => (
                   <option key={peer.id} value={(peer.ip_cidr || '').replace('/32', '')}>{peer.name} · {peer.ip_cidr}</option>
@@ -1847,7 +1862,7 @@ function NetworkToolPage({ kind, onLogout, user }) {
             </label>
             <label>
               <span>IP-адрес / hostname</span>
-              <input className="name-input" value={target} onChange={(e) => setTarget(e.target.value)} placeholder="1.1.1.1 или example.com" />
+              <input className="name-input" value={target} onChange={(e) => changeTarget(e.target.value)} placeholder="1.1.1.1 или example.com" />
             </label>
             {isTrace ? (
               <label>
