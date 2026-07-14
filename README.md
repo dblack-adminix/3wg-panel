@@ -10,6 +10,7 @@
 - Live-виджет трафика по интерфейсам.
 - Подробные страницы истории трафика.
 - Multi-user режим: суперпользователь создаёт пользователей и назначает лимит peer'ов.
+- Prometheus `/metrics`, node_exporter/cAdvisor agent и стартовый Grafana dashboard.
 - Хранение состояния панели в SQLite.
 - Постоянные volume'ы для базы, клиентов и backup'ов.
 - Интерактивный installer для развёртывания с GitHub.
@@ -25,6 +26,7 @@
 - `/users` — пользователи панели и лимиты peer'ов
 - `/apikeys` — API-ключи для интеграций через `X-API-Key`
 - `/health` — health-check
+- `/metrics` — Prometheus metrics endpoint, если включён в `.env`
 
 ## Требования
 
@@ -87,6 +89,7 @@ Installer спросит:
 ## Эксплуатация
 
 - Обновление через `scripts/update.sh`, backup, restore, logs, health-check: [docs/OPERATIONS.md](docs/OPERATIONS.md)
+- Мониторинг через Prometheus/Grafana: [docs/MONITORING.md](docs/MONITORING.md)
 - Безопасность и reverse proxy: [docs/SECURITY.md](docs/SECURITY.md)
 - Решение проблем: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
 
@@ -110,14 +113,16 @@ scripts/deploy.sh    dev deploy script для cz-prg-01
 scripts/install.sh   интерактивный production installer
 scripts/provision_protocols.sh auto-create protocol containers
 scripts/reset_admin_password.sh смена пароля администратора панели
+scripts/install_monitoring_agent.sh node_exporter + cAdvisor для Prometheus
 scripts/update.sh    production updater без перезаписи .env
+monitoring/          Prometheus rules и Grafana dashboard examples
 docs/                документация
 .env.example         шаблон окружения
 ```
 
 ## Версия
 
-Текущая версия продукта: `v1.2.0`
+Текущая версия продукта: `v1.3.0`
 
 ## Copyright
 

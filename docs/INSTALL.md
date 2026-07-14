@@ -50,7 +50,7 @@ Git branch/tag: dev
 - Используйте HTTPS-адрес `https://github.com/dblack-adminix/3wg-panel.git`, если репозиторий публичный. Это проще для серверов без SSH-ключей GitHub.
 - SSH-адрес вида `git@github.com:...` используйте только если на сервере уже настроен deploy key или ваш GitHub SSH-key.
 - `Git branch/tag` — ветка или tag, который нужно установить. Сейчас рабочая ветка проекта — `dev`, поэтому для актуальной версии оставьте `dev` и нажмите Enter.
-- Для стабильной установки вместо `dev` можно указать tag, например `v1.2.0`, чтобы сервер не подтягивал текущие dev-изменения.
+- Для стабильной установки вместо `dev` можно указать tag, например `v1.3.0`, чтобы сервер не подтягивал текущие dev-изменения.
 - Если вы форкнули проект, укажите свой `Git repository`, а branch/tag выберите тот, из которого хотите ставить панель.
 
 Пример обычной установки: на оба вопроса нажмите Enter.
@@ -87,6 +87,8 @@ Git branch/tag [dev]:
 | `AmneziaWG network CIDR` | Только для auto-create режима. Сеть AmneziaWG клиентов. Сервер получит первый IP, клиенты начнутся со второго. | `10.50.0.0/24` | Если сеть не конфликтует с другими VPN/локальными сетями. |
 | `Client DNS servers` | DNS, которые будут прописываться в клиентские конфиги. | `1.1.1.1, 1.0.0.1` | Если Cloudflare DNS подходит. |
 | `Hide peers not created by panel? 1=yes, 0=no` | Скрывать ли peer’ы, которые были созданы не через 3WG Panel. | `1` | Для чистой таблицы оставьте `1`. Поставьте `0`, если хотите видеть все peer’ы из контейнеров. |
+| `Enable Prometheus /metrics? 1=yes, 0=no` | Включить ли endpoint `/metrics` для центрального Prometheus/Grafana. | `1` | Оставьте `0`, если мониторинг пока не настроен. |
+| `Prometheus metrics token, empty = auto-generate` | Bearer token для Prometheus. Можно оставить пустым, installer сгенерирует сам. | random token | Для авто-токена нажмите Enter. |
 
 В existing режиме после ввода имён контейнеров installer автоматически проверит:
 
@@ -169,6 +171,16 @@ Installer выполняет:
 12. проверку `/health`
 13. опциональную настройку Caddy reverse proxy
 14. вывод URL, логина и пароля
+
+Если включены Prometheus metrics, installer запишет в `.env`:
+
+```env
+METRICS_ENABLED=1
+METRICS_REQUIRE_TOKEN=1
+METRICS_TOKEN=<token>
+```
+
+Подробная настройка Grafana/Prometheus: [MONITORING.md](MONITORING.md)
 
 Для последующих обновлений используйте `scripts/update.sh`, чтобы не перезаписывать `.env`.
 

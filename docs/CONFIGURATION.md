@@ -8,6 +8,7 @@
 | --- | --- | --- |
 | `PANEL_USER` | `admin` | Логин для входа в панель |
 | `PANEL_PASSWORD` | `change-me` | Пароль для входа в панель |
+| `PANEL_CONTAINER` | `3wg-panel` | Имя Docker-контейнера панели для self-monitoring метрик |
 | `SESSION_SECRET` | random hex | Секрет для подписи session cookie |
 | `ENDPOINT_HOST` | `vpn.example.com` | Хост, который попадёт в клиентские конфиги |
 | `DNS_SERVERS` | `1.1.1.1, 1.0.0.1` | DNS в генерируемых конфигах |
@@ -51,8 +52,27 @@
 /opt/3wg-panel/backups
 ```
 
+## Prometheus metrics
+
+| Переменная | Пример | Описание |
+| --- | --- | --- |
+| `METRICS_ENABLED` | `1` | Включить endpoint `/metrics` для Prometheus |
+| `METRICS_REQUIRE_TOKEN` | `1` | Требовать токен для `/metrics` |
+| `METRICS_TOKEN` | long random token | Bearer token для Prometheus |
+
+Проверка:
+
+```bash
+curl -fsS \
+  -H 'Authorization: Bearer <METRICS_TOKEN>' \
+  http://127.0.0.1:18080/metrics | head
+```
+
+Подробно: [MONITORING.md](MONITORING.md)
+
 ## Примечания
 
 - Если WireGuard и AmneziaWG используют один CIDR, убедитесь, что это действительно соответствует вашей сетевой схеме.
 - `ENDPOINT_HOST` должен быть доменом или IP, доступным клиентам из Интернета.
+- Не открывайте `/metrics`, `node_exporter` и `cAdvisor` в публичный интернет без firewall/private VPN.
 - Никогда не коммитьте `.env` в Git.

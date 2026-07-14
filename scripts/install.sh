@@ -312,6 +312,12 @@ else
 fi
 DNS_SERVERS="$(ask 'Client DNS servers' '1.1.1.1, 1.0.0.1')"
 HIDE_EXISTING_PEERS="$(ask 'Hide peers not created by panel? 1=yes, 0=no' '1')"
+METRICS_ENABLED="$(ask 'Enable Prometheus /metrics? 1=yes, 0=no' '0')"
+METRICS_REQUIRE_TOKEN="1"
+METRICS_TOKEN=""
+if [ "$METRICS_ENABLED" = "1" ]; then
+  METRICS_TOKEN="$(ask_secret 'Prometheus metrics token, empty = auto-generate' "$(gen_secret)")"
+fi
 
 say "Preparing source"
 mkdir -p "$(dirname "$INSTALL_DIR")"
@@ -361,6 +367,7 @@ fi
 cat > .env <<ENV
 PANEL_USER=$PANEL_USER
 PANEL_PASSWORD=$PANEL_PASSWORD
+PANEL_CONTAINER=$CONTAINER
 
 ENDPOINT_HOST=$ENDPOINT_HOST
 
@@ -379,6 +386,10 @@ AWG_NETWORK=$AWG_NETWORK
 DNS_SERVERS=$DNS_SERVERS
 SESSION_SECRET=$SESSION_SECRET
 HIDE_EXISTING_PEERS=$HIDE_EXISTING_PEERS
+
+METRICS_ENABLED=$METRICS_ENABLED
+METRICS_REQUIRE_TOKEN=$METRICS_REQUIRE_TOKEN
+METRICS_TOKEN=$METRICS_TOKEN
 ENV
 chmod 600 .env
 

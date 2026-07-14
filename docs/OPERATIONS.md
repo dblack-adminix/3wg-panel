@@ -100,7 +100,7 @@ docker ps
 Если хотите обновляться не с плавающей ветки `dev`, а с фиксированного релиза, используйте tag:
 
 ```bash
-sudo BRANCH=v1.2.0 INSTALL_DIR=/opt/3wg-panel bash /tmp/3wg-update.sh
+sudo BRANCH=v1.3.0 INSTALL_DIR=/opt/3wg-panel bash /tmp/3wg-update.sh
 ```
 
 По умолчанию updater использует:
@@ -117,7 +117,7 @@ BIND_PORT=18080
 Можно переопределить значения через переменные окружения:
 
 ```bash
-sudo BRANCH=v1.2.0 INSTALL_DIR=/opt/3wg-panel bash scripts/update.sh
+sudo BRANCH=v1.3.0 INSTALL_DIR=/opt/3wg-panel bash scripts/update.sh
 ```
 
 Updater делает backup, проверяет локальные изменения, обновляет Git, применяет backend patches, проверяет Python-модули, устанавливает frontend-зависимости через `npm ci`, собирает React, пересобирает Docker image, пересоздаёт контейнер и выполняет health-check.
@@ -125,6 +125,39 @@ Updater делает backup, проверяет локальные измене�
 Если в рабочей копии есть локальные изменения в tracked-файлах, updater остановится и не будет их перетирать. Сгенерированные изменения `app/app.py` он предварительно сохраняет в `backups/update/` и возвращает tracked-версию перед `git pull`.
 
 Если нужно заново пройти вопросы установки и перегенерировать `.env`, используйте `scripts/install.sh`.
+
+## Upgrade до v1.3.0
+
+Версия `v1.3.0` добавляет основу мониторинга под Prometheus/Grafana:
+
+- endpoint `/metrics` в формате Prometheus;
+- `scripts/install_monitoring_agent.sh` для `node_exporter` и `cAdvisor`;
+- `monitoring/prometheus.example.yml`;
+- `monitoring/alert-rules.example.yml`;
+- стартовый Grafana dashboard `monitoring/grafana-dashboard-3wg-node.json`;
+- документацию [MONITORING.md](MONITORING.md).
+
+После обновления `/metrics` выключен, пока вы явно не включите его в `.env`:
+
+```env
+METRICS_ENABLED=1
+METRICS_REQUIRE_TOKEN=1
+METRICS_TOKEN=<long-random-token>
+```
+
+Затем пересоздайте контейнер панели через updater:
+
+```bash
+cd /opt/3wg-panel
+sudo bash scripts/update.sh
+```
+
+Monitoring-agent ставится отдельно:
+
+```bash
+cd /opt/3wg-panel
+sudo bash scripts/install_monitoring_agent.sh
+```
 
 ## Backup
 
@@ -156,6 +189,30 @@ sudo bash scripts/install.sh
 
 История трафика хранится в SQLite table `traffic_snapshots`. Она начинает накапливаться только после включения этой функции. Старую месячную статистику восстановить нельзя, если snapshots раньше не собирались.
 
+## Monitoring agent
+
+Для Prometheus/Grafana на VPN-ноде можно поставить `node_exporter` и `cAdvisor`:
+
+```bash
+cd /opt/3wg-panel
+sudo bash scripts/install_monitoring_agent.sh
+```
+
+По умолчанию агент слушает только `127.0.0.1`. Для приватного monitoring-интерфейса:
+
+```bash
+sudo MONITORING_BIND_HOST=10.10.0.15 bash scripts/install_monitoring_agent.sh
+```
+
+Удаление:
+
+```bash
+cd /opt/3wg-panel
+sudo bash scripts/uninstall_monitoring_agent.sh
+```
+
+Подробно: [MONITORING.md](MONITORING.md)
+
 ## API-ключи
 
 Страница `/apikeys` позволяет создать ключ для внешних интеграций. Ключ передаётся в API через HTTP header:
@@ -173,8 +230,8 @@ X-API-Key: <token>
 ```bash
 git checkout dev
 git pull
-git tag v1.2.0
-git push origin v1.2.0
+git tag v1.3.0
+git push origin v1.3.0
 ```
 
 Для production-серверов лучше ставить tag, а не плавающую ветку.

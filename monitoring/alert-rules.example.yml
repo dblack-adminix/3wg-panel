@@ -1,0 +1,47 @@
+groups:
+  - name: 3wg-node
+    rules:
+      - alert: ThreeWGPanelDown
+        expr: up{job="3wg-panel"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "3WG Panel не отвечает на {{ $labels.node }}"
+          description: "Prometheus не может собрать /metrics с 3WG Panel больше 2 минут."
+
+      - alert: ThreeWGProtocolDown
+        expr: threewg_panel_protocol_available == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "VPN-протокол недоступен на {{ $labels.node }}"
+          description: "{{ $labels.title }} / {{ $labels.interface }} в контейнере {{ $labels.container }} не отвечает."
+
+      - alert: ThreeWGContainerDown
+        expr: threewg_panel_docker_container_running == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Контейнер {{ $labels.name }} не запущен на {{ $labels.node }}"
+          description: "Статус контейнера: {{ $labels.status }}."
+
+      - alert: NodeHighCpu
+        expr: 100 - (avg by (instance, node) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Высокая CPU-нагрузка на {{ $labels.node }}"
+          description: "CPU выше 85% больше 10 минут."
+
+      - alert: NodeLowDisk
+        expr: (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}) * 100 < 15
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Мало места на диске {{ $labels.node }}"
+          description: "Свободно меньше 15% на {{ $labels.mountpoint }}."

@@ -72,7 +72,7 @@ cd "$BASE"
 
 printf '\n===== Backup current source =====\n'
 mkdir -p "$BASE/backups/source"
-tar --exclude=frontend/node_modules -czf "$BASE/backups/source/3wg-panel-app.$(date +%F_%H-%M-%S).tgz" -C "$BASE" app scripts frontend docker-compose.yml VERSION
+tar --exclude=frontend/node_modules -czf "$BASE/backups/source/3wg-panel-app.$(date +%F_%H-%M-%S).tgz" -C "$BASE" app scripts frontend docs monitoring docker-compose.yml VERSION
 
 printf '\n===== Build Docker image =====\n'
 docker build -f "$BASE/app/Dockerfile" -t "$IMAGE" "$BASE"

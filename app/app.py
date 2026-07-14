@@ -42,11 +42,15 @@ RUNTIME_CACHE = {}
 RUNTIME_CACHE_TTL_SECONDS = float(os.getenv("RUNTIME_CACHE_TTL_SECONDS", "3"))
 PORT_CACHE_TTL_SECONDS = float(os.getenv("PORT_CACHE_TTL_SECONDS", "30"))
 VERSION_FILE = APP_DIR / "VERSION"
-APP_VERSION = os.getenv("APP_VERSION", VERSION_FILE.read_text(encoding="utf-8").strip() if VERSION_FILE.exists() else "v1.2.0")
+APP_VERSION = os.getenv("APP_VERSION", VERSION_FILE.read_text(encoding="utf-8").strip() if VERSION_FILE.exists() else "v1.3.0")
 VERSION_REPOSITORY = os.getenv("VERSION_REPOSITORY", "dblack-adminix/3wg-panel")
 VERSION_CHECK_URL = os.getenv("VERSION_CHECK_URL", f"https://api.github.com/repos/{VERSION_REPOSITORY}/tags")
 VERSION_CHECK_TTL_SECONDS = float(os.getenv("VERSION_CHECK_TTL_SECONDS", "3600"))
 VERSION_CACHE = {"checked_at": 0.0, "payload": None}
+METRICS_ENABLED = os.getenv("METRICS_ENABLED", "0") == "1"
+METRICS_REQUIRE_TOKEN = os.getenv("METRICS_REQUIRE_TOKEN", "1") == "1"
+METRICS_TOKEN = os.getenv("METRICS_TOKEN", "")
+PANEL_CONTAINER = os.getenv("PANEL_CONTAINER", "3wg-panel")
 
 PROTOCOLS = {
     "wireguard": {
@@ -6291,6 +6295,163 @@ def api_apikeys_delete(key_id: int, user=Depends(_apikey_session_only)):
 
 
 # === 3WG API KEYS END ===
+
+
+# === 3WG PROMETHEUS METRICS START ===
+def metrics_bool(value) -> int:
+    return 1 if value else 0
+
+
+def metrics_label(value) -> str:
+    return str(value or "").replace("\\", "\\\\").replace("\n", "\\n").replace('"', '\\"')
+
+
+def metrics_line(name: str, value, labels: dict | None = None) -> str:
+    label_text = ""
+    if labels:
+        label_text = "{" + ",".join(f'{key}="{metrics_label(val)}"' for key, val in labels.items()) + "}"
+    return f"{name}{label_text} {value}"
+
+
+def metrics_authorized(request: Request) -> bool:
+    if not METRICS_REQUIRE_TOKEN and not METRICS_TOKEN:
+        return True
+    if not METRICS_TOKEN:
+        return False
+    auth = request.headers.get("authorization", "")
+    if auth.lower().startswith("bearer "):
+        token = auth.split(" ", 1)[1].strip()
+        if secrets.compare_digest(token, METRICS_TOKEN):
+            return True
+    header_token = request.headers.get("x-metrics-token", "")
+    if header_token and secrets.compare_digest(header_token, METRICS_TOKEN):
+        return True
+    query_token = request.query_params.get("token", "")
+    return bool(query_token and secrets.compare_digest(query_token, METRICS_TOKEN))
+
+
+def docker_container_metric(name: str, role: str) -> dict:
+    item = {"name": name, "role": role, "exists": 0, "running": 0, "status": "missing"}
+    try:
+        container = dc().containers.get(name)
+        item["exists"] = 1
+        item["status"] = getattr(container, "status", "unknown") or "unknown"
+        item["running"] = 1 if item["status"] == "running" else 0
+    except Exception:
+        pass
+    return item
+
+
+def metrics_int(value, default: int = 0) -> int:
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return default
+
+
+def prometheus_metrics_payload() -> str:
+    now = int(time.time())
+    live, live_errors = api_live_maps()
+    protocols = {protocol: api_protocol_state(protocol) for protocol in PROTOCOLS}
+
+    with db() as conn:
+        clients_total = int(conn.execute("SELECT COUNT(*) AS n FROM clients WHERE COALESCE(deleted_at, 0) = 0").fetchone()["n"])
+        clients_enabled = int(conn.execute("SELECT COUNT(*) AS n FROM clients WHERE COALESCE(deleted_at, 0) = 0 AND enabled = 1").fetchone()["n"])
+        clients_disabled = int(conn.execute("SELECT COUNT(*) AS n FROM clients WHERE COALESCE(deleted_at, 0) = 0 AND enabled = 0").fetchone()["n"])
+        users_total = int(conn.execute("SELECT COUNT(*) AS n FROM panel_users").fetchone()["n"])
+        users_enabled = int(conn.execute("SELECT COUNT(*) AS n FROM panel_users WHERE enabled = 1").fetchone()["n"])
+        categories_total = int(conn.execute("SELECT COUNT(*) AS n FROM categories").fetchone()["n"])
+
+    lines = [
+        "# HELP threewg_panel_build_info 3WG Panel build information.",
+        "# TYPE threewg_panel_build_info gauge",
+        metrics_line("threewg_panel_build_info", 1, {"version": APP_VERSION, "endpoint_host": ENDPOINT_HOST}),
+        "# HELP threewg_panel_scrape_timestamp_seconds Last successful metrics scrape timestamp.",
+        "# TYPE threewg_panel_scrape_timestamp_seconds gauge",
+        metrics_line("threewg_panel_scrape_timestamp_seconds", now),
+        "# HELP threewg_panel_clients_total Active clients in panel database.",
+        "# TYPE threewg_panel_clients_total gauge",
+        metrics_line("threewg_panel_clients_total", clients_total),
+        "# HELP threewg_panel_clients_enabled Enabled clients in panel database.",
+        "# TYPE threewg_panel_clients_enabled gauge",
+        metrics_line("threewg_panel_clients_enabled", clients_enabled),
+        "# HELP threewg_panel_clients_disabled Disabled clients in panel database.",
+        "# TYPE threewg_panel_clients_disabled gauge",
+        metrics_line("threewg_panel_clients_disabled", clients_disabled),
+        "# HELP threewg_panel_users_total Panel users stored in database, excluding env admin.",
+        "# TYPE threewg_panel_users_total gauge",
+        metrics_line("threewg_panel_users_total", users_total),
+        "# HELP threewg_panel_users_enabled Enabled panel users stored in database.",
+        "# TYPE threewg_panel_users_enabled gauge",
+        metrics_line("threewg_panel_users_enabled", users_enabled),
+        "# HELP threewg_panel_categories_total Client categories in panel database.",
+        "# TYPE threewg_panel_categories_total gauge",
+        metrics_line("threewg_panel_categories_total", categories_total),
+        "# HELP threewg_panel_protocol_available Protocol command is reachable inside configured container.",
+        "# TYPE threewg_panel_protocol_available gauge",
+        "# HELP threewg_panel_protocol_container_running Configured protocol Docker container is running.",
+        "# TYPE threewg_panel_protocol_container_running gauge",
+        "# HELP threewg_panel_protocol_peers_total Live peers reported by protocol tool.",
+        "# TYPE threewg_panel_protocol_peers_total gauge",
+        "# HELP threewg_panel_protocol_peers_online Peers with recent handshake inside online window.",
+        "# TYPE threewg_panel_protocol_peers_online gauge",
+        "# HELP threewg_panel_protocol_rx_bytes Total received bytes reported by protocol tool.",
+        "# TYPE threewg_panel_protocol_rx_bytes gauge",
+        "# HELP threewg_panel_protocol_tx_bytes Total transmitted bytes reported by protocol tool.",
+        "# TYPE threewg_panel_protocol_tx_bytes gauge",
+        "# HELP threewg_panel_protocol_listen_port Configured or detected UDP listen port.",
+        "# TYPE threewg_panel_protocol_listen_port gauge",
+        "# HELP threewg_panel_protocol_error Protocol live collection error flag.",
+        "# TYPE threewg_panel_protocol_error gauge",
+    ]
+
+    for protocol, p in PROTOCOLS.items():
+        state = protocols.get(protocol, {})
+        container = docker_container_metric(p["container"], f"protocol:{protocol}")
+        rows = list((live.get(protocol) or {}).values())
+        online = sum(1 for item in rows if api_recent_handshake(item)[0])
+        rx = sum(int(item.get("rx") or 0) for item in rows)
+        tx = sum(int(item.get("tx") or 0) for item in rows)
+        labels = {
+            "protocol": protocol,
+            "title": p["title"],
+            "interface": p["interface"],
+            "container": p["container"],
+        }
+        lines.extend([
+            metrics_line("threewg_panel_protocol_available", metrics_bool(state.get("available")), labels),
+            metrics_line("threewg_panel_protocol_container_running", container["running"], {**labels, "status": container["status"]}),
+            metrics_line("threewg_panel_protocol_peers_total", len(rows), labels),
+            metrics_line("threewg_panel_protocol_peers_online", online, labels),
+            metrics_line("threewg_panel_protocol_rx_bytes", rx, labels),
+            metrics_line("threewg_panel_protocol_tx_bytes", tx, labels),
+            metrics_line("threewg_panel_protocol_listen_port", metrics_int(interface_listen_port(protocol) or p["port"]), labels),
+            metrics_line("threewg_panel_protocol_error", metrics_bool(protocol in live_errors), {**labels, "reason": live_errors.get(protocol, "")}),
+        ])
+
+    lines.extend([
+        "# HELP threewg_panel_docker_container_running Docker container running state for important containers.",
+        "# TYPE threewg_panel_docker_container_running gauge",
+    ])
+    seen_containers = set()
+    for role, name in [("panel", PANEL_CONTAINER), *[(f"protocol:{protocol}", p["container"]) for protocol, p in PROTOCOLS.items()]]:
+        if name in seen_containers:
+            continue
+        seen_containers.add(name)
+        item = docker_container_metric(name, role)
+        lines.append(metrics_line("threewg_panel_docker_container_running", item["running"], {"name": name, "role": role, "status": item["status"]}))
+
+    return "\n".join(lines) + "\n"
+
+
+@app.get("/metrics")
+def prometheus_metrics(request: Request):
+    if not METRICS_ENABLED:
+        raise HTTPException(status_code=404, detail="Metrics disabled")
+    if not metrics_authorized(request):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return PlainTextResponse(prometheus_metrics_payload(), media_type="text/plain; version=0.0.4; charset=utf-8")
+# === 3WG PROMETHEUS METRICS END ===
 
 # === 3WG DASHBOARD MODEL API START ===
 # API-модель экрана для будущего React: React должен повторять текущий красивый /.
