@@ -91,6 +91,7 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 .inline-number { width: 82px; height: 30px; border: 1px solid #333333; border-radius: 6px; background: #0d0d0d; color: #ffffff; padding: 0 8px; }
 .inline-password { width: 140px; height: 30px; border: 1px solid #333333; border-radius: 6px; background: #0d0d0d; color: #ffffff; padding: 0 8px; }
 .user-actions { display: flex; align-items: center; gap: 5px; }
+.owner-badge { display: inline-flex; align-items: center; max-width: 120px; height: 26px; padding: 0 8px; border: 1px solid #333333; border-radius: 6px; background: #101010; color: #dddddd; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .traffic-rates { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 16px; }
 .traffic-rates div { display: grid; gap: 4px; }
 .traffic-rates small, .traffic-meta { color: #8a8a8a; }

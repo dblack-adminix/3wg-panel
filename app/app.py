@@ -5807,6 +5807,8 @@ def api_peer_payload(c, live: dict | None = None, include_config: bool = False) 
         'protocol_title': p['title'],
         'category_id': int(c['category_id']) if 'category_id' in c.keys() and c['category_id'] is not None else None,
         'category_name': c['category_name'] if 'category_name' in c.keys() else None,
+        'owner_id': int(c['owner_id']) if 'owner_id' in c.keys() and c['owner_id'] is not None else None,
+        'owner_username': c['owner_username'] if 'owner_username' in c.keys() and c['owner_username'] else PANEL_USER,
         'ip_cidr': c['ip_cidr'],
         'public_key': c['public_key'],
         'enabled': enabled,
@@ -5907,9 +5909,10 @@ def api_peers(user=Depends(api_require_auth)):
     where, params = api_user_where(user, 'c')
     with db() as conn:
         rows = conn.execute(f"""
-            SELECT c.*, cat.name AS category_name
+            SELECT c.*, cat.name AS category_name, u.username AS owner_username
             FROM clients c
             LEFT JOIN categories cat ON cat.id = c.category_id
+            LEFT JOIN panel_users u ON u.id = c.owner_id
             WHERE COALESCE(c.deleted_at, 0) = 0
             {where}
             ORDER BY c.id DESC
@@ -6101,9 +6104,10 @@ async def api_create_peers(request: Request, user=Depends(api_require_auth)):
     with db() as conn:
         qmarks = ','.join('?' for _ in created_ids)
         rows = conn.execute(f"""
-            SELECT c.*, cat.name AS category_name
+            SELECT c.*, cat.name AS category_name, u.username AS owner_username
             FROM clients c
             LEFT JOIN categories cat ON cat.id = c.category_id
+            LEFT JOIN panel_users u ON u.id = c.owner_id
             WHERE c.id IN ({qmarks})
             ORDER BY c.id DESC
         """, created_ids).fetchall()
@@ -6130,9 +6134,10 @@ async def api_peer_update(client_id: int, request: Request, user=Depends(api_req
     live, _ = api_live_maps()
     with db() as conn:
         c = conn.execute("""
-            SELECT c.*, cat.name AS category_name
+            SELECT c.*, cat.name AS category_name, u.username AS owner_username
             FROM clients c
             LEFT JOIN categories cat ON cat.id = c.category_id
+            LEFT JOIN panel_users u ON u.id = c.owner_id
             WHERE c.id = ?
         """, (client_id,)).fetchone()
     return {'ok': True, 'peer': api_peer_payload(c, live=live), 'categories': api_categories_payload()}
@@ -6336,9 +6341,10 @@ def api_dashboard_payload(user: dict) -> dict:
     with db() as conn:
         rows = conn.execute(
             f"""
-            SELECT c.*, cat.name AS category_name
+            SELECT c.*, cat.name AS category_name, u.username AS owner_username
             FROM clients c
             LEFT JOIN categories cat ON cat.id = c.category_id
+            LEFT JOIN panel_users u ON u.id = c.owner_id
             WHERE COALESCE(c.deleted_at, 0) = 0
             {where}
             ORDER BY c.id DESC

@@ -59,9 +59,10 @@ def api_dashboard_payload(user: dict) -> dict:
     with db() as conn:
         rows = conn.execute(
             f"""
-            SELECT c.*, cat.name AS category_name
+            SELECT c.*, cat.name AS category_name, u.username AS owner_username
             FROM clients c
             LEFT JOIN categories cat ON cat.id = c.category_id
+            LEFT JOIN panel_users u ON u.id = c.owner_id
             WHERE COALESCE(c.deleted_at, 0) = 0
             {where}
             ORDER BY c.id DESC

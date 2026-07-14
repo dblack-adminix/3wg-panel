@@ -409,6 +409,7 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
           <colgroup>
             <col style={{ width: 46 }} />
             <col style={{ width: 170 }} />
+            {isAdmin && <col style={{ width: 130 }} />}
             {isAdmin && <col style={{ width: 145 }} />}
             <col style={{ width: 125 }} />
             <col style={{ width: 130 }} />
@@ -423,7 +424,8 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
             <tr>
               <th>ID</th>
               <th>Имя пользователя</th>
-                {isAdmin && <th>Категория</th>}
+              {isAdmin && <th>Создал</th>}
+              {isAdmin && <th>Категория</th>}
               <th>Протокол</th>
               <th>Внутренний IP</th>
               <th>Статус</th>
@@ -438,7 +440,8 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
             {filteredPeers.map((p) => (
               <tr key={p.id}>
                 <td>{p.id}</td>
-                <td><b>{p.name}</b><small>создан панелью</small></td>
+                <td><b>{p.name}</b><small>peer #{p.id}</small></td>
+                {isAdmin && <td><span className="owner-badge">{p.owner_username || 'admin'}</span></td>}
                 {isAdmin && (
                   <td>
                     <select className="category-select table-category-select" value={p.category_id || ''} disabled={busyId === p.id} onChange={(e) => changePeerCategory(p, e.target.value)}>
@@ -471,7 +474,7 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
             ))}
             {filteredPeers.length === 0 && (
               <tr>
-                <td colSpan={isAdmin ? 11 : 10} className="empty-table">В этой категории пока нет peer'ов</td>
+                <td colSpan={isAdmin ? 12 : 10} className="empty-table">В этой категории пока нет peer'ов</td>
               </tr>
             )}
           </tbody>
