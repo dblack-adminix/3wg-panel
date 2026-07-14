@@ -1690,6 +1690,110 @@ function SystemStatusPage({ onLogout, user }) {
   );
 }
 
+function parsePingSummary(output = '') {
+  const packetMatch = output.match(/(\d+)\s+packets transmitted,\s+(\d+)\s+(?:packets\s+)?received,\s+([\d.]+)%\s+packet loss(?:,\s+time\s+(\d+)ms)?/i);
+  const rttMatch = output.match(/(?:rtt|round-trip).*?=\s*([\d.]+)\/([\d.]+)\/([\d.]+)\/([\d.]+)\s*ms/i);
+  const replies = output
+    .split('\n')
+    .map((line) => {
+      const from = line.match(/from\s+([^\s:]+)/i)?.[1] || '';
+      const seq = line.match(/icmp_seq=(\d+)/i)?.[1] || '';
+      const ttl = line.match(/ttl=(\d+)/i)?.[1] || '';
+      const timeMs = line.match(/time=([\d.]+)\s*ms/i)?.[1] || '';
+      return timeMs ? { from, seq, ttl, timeMs } : null;
+    })
+    .filter(Boolean);
+  return {
+    sent: packetMatch ? Number(packetMatch[1]) : null,
+    received: packetMatch ? Number(packetMatch[2]) : null,
+    loss: packetMatch ? Number(packetMatch[3]) : null,
+    totalTime: packetMatch?.[4] ? Number(packetMatch[4]) : null,
+    min: rttMatch ? Number(rttMatch[1]) : null,
+    avg: rttMatch ? Number(rttMatch[2]) : null,
+    max: rttMatch ? Number(rttMatch[3]) : null,
+    mdev: rttMatch ? Number(rttMatch[4]) : null,
+    replies,
+  };
+}
+
+function parseTraceSummary(output = '') {
+  const hops = output
+    .split('\n')
+    .map((line) => {
+      const match = line.match(/^\s*(\d+)\s+(.+)$/);
+      if (!match) return null;
+      const parts = match[2].trim().split(/\s+/);
+      const host = parts[0] || '*';
+      const timeMs = parts.find((part) => /^[\d.]+$/.test(part));
+      return { index: Number(match[1]), host, timeMs: timeMs || '' };
+    })
+    .filter(Boolean);
+  return { hops, lastHop: hops[hops.length - 1] || null };
+}
+
+function NetworkToolResult({ kind, result }) {
+  const isTrace = kind === 'traceroute';
+  const ping = !isTrace ? parsePingSummary(result.output || '') : null;
+  const trace = isTrace ? parseTraceSummary(result.output || '') : null;
+  const healthy = result.ok;
+
+  return (
+    <>
+      <div className={healthy ? 'tool-result-hero ok' : 'tool-result-hero bad'}>
+        <div>
+          <span>{healthy ? 'Проверка успешна' : 'Есть проблема'}</span>
+          <b>{healthy ? (isTrace ? 'Маршрут построен' : 'Host отвечает') : (isTrace ? 'Маршрут не завершён' : 'Ответов нет')}</b>
+        </div>
+        <strong>{result.duration_ms} ms</strong>
+      </div>
+
+      {isTrace ? (
+        <div className="tool-summary-grid">
+          <div><span>Hops</span><b>{trace.hops.length}</b></div>
+          <div><span>Last hop</span><b title={trace.lastHop?.host || '-'}>{trace.lastHop?.host || '-'}</b></div>
+          <div><span>Return code</span><b>{result.return_code}</b></div>
+        </div>
+      ) : (
+        <div className="tool-summary-grid">
+          <div><span>Sent</span><b>{ping.sent ?? '-'}</b></div>
+          <div><span>Received</span><b>{ping.received ?? '-'}</b></div>
+          <div><span>Loss</span><b className={ping.loss ? 'danger-text' : 'active-text'}>{ping.loss ?? '-'}%</b></div>
+          <div><span>Avg</span><b>{ping.avg != null ? `${ping.avg} ms` : '-'}</b></div>
+        </div>
+      )}
+
+      {!isTrace && ping.replies.length > 0 && (
+        <div className="tool-replies">
+          {ping.replies.map((reply) => (
+            <div key={`${reply.seq}-${reply.timeMs}`}>
+              <span>seq {reply.seq}</span>
+              <b>{reply.timeMs} ms</b>
+              <small>{reply.from}{reply.ttl ? ` · ttl ${reply.ttl}` : ''}</small>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {isTrace && trace.hops.length > 0 && (
+        <div className="tool-hops">
+          {trace.hops.map((hop) => (
+            <div key={`${hop.index}-${hop.host}`}>
+              <span>{hop.index}</span>
+              <b title={hop.host}>{hop.host}</b>
+              <small>{hop.timeMs ? `${hop.timeMs} ms` : '*'}</small>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <details className="tool-raw-details">
+        <summary>Raw output</summary>
+        <pre className="tool-output">{result.output || 'Нет вывода'}</pre>
+      </details>
+    </>
+  );
+}
+
 function NetworkToolPage({ kind, onLogout, user }) {
   const isTrace = kind === 'traceroute';
   const [peers, setPeers] = useState([]);
@@ -1773,7 +1877,7 @@ function NetworkToolPage({ kind, onLogout, user }) {
                 <div><span>Команда</span><code>{result.command}</code></div>
                 <div><span>Время</span><b>{result.duration_ms} ms</b></div>
               </div>
-              <pre className="tool-output">{result.output || 'Нет вывода'}</pre>
+              <NetworkToolResult kind={kind} result={result} />
             </>
           ) : (
             <div className="tool-placeholder">

@@ -546,6 +546,26 @@ html[data-theme="light"] .sidebar-backdrop { background: rgba(15, 23, 42, .42); 
 .network-result-card { min-height: 420px; }
 .tool-output { min-height: 280px; max-height: 540px; overflow: auto; margin: 0; padding: 14px; border: 1px solid #222222; border-radius: 8px; background: #070707; color: #ffffff; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; }
 .tool-placeholder { min-height: 300px; display: grid; place-items: center; align-content: center; gap: 12px; border: 1px dashed #333333; border-radius: 8px; color: #8a8a8a; }
+.tool-result-hero { min-height: 88px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border: 1px solid #262626; border-radius: 8px; background: #0d0d0d; padding: 16px; margin-bottom: 12px; }
+.tool-result-hero span { display: block; color: #8a8a8a; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 6px; }
+.tool-result-hero b { display: block; font-size: 23px; line-height: 1.1; }
+.tool-result-hero strong { font-size: 28px; white-space: nowrap; }
+.tool-result-hero.ok { border-color: rgba(200, 255, 0, .28); }
+.tool-result-hero.ok strong, .tool-result-hero.ok b { color: var(--green); }
+.tool-result-hero.bad { border-color: rgba(255, 140, 0, .38); }
+.tool-result-hero.bad strong, .tool-result-hero.bad b, .danger-text { color: #ff8c00; }
+.tool-summary-grid { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 10px; margin-bottom: 12px; }
+.tool-summary-grid div { min-width: 0; border: 1px solid #262626; border-radius: 8px; background: #0d0d0d; padding: 12px; }
+.tool-summary-grid span { display: block; color: #8a8a8a; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 7px; }
+.tool-summary-grid b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 18px; }
+.tool-replies, .tool-hops { display: grid; gap: 7px; margin-bottom: 12px; }
+.tool-replies div, .tool-hops div { display: grid; grid-template-columns: 86px minmax(90px, 140px) minmax(0, 1fr); align-items: center; gap: 10px; border: 1px solid #262626; border-radius: 7px; background: #0d0d0d; padding: 9px 11px; }
+.tool-hops div { grid-template-columns: 42px minmax(0, 1fr) 90px; }
+.tool-replies span, .tool-hops span { color: #8a8a8a; font-size: 12px; }
+.tool-replies small, .tool-hops small { color: #8a8a8a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tool-raw-details { margin-top: 12px; }
+.tool-raw-details summary { width: fit-content; cursor: pointer; color: #8a8a8a; font-weight: 700; margin-bottom: 8px; }
+.tool-raw-details .tool-output { min-height: 180px; }
 @media (max-width: 1100px) {
   .tools-kpi-grid { grid-template-columns: repeat(2, minmax(180px, 1fr)); }
   .network-tool-grid { grid-template-columns: 1fr; }
@@ -553,6 +573,9 @@ html[data-theme="light"] .sidebar-backdrop { background: rgba(15, 23, 42, .42); 
 @media (max-width: 720px) {
   .tools-kpi-grid,
   .tool-service-grid { grid-template-columns: 1fr; }
+  .tool-summary-grid { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
+  .tool-result-hero { align-items: flex-start; flex-direction: column; }
+  .tool-replies div, .tool-hops div { grid-template-columns: 1fr; gap: 4px; }
 }
 
 /* Типографика как в основном проекте 3WG: JetBrains Mono для данных, Montserrat для заголовков */
@@ -797,7 +820,11 @@ html[data-theme="light"] .status-pill.offline {
 }
 html[data-theme="light"] .tool-service,
 html[data-theme="light"] .tool-output,
-html[data-theme="light"] .tool-placeholder {
+html[data-theme="light"] .tool-placeholder,
+html[data-theme="light"] .tool-result-hero,
+html[data-theme="light"] .tool-summary-grid div,
+html[data-theme="light"] .tool-replies div,
+html[data-theme="light"] .tool-hops div {
   background: #ffffff;
   border-color: #d8e1ec;
   color: #111827;
@@ -809,7 +836,14 @@ html[data-theme="light"] .tool-kpi span,
 html[data-theme="light"] .tool-kpi small,
 html[data-theme="light"] .network-tool-card label span,
 html[data-theme="light"] .tool-service-meta,
-html[data-theme="light"] .tool-placeholder {
+html[data-theme="light"] .tool-placeholder,
+html[data-theme="light"] .tool-result-hero span,
+html[data-theme="light"] .tool-summary-grid span,
+html[data-theme="light"] .tool-replies span,
+html[data-theme="light"] .tool-replies small,
+html[data-theme="light"] .tool-hops span,
+html[data-theme="light"] .tool-hops small,
+html[data-theme="light"] .tool-raw-details summary {
   color: #64748b;
 }
 html[data-theme="light"] .tool-service-meta span {
@@ -821,4 +855,21 @@ html[data-theme="light"] .tool-output {
   background: #0f172a;
   border-color: #1e293b;
   color: #e2e8f0;
+}
+html[data-theme="light"] .tool-result-hero.ok {
+  background: #f7fbef;
+  border-color: #c5d99a;
+}
+html[data-theme="light"] .tool-result-hero.ok strong,
+html[data-theme="light"] .tool-result-hero.ok b {
+  color: #5f7f00;
+}
+html[data-theme="light"] .tool-result-hero.bad {
+  background: #fff7ed;
+  border-color: #fdba74;
+}
+html[data-theme="light"] .tool-result-hero.bad strong,
+html[data-theme="light"] .tool-result-hero.bad b,
+html[data-theme="light"] .danger-text {
+  color: #c2410c;
 }
