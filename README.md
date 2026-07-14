@@ -25,6 +25,7 @@
 - `/traffic/amneziawg` — история трафика AmneziaWG
 - `/users` — пользователи панели и лимиты peer'ов
 - `/apikeys` — API-ключи для интеграций через `X-API-Key`
+- `/monitoring` — включение `/metrics` и выпуск Prometheus token
 - `/health` — health-check
 - `/metrics` — Prometheus metrics endpoint, если включён в `.env`
 

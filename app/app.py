@@ -620,6 +620,32 @@ def init_db():
             )
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_traffic_snapshots_protocol_ts ON traffic_snapshots(protocol, ts)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS panel_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+        """)
+        conn.commit()
+
+
+def panel_setting_get(key: str, default: str | None = None) -> str | None:
+    with db() as conn:
+        row = conn.execute("SELECT value FROM panel_settings WHERE key = ?", (key,)).fetchone()
+    return row["value"] if row else default
+
+
+def panel_setting_set(key: str, value: str) -> None:
+    with db() as conn:
+        conn.execute(
+            """
+            INSERT INTO panel_settings(key, value, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+            """,
+            (key, str(value), int(time.time())),
+        )
         conn.commit()
 
 
@@ -5478,7 +5504,7 @@ async def react_frontend_middleware(request: Request, call_next):
         if asset_file.exists() and asset_file.is_file():
             return ReactFileResponse(asset_file)
 
-    if (path in ('/', '/login', '/ui', '/users', '/apikeys') or re.match(r'^/client/\d+$', path) or re.match(r'^/status/(wireguard|amneziawg)$', path) or re.match(r'^/traffic/(wireguard|amneziawg)$', path)) and index_file.exists():
+    if (path in ('/', '/login', '/ui', '/users', '/apikeys', '/monitoring') or re.match(r'^/client/\d+$', path) or re.match(r'^/status/(wireguard|amneziawg)$', path) or re.match(r'^/traffic/(wireguard|amneziawg)$', path)) and index_file.exists():
         return ReactFileResponse(
             index_file,
             media_type='text/html; charset=utf-8',
@@ -6297,6 +6323,72 @@ def api_apikeys_delete(key_id: int, user=Depends(_apikey_session_only)):
 # === 3WG API KEYS END ===
 
 
+# === 3WG MONITORING SETTINGS API START ===
+def monitoring_enabled() -> bool:
+    value = panel_setting_get("metrics_enabled")
+    if value is None:
+        return METRICS_ENABLED
+    return value == "1"
+
+
+def monitoring_token_hash() -> str:
+    return panel_setting_get("metrics_token_hash", "") or ""
+
+
+def monitoring_token_suffix() -> str:
+    return panel_setting_get("metrics_token_suffix", "") or ""
+
+
+def monitoring_token_configured() -> bool:
+    return bool(monitoring_token_hash() or METRICS_TOKEN)
+
+
+def monitoring_status_payload() -> dict:
+    return {
+        "ok": True,
+        "enabled": monitoring_enabled(),
+        "require_token": METRICS_REQUIRE_TOKEN,
+        "token_configured": monitoring_token_configured(),
+        "token_suffix": monitoring_token_suffix() or (METRICS_TOKEN[-6:] if METRICS_TOKEN else ""),
+        "metrics_path": "/metrics",
+        "auth_header": "Authorization: Bearer <token>",
+        "env_token_present": bool(METRICS_TOKEN),
+        "db_token_present": bool(monitoring_token_hash()),
+    }
+
+
+@app.get('/api/monitoring')
+def api_monitoring_get(user=Depends(api_require_admin)):
+    return monitoring_status_payload()
+
+
+@app.patch('/api/monitoring')
+async def api_monitoring_update(request: Request, user=Depends(api_require_admin)):
+    data = await api_read_payload(request)
+    if "enabled" in data:
+        panel_setting_set("metrics_enabled", "1" if bool(data.get("enabled")) else "0")
+    return monitoring_status_payload()
+
+
+@app.post('/api/monitoring/token')
+def api_monitoring_token_create(user=Depends(api_require_admin)):
+    token = secrets.token_urlsafe(32)
+    panel_setting_set("metrics_token_hash", password_hash(token))
+    panel_setting_set("metrics_token_suffix", token[-6:])
+    panel_setting_set("metrics_enabled", "1")
+    payload = monitoring_status_payload()
+    payload["token"] = token
+    return payload
+
+
+@app.delete('/api/monitoring/token')
+def api_monitoring_token_delete(user=Depends(api_require_admin)):
+    panel_setting_set("metrics_token_hash", "")
+    panel_setting_set("metrics_token_suffix", "")
+    return monitoring_status_payload()
+# === 3WG MONITORING SETTINGS API END ===
+
+
 # === 3WG PROMETHEUS METRICS START ===
 def metrics_bool(value) -> int:
     return 1 if value else 0
@@ -6314,20 +6406,25 @@ def metrics_line(name: str, value, labels: dict | None = None) -> str:
 
 
 def metrics_authorized(request: Request) -> bool:
-    if not METRICS_REQUIRE_TOKEN and not METRICS_TOKEN:
+    stored_hash = monitoring_token_hash()
+    if not METRICS_REQUIRE_TOKEN and not METRICS_TOKEN and not stored_hash:
         return True
-    if not METRICS_TOKEN:
-        return False
+    tokens = []
     auth = request.headers.get("authorization", "")
     if auth.lower().startswith("bearer "):
-        token = auth.split(" ", 1)[1].strip()
-        if secrets.compare_digest(token, METRICS_TOKEN):
-            return True
+        tokens.append(auth.split(" ", 1)[1].strip())
     header_token = request.headers.get("x-metrics-token", "")
-    if header_token and secrets.compare_digest(header_token, METRICS_TOKEN):
-        return True
+    if header_token:
+        tokens.append(header_token)
     query_token = request.query_params.get("token", "")
-    return bool(query_token and secrets.compare_digest(query_token, METRICS_TOKEN))
+    if query_token:
+        tokens.append(query_token)
+    for token in tokens:
+        if METRICS_TOKEN and secrets.compare_digest(token, METRICS_TOKEN):
+            return True
+        if stored_hash and password_verify(token, stored_hash):
+            return True
+    return False
 
 
 def docker_container_metric(name: str, role: str) -> dict:
@@ -6446,7 +6543,7 @@ def prometheus_metrics_payload() -> str:
 
 @app.get("/metrics")
 def prometheus_metrics(request: Request):
-    if not METRICS_ENABLED:
+    if not monitoring_enabled():
         raise HTTPException(status_code=404, detail="Metrics disabled")
     if not metrics_authorized(request):
         raise HTTPException(status_code=401, detail="Unauthorized")

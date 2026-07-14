@@ -42,7 +42,26 @@ Monitoring-сервер:
 - container restart/status;
 - network/disk I/O контейнеров.
 
-## Включение `/metrics` в 3WG Panel
+## Включение `/metrics` в 3WG Panel через веб-интерфейс
+
+Откройте панель под администратором:
+
+```text
+/monitoring
+```
+
+На странице можно:
+
+- включить или выключить `/metrics`;
+- создать Prometheus token;
+- перевыпустить token;
+- скопировать token сразу после генерации.
+
+Plaintext token показывается только один раз. В SQLite хранится только hash.
+
+После генерации используйте token в `prometheus.yml` как Bearer token.
+
+## Включение `/metrics` через `.env`
 
 В `.env` на VPN-ноде добавьте:
 

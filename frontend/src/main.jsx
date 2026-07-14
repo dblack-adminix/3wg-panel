@@ -155,6 +155,7 @@ function Sidebar({ onLogout, protocols: initialProtocols = null, user }) {
       {isAdmin && <div className="nav-title">УПРАВЛЕНИЕ</div>}
       {isAdmin && <a className={`nav ${path === '/users' ? 'active' : ''}`} href="/users"><Users size={14} /> <span>Пользователи</span></a>}
       {isAdmin && <a className={`nav ${path === '/apikeys' ? 'active' : ''}`} href="/apikeys"><Key size={14} /> <span>API-ключи</span></a>}
+      {isAdmin && <a className={`nav ${path === '/monitoring' ? 'active' : ''}`} href="/monitoring"><Activity size={14} /> <span>Мониторинг</span></a>}
       <button className="nav logout" onClick={onLogout}><LogOut size={14} /> <span>Выход</span></button>
     </aside>
   );
@@ -1454,6 +1455,102 @@ function ApiKeysPage({ onLogout, user }) {
   );
 }
 
+function MonitoringPage({ onLogout, user }) {
+  const [state, setState] = useState({ loading: true, data: null, error: '' });
+  const [newToken, setNewToken] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const load = async () => {
+    try {
+      const data = await api('/api/monitoring');
+      setState({ loading: false, data, error: '' });
+    } catch (err) {
+      setState({ loading: false, data: null, error: err.message || 'Ошибка мониторинга' });
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const setEnabled = async (enabled) => {
+    setBusy(true);
+    try {
+      const data = await api('/api/monitoring', { method: 'PATCH', body: JSON.stringify({ enabled }) });
+      setState({ loading: false, data, error: '' });
+    } catch (err) {
+      setState((s) => ({ ...s, error: err.message || 'Ошибка сохранения' }));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const generateToken = async () => {
+    if (state.data?.token_configured && !window.confirm('Создать новый token? Старый token перестанет работать.')) return;
+    setBusy(true);
+    try {
+      const data = await api('/api/monitoring/token', { method: 'POST' });
+      setNewToken(data.token || '');
+      setState({ loading: false, data, error: '' });
+    } catch (err) {
+      setState((s) => ({ ...s, error: err.message || 'Ошибка генерации token' }));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const data = state.data || {};
+  const curlExample = data.token_configured
+    ? 'curl -H "Authorization: Bearer <token>" http://127.0.0.1:18080/metrics'
+    : 'Сначала создайте token';
+
+  return (
+    <Shell title="Мониторинг" subtitle="Prometheus / Grafana metrics" onLogout={onLogout} user={user}>
+      {state.error && <div className="warning">{state.error}</div>}
+      {state.loading && <section className="card">Загрузка...</section>}
+      {!state.loading && (
+        <div className="monitoring-grid">
+          <section className="card monitoring-card">
+            <div className="section-head">
+              <h2>Prometheus /metrics</h2>
+              <span className={data.enabled ? 'active-text' : 'muted'}>{data.enabled ? 'ENABLED' : 'DISABLED'}</span>
+            </div>
+            <div className="monitoring-status">
+              <div><span>Endpoint</span><code>{data.metrics_path || '/metrics'}</code></div>
+              <div><span>Auth</span><code>{data.auth_header || 'Authorization: Bearer <token>'}</code></div>
+              <div><span>Token</span><b>{data.token_configured ? `настроен ...${data.token_suffix || ''}` : 'не создан'}</b></div>
+              <div><span>Источник</span><b>{data.db_token_present ? 'web UI' : data.env_token_present ? '.env' : '-'}</b></div>
+            </div>
+            <div className="monitoring-actions">
+              <button className="orange-btn" type="button" onClick={() => setEnabled(!data.enabled)} disabled={busy}>
+                <Power size={15} /> {data.enabled ? 'Выключить /metrics' : 'Включить /metrics'}
+              </button>
+              <button className="blue-btn" type="button" onClick={generateToken} disabled={busy}>
+                <Key size={15} /> {data.token_configured ? 'Перевыпустить token' : 'Создать token'}
+              </button>
+            </div>
+          </section>
+
+          <section className="card monitoring-card">
+            <h2>Token для Prometheus</h2>
+            {newToken ? (
+              <div className="success monitoring-token">
+                <span>Скопируйте token сейчас, потом он не будет показан:</span>
+                <code>{newToken}</code>
+                <button className="copy-button" type="button" onClick={() => navigator.clipboard?.writeText(newToken)}><Copy size={13} /> Copy</button>
+              </div>
+            ) : (
+              <p className="muted">Plaintext token показывается только один раз после генерации. В базе хранится только hash.</p>
+            )}
+            <div className="monitoring-snippet">
+              <span>Локальная проверка</span>
+              <code>{curlExample}</code>
+            </div>
+          </section>
+        </div>
+      )}
+    </Shell>
+  );
+}
+
 
 function App() {
   const [auth, setAuth] = useState({ loading: true, ok: false, user: null });
@@ -1474,6 +1571,7 @@ function App() {
   if (isAdmin && trafficMatch) return <TrafficPage protocol={trafficMatch[1]} onLogout={logout} user={auth.user} />;
   if (isAdmin && window.location.pathname === '/apikeys') return <ApiKeysPage onLogout={logout} user={auth.user} />;
   if (isAdmin && window.location.pathname === '/users') return <UsersPage onLogout={logout} user={auth.user} />;
+  if (isAdmin && window.location.pathname === '/monitoring') return <MonitoringPage onLogout={logout} user={auth.user} />;
   return <Dashboard onLogout={logout} user={auth.user} />;
 }
 
