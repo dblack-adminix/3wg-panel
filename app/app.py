@@ -6249,6 +6249,53 @@ def _read_proc_stat():
     total = sum(vals)
     return idle, total
 
+
+def _read_proc_net_dev() -> list[dict]:
+    interfaces = []
+    try:
+        with open('/proc/net/dev') as f:
+            lines = f.read().splitlines()[2:]
+        for line in lines:
+            name, values = line.split(':', 1)
+            parts = values.split()
+            iface = name.strip()
+            if iface == 'lo' or len(parts) < 16:
+                continue
+            interfaces.append({
+                'name': iface,
+                'rx': int(parts[0]),
+                'rx_packets': int(parts[1]),
+                'tx': int(parts[8]),
+                'tx_packets': int(parts[9]),
+            })
+    except Exception:
+        pass
+    return interfaces
+
+
+def _container_system_metric(name: str) -> dict:
+    payload = {'name': name, 'running': False, 'status': 'missing', 'cpu_percent': 0.0, 'memory': {'usage': 0, 'limit': 0, 'percent': 0.0}}
+    try:
+        c = dc().containers.get(name)
+        payload['status'] = c.status
+        payload['running'] = c.status == 'running'
+        if c.status == 'running':
+            stats = c.stats(stream=False)
+            cpu = stats.get('cpu_stats', {})
+            precpu = stats.get('precpu_stats', {})
+            cpu_delta = (cpu.get('cpu_usage', {}).get('total_usage') or 0) - (precpu.get('cpu_usage', {}).get('total_usage') or 0)
+            system_delta = (cpu.get('system_cpu_usage') or 0) - (precpu.get('system_cpu_usage') or 0)
+            online_cpus = cpu.get('online_cpus') or len(cpu.get('cpu_usage', {}).get('percpu_usage') or []) or 1
+            if system_delta > 0 and cpu_delta >= 0:
+                payload['cpu_percent'] = round((cpu_delta / system_delta) * online_cpus * 100.0, 2)
+            mem = stats.get('memory_stats', {})
+            usage = int(mem.get('usage') or 0)
+            limit = int(mem.get('limit') or 0)
+            payload['memory'] = {'usage': usage, 'limit': limit, 'percent': round(usage / limit * 100, 2) if limit else 0.0}
+    except Exception as exc:
+        payload['status'] = f'error: {exc}'
+    return payload
+
 @app.get('/api/node/system')
 def api_node_system(user=Depends(api_require_auth)):
     # CPU: два замера /proc/stat с паузой
@@ -6268,16 +6315,39 @@ def api_node_system(user=Depends(api_require_auth)):
     mem_available = mem.get('MemAvailable', 0)
     mem_used = mem_total - mem_available
     mem_percent = round(mem_used / mem_total * 100, 1) if mem_total else 0.0
+    swap_total = mem.get('SwapTotal', 0)
+    swap_free = mem.get('SwapFree', 0)
+    swap_used = swap_total - swap_free
+    swap_percent = round(swap_used / swap_total * 100, 1) if swap_total else 0.0
 
     # Диск: корень контейнера (overlay поверх корня хоста)
     du = _shutil.disk_usage('/')
     disk_percent = round(du.used / du.total * 100, 1) if du.total else 0.0
+    load = os.getloadavg()
+    uptime_seconds = 0
+    try:
+        with open('/proc/uptime') as f:
+            uptime_seconds = int(float(f.read().split()[0]))
+    except Exception:
+        pass
+    cpu_count = os.cpu_count() or 1
+    containers = [_container_system_metric(PANEL_CONTAINER)]
+    for p in PROTOCOLS.values():
+        containers.append(_container_system_metric(p['container']))
 
     return {
         'ok': True,
+        'ts': int(time.time()),
+        'hostname': os.uname().nodename,
+        'uptime_seconds': uptime_seconds,
+        'load_average': {'one': round(load[0], 2), 'five': round(load[1], 2), 'fifteen': round(load[2], 2)},
+        'cpu': {'percent': cpu_percent, 'cores': cpu_count},
         'cpu_percent': cpu_percent,
         'memory': {'total': mem_total, 'available': mem_available, 'used': mem_used, 'percent': mem_percent},
+        'swap': {'total': swap_total, 'used': swap_used, 'free': swap_free, 'percent': swap_percent},
         'disk': {'total': du.total, 'used': du.used, 'free': du.free, 'percent': disk_percent},
+        'network': {'interfaces': _read_proc_net_dev()},
+        'containers': containers,
     }
 # === 3WG SYSTEM STATUS API END ===
 

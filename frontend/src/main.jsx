@@ -1592,8 +1592,37 @@ function percentStyle(value) {
   return { width: `${Math.max(0, Math.min(100, Number(value || 0)))}%` };
 }
 
+function formatUptime(seconds) {
+  const n = Number(seconds || 0);
+  const days = Math.floor(n / 86400);
+  const hours = Math.floor((n % 86400) / 3600);
+  const mins = Math.floor((n % 3600) / 60);
+  if (days) return `${days}д ${hours}ч ${mins}м`;
+  if (hours) return `${hours}ч ${mins}м`;
+  return `${mins}м`;
+}
+
+function MiniLineChart({ points, keys = ['value'], colors = ['#c8ff00'], height = 86, maxValue }) {
+  const data = points.length ? points : [{ value: 0 }];
+  const max = maxValue || Math.max(1, ...data.flatMap((p) => keys.map((k) => Number(p[k] || 0))));
+  const width = 320;
+  const step = data.length > 1 ? width / (data.length - 1) : width;
+  const pathFor = (key) => data.map((p, i) => {
+    const x = i * step;
+    const y = height - (Number(p[key] || 0) / max) * (height - 8) - 4;
+    return `${i ? 'L' : 'M'} ${x.toFixed(1)} ${y.toFixed(1)}`;
+  }).join(' ');
+  return (
+    <svg className="mini-line-chart" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true">
+      <line x1="0" y1={height - 4} x2={width} y2={height - 4} />
+      {keys.map((key, idx) => <path key={key} d={pathFor(key)} style={{ stroke: colors[idx] || colors[0] }} />)}
+    </svg>
+  );
+}
+
 function SystemStatusPage({ onLogout, user }) {
   const [state, setState] = useState({ loading: true, system: null, status: null, dashboard: null, error: '' });
+  const [samples, setSamples] = useState([]);
 
   const load = async () => {
     try {
@@ -1603,18 +1632,44 @@ function SystemStatusPage({ onLogout, user }) {
         api('/api/dashboard'),
       ]);
       setState({ loading: false, system, status, dashboard, error: '' });
+      setSamples((items) => {
+        const netTotal = (system.network?.interfaces || []).reduce((acc, item) => ({ rx: acc.rx + Number(item.rx || 0), tx: acc.tx + Number(item.tx || 0) }), { rx: 0, tx: 0 });
+        const last = items[items.length - 1];
+        const rxRate = last ? Math.max(0, (netTotal.rx - last.rxBytes) / Math.max(1, (system.ts || Date.now() / 1000) - last.ts)) : 0;
+        const txRate = last ? Math.max(0, (netTotal.tx - last.txBytes) / Math.max(1, (system.ts || Date.now() / 1000) - last.ts)) : 0;
+        return [...items, {
+          ts: system.ts || Math.floor(Date.now() / 1000),
+          cpu: system.cpu_percent || system.cpu?.percent || 0,
+          memory: system.memory?.percent || 0,
+          disk: system.disk?.percent || 0,
+          load: system.load_average?.one || 0,
+          rx: rxRate,
+          tx: txRate,
+          rxBytes: netTotal.rx,
+          txBytes: netTotal.tx,
+        }].slice(-36);
+      });
     } catch (err) {
       setState((s) => ({ ...s, loading: false, error: err.message || 'Ошибка system status' }));
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    const timer = setInterval(load, 10000);
+    return () => clearInterval(timer);
+  }, []);
 
   const system = state.system || {};
   const memory = system.memory || {};
+  const swap = system.swap || {};
   const disk = system.disk || {};
+  const loadAvg = system.load_average || {};
+  const network = system.network?.interfaces || [];
+  const containers = system.containers || [];
   const protocols = state.status?.protocols || {};
   const traffic = state.dashboard?.traffic?.protocols || {};
+  const stats = state.dashboard?.stats || {};
   const protocolRows = ['wireguard', 'amneziawg'].map((key) => ({
     key,
     title: protocols[key]?.title || (key === 'wireguard' ? 'WireGuard' : 'AmneziaWG'),
@@ -1626,6 +1681,7 @@ function SystemStatusPage({ onLogout, user }) {
     rx: traffic[key]?.rx || 0,
     tx: traffic[key]?.tx || 0,
   }));
+  const netTotal = network.reduce((acc, item) => ({ rx: acc.rx + Number(item.rx || 0), tx: acc.tx + Number(item.tx || 0) }), { rx: 0, tx: 0 });
 
   return (
     <Shell title="System Status" subtitle="Состояние панели, контейнеров и сетевых интерфейсов" onLogout={onLogout} user={user}>
@@ -1640,6 +1696,7 @@ function SystemStatusPage({ onLogout, user }) {
             <section className="card tool-kpi">
               <span>CPU</span>
               <b>{system.cpu_percent ?? 0}%</b>
+              <small>{system.cpu?.cores || 1} cores · load {loadAvg.one ?? 0}</small>
               <div className="tool-progress"><i style={percentStyle(system.cpu_percent)} /></div>
             </section>
             <section className="card tool-kpi">
@@ -1655,10 +1712,61 @@ function SystemStatusPage({ onLogout, user }) {
               <div className="tool-progress"><i style={percentStyle(disk.percent)} /></div>
             </section>
             <section className="card tool-kpi">
-              <span>Protocols</span>
-              <b>{protocolRows.filter((p) => p.available).length} / {protocolRows.length}</b>
-              <small>доступно сейчас</small>
+              <span>Uptime</span>
+              <b>{formatUptime(system.uptime_seconds)}</b>
+              <small>{system.hostname || '3wg-panel'}</small>
               <div className="tool-progress"><i style={percentStyle(protocolRows.filter((p) => p.available).length / protocolRows.length * 100)} /></div>
+            </section>
+          </div>
+
+          <div className="system-dashboard-grid">
+            <section className="card system-chart-card">
+              <div className="section-head">
+                <h2>Ресурсы</h2>
+                <span className="muted">auto refresh 10s</span>
+              </div>
+              <MiniLineChart points={samples} keys={['cpu', 'memory', 'disk']} colors={['#c8ff00', '#ff8c00', '#6aa7ff']} maxValue={100} height={118} />
+              <div className="traffic-color-legend">
+                <span><i className="rx" /> CPU</span>
+                <span><i className="tx" /> Memory</span>
+                <span><i style={{ background: '#6aa7ff' }} /> Storage</span>
+              </div>
+            </section>
+            <section className="card system-chart-card">
+              <div className="section-head">
+                <h2>Сеть</h2>
+                <span className="muted">RX {formatBytes(samples[samples.length - 1]?.rx)}/s · TX {formatBytes(samples[samples.length - 1]?.tx)}/s</span>
+              </div>
+              <MiniLineChart points={samples} keys={['rx', 'tx']} colors={['#c8ff00', '#ff8c00']} height={118} />
+              <div className="system-net-total">
+                <span>RX total <b>{formatBytes(netTotal.rx)}</b></span>
+                <span>TX total <b>{formatBytes(netTotal.tx)}</b></span>
+              </div>
+            </section>
+          </div>
+
+          <div className="system-detail-grid">
+            <section className="card system-panel">
+              <h2>Load / Memory</h2>
+              <div className="system-facts">
+                <div><span>Load 1m</span><b>{loadAvg.one ?? 0}</b></div>
+                <div><span>Load 5m</span><b>{loadAvg.five ?? 0}</b></div>
+                <div><span>Load 15m</span><b>{loadAvg.fifteen ?? 0}</b></div>
+                <div><span>Swap</span><b>{swap.total ? `${swap.percent}%` : 'none'}</b><small>{formatBytes(swap.used)} / {formatBytes(swap.total)}</small></div>
+              </div>
+            </section>
+            <section className="card system-panel">
+              <h2>Docker containers</h2>
+              <div className="container-list">
+                {containers.map((item) => (
+                  <div key={item.name}>
+                    <span className={item.running ? 'status-orb live' : 'status-orb idle'} />
+                    <b>{item.name}</b>
+                    <small>{item.status}</small>
+                    <em>CPU {item.cpu_percent}% · RAM {formatBytes(item.memory?.usage)}</em>
+                  </div>
+                ))}
+              </div>
             </section>
           </div>
 
@@ -1679,7 +1787,22 @@ function SystemStatusPage({ onLogout, user }) {
                   <div className="traffic-meta">
                     <span>RX {formatBytes(row.rx)}</span>
                     <span>TX {formatBytes(row.tx)}</span>
+                    <span>Peers {stats.peers_total || 0}</span>
                   </div>
+                  <div className="tool-progress split"><i style={percentStyle((row.rx / Math.max(1, row.rx + row.tx)) * 100)} /><em style={percentStyle((row.tx / Math.max(1, row.rx + row.tx)) * 100)} /></div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="card system-panel">
+            <div className="section-head"><h2>Network interfaces</h2><span className="muted">{network.length} interfaces</span></div>
+            <div className="interface-grid">
+              {network.map((item) => (
+                <div key={item.name}>
+                  <b>{item.name}</b>
+                  <span>RX {formatBytes(item.rx)} · {item.rx_packets} pkt</span>
+                  <span>TX {formatBytes(item.tx)} · {item.tx_packets} pkt</span>
                 </div>
               ))}
             </div>
