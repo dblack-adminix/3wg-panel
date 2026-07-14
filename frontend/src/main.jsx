@@ -928,10 +928,17 @@ function TrafficStatusTracker({ history, active = true }) {
   return (
     <div className="status-tracker" aria-label="Последние замеры трафика">
       {padded.map((item, index) => {
-        const moving = Number(item?.rate || 0) > 0;
+        const rx = Number(item?.rxRate || 0);
+        const tx = Number(item?.txRate || 0);
+        const moving = rx + tx > 0;
         const status = !active ? 'down' : !item ? 'empty' : moving ? 'live' : 'idle';
+        const trafficMix = rx > 0 && tx > 0 ? 'both' : rx > 0 ? 'rx' : tx > 0 ? 'tx' : '';
+        const rxPct = moving ? Math.max(8, Math.min(92, Math.round((rx / (rx + tx)) * 100))) : 0;
         const title = item ? `${formatBytes(item.rxRate || 0)}/s RX · ${formatBytes(item.txRate || 0)}/s TX` : 'Нет замера';
-        return <i className={status} key={`${index}-${item?.t || 'empty'}`} title={title} />;
+        const style = trafficMix === 'both'
+          ? { background: `linear-gradient(180deg, #12d8ff 0 ${rxPct}%, #ff8c00 ${rxPct}% 100%)` }
+          : undefined;
+        return <i className={`${status} ${trafficMix}`} style={style} key={`${index}-${item?.t || 'empty'}`} title={title} />;
       })}
     </div>
   );
@@ -967,6 +974,10 @@ function TrafficWidget({ peers, protocols, history }) {
             <div><small>TX / sec</small><b>{formatBytes(txRate)}</b></div>
           </div>
           <TrafficStatusTracker history={history} active={operational > 0} />
+          <div className="traffic-color-legend">
+            <span><i className="rx" /> RX входящий</span>
+            <span><i className="tx" /> TX исходящий</span>
+          </div>
           <div className="tracker-scale"><span>раньше</span><span>сейчас</span></div>
         </div>
         <div className="traffic-interfaces">
