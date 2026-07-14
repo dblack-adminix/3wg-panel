@@ -524,6 +524,37 @@ html[data-theme="light"] .sidebar-backdrop { background: rgba(15, 23, 42, .42); 
   .monitoring-status { grid-template-columns: 1fr; }
 }
 
+.tools-kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(180px, 1fr)); gap: 12px; margin-bottom: 12px; }
+.tool-kpi { min-height: 132px; display: grid; align-content: start; gap: 9px; }
+.tool-kpi span { color: #8a8a8a; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
+.tool-kpi b { font-size: 30px; line-height: 1; }
+.tool-kpi small { color: #8a8a8a; }
+.tool-progress { height: 8px; border-radius: 999px; background: #151515; overflow: hidden; }
+.tool-progress i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #ff8c00, #c8ff00); }
+.tools-status-card { min-height: 0; }
+.tool-service-grid { display: grid; grid-template-columns: repeat(2, minmax(260px, 1fr)); gap: 12px; }
+.tool-service { border: 1px solid #262626; border-radius: 8px; background: #0d0d0d; padding: 14px; }
+.tool-service-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.tool-service-meta { display: flex; flex-wrap: wrap; gap: 8px; color: #8a8a8a; font-size: 12px; }
+.tool-service-meta span { border: 1px solid #262626; border-radius: 5px; background: #070707; padding: 3px 7px; }
+.network-tool-grid { display: grid; grid-template-columns: minmax(320px, 430px) minmax(420px, 1fr); gap: 12px; align-items: start; }
+.network-tool-card form { display: grid; gap: 13px; }
+.network-tool-card label { display: grid; gap: 7px; }
+.network-tool-card label span { color: #8a8a8a; font-size: 12px; font-weight: 700; }
+.network-tool-card .category-select,
+.network-tool-card .name-input { width: 100%; }
+.network-result-card { min-height: 420px; }
+.tool-output { min-height: 280px; max-height: 540px; overflow: auto; margin: 0; padding: 14px; border: 1px solid #222222; border-radius: 8px; background: #070707; color: #ffffff; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; }
+.tool-placeholder { min-height: 300px; display: grid; place-items: center; align-content: center; gap: 12px; border: 1px dashed #333333; border-radius: 8px; color: #8a8a8a; }
+@media (max-width: 1100px) {
+  .tools-kpi-grid { grid-template-columns: repeat(2, minmax(180px, 1fr)); }
+  .network-tool-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 720px) {
+  .tools-kpi-grid,
+  .tool-service-grid { grid-template-columns: 1fr; }
+}
+
 /* Типографика как в основном проекте 3WG: JetBrains Mono для данных, Montserrat для заголовков */
 h1, h2, h3, .brand-block, .login-subtitle { font-family: 'Montserrat', sans-serif; }
 .topbar h1 { letter-spacing: .01em; }
@@ -763,4 +794,31 @@ html[data-theme="light"] .status-pill.offline {
   background: #fff1f2;
   border-color: #fda4af;
   color: #be123c;
+}
+html[data-theme="light"] .tool-service,
+html[data-theme="light"] .tool-output,
+html[data-theme="light"] .tool-placeholder {
+  background: #ffffff;
+  border-color: #d8e1ec;
+  color: #111827;
+}
+html[data-theme="light"] .tool-progress {
+  background: #e2e8f0;
+}
+html[data-theme="light"] .tool-kpi span,
+html[data-theme="light"] .tool-kpi small,
+html[data-theme="light"] .network-tool-card label span,
+html[data-theme="light"] .tool-service-meta,
+html[data-theme="light"] .tool-placeholder {
+  color: #64748b;
+}
+html[data-theme="light"] .tool-service-meta span {
+  background: #f8fafc;
+  border-color: #d8e1ec;
+  color: #334155;
+}
+html[data-theme="light"] .tool-output {
+  background: #0f172a;
+  border-color: #1e293b;
+  color: #e2e8f0;
 }

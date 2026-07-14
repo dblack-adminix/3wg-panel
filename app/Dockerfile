@@ -2,7 +2,7 @@ FROM python:3.12-slim
 
 WORKDIR /app
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && apt-get install -y --no-install-recommends ca-certificates curl iputils-ping traceroute \
     && rm -rf /var/lib/apt/lists/*
 
 COPY app/requirements.txt /app/requirements.txt

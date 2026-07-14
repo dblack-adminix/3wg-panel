@@ -174,6 +174,10 @@ function Sidebar({ onLogout, protocols: initialProtocols = null, user, mobileOpe
       {isAdmin && <a className={`nav ${path === '/users' ? 'active' : ''}`} href="/users" onClick={onClose}><Users size={14} /> <span>Пользователи</span></a>}
       {isAdmin && <a className={`nav ${path === '/apikeys' ? 'active' : ''}`} href="/apikeys" onClick={onClose}><Key size={14} /> <span>API-ключи</span></a>}
       {isAdmin && <a className={`nav ${path === '/monitoring' ? 'active' : ''}`} href="/monitoring" onClick={onClose}><Activity size={14} /> <span>Мониторинг</span></a>}
+      {isAdmin && <div className="nav-title">ИНСТРУМЕНТЫ</div>}
+      {isAdmin && <a className={`nav ${path === '/tools/system' ? 'active' : ''}`} href="/tools/system" onClick={onClose}><Activity size={14} /> <span>System Status</span></a>}
+      {isAdmin && <a className={`nav ${path === '/tools/ping' ? 'active' : ''}`} href="/tools/ping" onClick={onClose}><Network size={14} /> <span>Ping</span></a>}
+      {isAdmin && <a className={`nav ${path === '/tools/traceroute' ? 'active' : ''}`} href="/tools/traceroute" onClick={onClose}><ArrowUpRight size={14} /> <span>Traceroute</span></a>}
       <button className="nav logout" onClick={onLogout}><LogOut size={14} /> <span>Выход</span></button>
     </aside>
   );
@@ -1584,6 +1588,205 @@ function MonitoringPage({ onLogout, user }) {
   );
 }
 
+function percentStyle(value) {
+  return { width: `${Math.max(0, Math.min(100, Number(value || 0)))}%` };
+}
+
+function SystemStatusPage({ onLogout, user }) {
+  const [state, setState] = useState({ loading: true, system: null, status: null, dashboard: null, error: '' });
+
+  const load = async () => {
+    try {
+      const [system, status, dashboard] = await Promise.all([
+        api('/api/node/system'),
+        api('/api/node/status'),
+        api('/api/dashboard'),
+      ]);
+      setState({ loading: false, system, status, dashboard, error: '' });
+    } catch (err) {
+      setState((s) => ({ ...s, loading: false, error: err.message || 'Ошибка system status' }));
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const system = state.system || {};
+  const memory = system.memory || {};
+  const disk = system.disk || {};
+  const protocols = state.status?.protocols || {};
+  const traffic = state.dashboard?.traffic?.protocols || {};
+  const protocolRows = ['wireguard', 'amneziawg'].map((key) => ({
+    key,
+    title: protocols[key]?.title || (key === 'wireguard' ? 'WireGuard' : 'AmneziaWG'),
+    available: Boolean(protocols[key]?.available),
+    container: protocols[key]?.container || '-',
+    interface: protocols[key]?.interface || '-',
+    endpoint: protocols[key]?.endpoint || '-',
+    peers: state.dashboard?.stats?.peers_total || 0,
+    rx: traffic[key]?.rx || 0,
+    tx: traffic[key]?.tx || 0,
+  }));
+
+  return (
+    <Shell title="System Status" subtitle="Состояние панели, контейнеров и сетевых интерфейсов" onLogout={onLogout} user={user}>
+      {state.error && <div className="warning">{state.error}</div>}
+      <div className="section-head">
+        <h2>Обзор сервера</h2>
+        <button className="copy-button" type="button" onClick={load}><RefreshCw size={14} /> Обновить</button>
+      </div>
+      {state.loading ? <section className="card">Загрузка...</section> : (
+        <>
+          <div className="tools-kpi-grid">
+            <section className="card tool-kpi">
+              <span>CPU</span>
+              <b>{system.cpu_percent ?? 0}%</b>
+              <div className="tool-progress"><i style={percentStyle(system.cpu_percent)} /></div>
+            </section>
+            <section className="card tool-kpi">
+              <span>Memory</span>
+              <b>{memory.percent ?? 0}%</b>
+              <small>{formatBytes(memory.used)} / {formatBytes(memory.total)}</small>
+              <div className="tool-progress"><i style={percentStyle(memory.percent)} /></div>
+            </section>
+            <section className="card tool-kpi">
+              <span>Storage</span>
+              <b>{disk.percent ?? 0}%</b>
+              <small>{formatBytes(disk.used)} / {formatBytes(disk.total)}</small>
+              <div className="tool-progress"><i style={percentStyle(disk.percent)} /></div>
+            </section>
+            <section className="card tool-kpi">
+              <span>Protocols</span>
+              <b>{protocolRows.filter((p) => p.available).length} / {protocolRows.length}</b>
+              <small>доступно сейчас</small>
+              <div className="tool-progress"><i style={percentStyle(protocolRows.filter((p) => p.available).length / protocolRows.length * 100)} /></div>
+            </section>
+          </div>
+
+          <section className="card tools-status-card">
+            <div className="section-head"><h2>VPN сервисы</h2><span className="live-dot">LIVE</span></div>
+            <div className="tool-service-grid">
+              {protocolRows.map((row) => (
+                <div className="tool-service" key={row.key}>
+                  <div className="tool-service-head">
+                    <b className={row.key === 'wireguard' ? 'traffic-proto wg' : 'traffic-proto awg'}>{row.title}</b>
+                    <span className={row.available ? 'status-pill online' : 'status-pill offline'}>{row.available ? 'ONLINE' : 'OFFLINE'}</span>
+                  </div>
+                  <div className="tool-service-meta">
+                    <span>{row.interface}</span>
+                    <span>{row.container}</span>
+                    <span>{row.endpoint}</span>
+                  </div>
+                  <div className="traffic-meta">
+                    <span>RX {formatBytes(row.rx)}</span>
+                    <span>TX {formatBytes(row.tx)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        </>
+      )}
+    </Shell>
+  );
+}
+
+function NetworkToolPage({ kind, onLogout, user }) {
+  const isTrace = kind === 'traceroute';
+  const [peers, setPeers] = useState([]);
+  const [target, setTarget] = useState('');
+  const [count, setCount] = useState(4);
+  const [maxHops, setMaxHops] = useState(20);
+  const [result, setResult] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    api('/api/peers')
+      .then((data) => setPeers(data.peers || []))
+      .catch(() => setPeers([]));
+  }, []);
+
+  const run = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    setError('');
+    setResult(null);
+    try {
+      const payload = isTrace ? { target, max_hops: maxHops } : { target, count };
+      const data = await api(`/api/tools/${kind}`, { method: 'POST', body: JSON.stringify(payload) });
+      setResult(data);
+    } catch (err) {
+      setError(err.message || 'Ошибка запуска');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const title = isTrace ? 'Traceroute' : 'Ping';
+  const subtitle = isTrace ? 'Проверка маршрута от панели до IP или hostname' : 'Проверка доступности IP или hostname от панели';
+
+  return (
+    <Shell title={title} subtitle={subtitle} onLogout={onLogout} user={user}>
+      {error && <div className="warning">{error}</div>}
+      <div className="network-tool-grid">
+        <section className="card network-tool-card">
+          <h2>{title}</h2>
+          <form onSubmit={run}>
+            <label>
+              <span>Peer из панели</span>
+              <select className="category-select" value="" onChange={(e) => setTarget(e.target.value)}>
+                <option value="">Выбрать клиента</option>
+                {peers.map((peer) => (
+                  <option key={peer.id} value={(peer.ip_cidr || '').replace('/32', '')}>{peer.name} · {peer.ip_cidr}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>IP-адрес / hostname</span>
+              <input className="name-input" value={target} onChange={(e) => setTarget(e.target.value)} placeholder="1.1.1.1 или example.com" />
+            </label>
+            {isTrace ? (
+              <label>
+                <span>Max hops</span>
+                <input className="inline-number" type="number" min="3" max="30" value={maxHops} onChange={(e) => setMaxHops(e.target.value)} />
+              </label>
+            ) : (
+              <label>
+                <span>Число пакетов</span>
+                <input className="inline-number" type="number" min="1" max="10" value={count} onChange={(e) => setCount(e.target.value)} />
+              </label>
+            )}
+            <button className="orange-btn" type="submit" disabled={busy || !target.trim()}>
+              <Activity size={15} /> {busy ? 'Выполняю...' : isTrace ? 'Trace' : 'Ping'}
+            </button>
+          </form>
+        </section>
+
+        <section className="card network-result-card">
+          <div className="section-head">
+            <h2>Результат</h2>
+            {result && <span className={result.ok ? 'status-pill online' : 'status-pill offline'}>{result.ok ? 'OK' : `CODE ${result.return_code}`}</span>}
+          </div>
+          {result ? (
+            <>
+              <div className="monitoring-status">
+                <div><span>Команда</span><code>{result.command}</code></div>
+                <div><span>Время</span><b>{result.duration_ms} ms</b></div>
+              </div>
+              <pre className="tool-output">{result.output || 'Нет вывода'}</pre>
+            </>
+          ) : (
+            <div className="tool-placeholder">
+              <Terminal size={34} />
+              <span>Выберите target и запустите проверку.</span>
+            </div>
+          )}
+        </section>
+      </div>
+    </Shell>
+  );
+}
+
 
 function App() {
   const [auth, setAuth] = useState({ loading: true, ok: false, user: null });
@@ -1605,6 +1808,9 @@ function App() {
   if (isAdmin && window.location.pathname === '/apikeys') return <ApiKeysPage onLogout={logout} user={auth.user} />;
   if (isAdmin && window.location.pathname === '/users') return <UsersPage onLogout={logout} user={auth.user} />;
   if (isAdmin && window.location.pathname === '/monitoring') return <MonitoringPage onLogout={logout} user={auth.user} />;
+  if (isAdmin && window.location.pathname === '/tools/system') return <SystemStatusPage onLogout={logout} user={auth.user} />;
+  if (isAdmin && window.location.pathname === '/tools/ping') return <NetworkToolPage kind="ping" onLogout={logout} user={auth.user} />;
+  if (isAdmin && window.location.pathname === '/tools/traceroute') return <NetworkToolPage kind="traceroute" onLogout={logout} user={auth.user} />;
   return <Dashboard onLogout={logout} user={auth.user} />;
 }
 
