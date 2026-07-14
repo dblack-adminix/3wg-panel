@@ -108,16 +108,16 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 .status-tracker { display: grid; grid-template-columns: repeat(36, minmax(3px, 1fr)); gap: 3px; margin-top: 14px; }
 .status-tracker i { height: 28px; border-radius: 3px; background: #242424; display: block; }
 .status-tracker i.live { background: linear-gradient(180deg, #d7ff2f, #8aa800); box-shadow: 0 0 10px rgba(200, 255, 0, .18); }
-.status-tracker i.live.rx { background: linear-gradient(180deg, #12d8ff, #007da3); box-shadow: 0 0 10px rgba(18, 216, 255, .22); }
+.status-tracker i.live.rx { background: linear-gradient(180deg, #d7ff2f, #8aa800); box-shadow: 0 0 10px rgba(200, 255, 0, .22); }
 .status-tracker i.live.tx { background: linear-gradient(180deg, #ffb35c, #ff8c00); box-shadow: 0 0 10px rgba(255, 140, 0, .22); }
-.status-tracker i.live.both { box-shadow: 0 0 10px rgba(18, 216, 255, .16), 0 0 12px rgba(255, 140, 0, .16); }
+.status-tracker i.live.both { box-shadow: 0 0 10px rgba(200, 255, 0, .16), 0 0 12px rgba(255, 140, 0, .16); }
 .status-tracker i.idle { background: #343434; }
 .status-tracker i.empty { background: #171717; }
 .status-tracker i.down { background: #792323; }
 .traffic-color-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 10px; color: #999999; font-size: 11px; }
 .traffic-color-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .traffic-color-legend i { width: 8px; height: 8px; border-radius: 999px; display: inline-block; }
-.traffic-color-legend i.rx { background: #12d8ff; box-shadow: 0 0 10px rgba(18, 216, 255, .22); }
+.traffic-color-legend i.rx { background: var(--green); box-shadow: 0 0 10px rgba(200, 255, 0, .22); }
 .traffic-color-legend i.tx { background: #ff8c00; box-shadow: 0 0 10px rgba(255, 140, 0, .22); }
 .tracker-scale { display: flex; justify-content: space-between; gap: 12px; margin-top: 8px; color: #777777; font-size: 11px; }
 .traffic-interfaces { display: grid; gap: 10px; align-content: start; }

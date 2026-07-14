@@ -936,7 +936,7 @@ function TrafficStatusTracker({ history, active = true }) {
         const rxPct = moving ? Math.max(8, Math.min(92, Math.round((rx / (rx + tx)) * 100))) : 0;
         const title = item ? `${formatBytes(item.rxRate || 0)}/s RX · ${formatBytes(item.txRate || 0)}/s TX` : 'Нет замера';
         const style = trafficMix === 'both'
-          ? { background: `linear-gradient(180deg, #12d8ff 0 ${rxPct}%, #ff8c00 ${rxPct}% 100%)` }
+          ? { background: `linear-gradient(180deg, #d7ff2f 0 ${rxPct}%, #ff8c00 ${rxPct}% 100%)` }
           : undefined;
         return <i className={`${status} ${trafficMix}`} style={style} key={`${index}-${item?.t || 'empty'}`} title={title} />;
       })}
