@@ -15,7 +15,7 @@
 * { box-sizing: border-box; }
 html, body, #root { min-height: 100%; margin: 0; }
 body {
-  background: #000000;
+  background: var(--bg);
   color: var(--text);
   font-family: 'JetBrains Mono', monospace;
   font-size: 14px;
@@ -40,6 +40,7 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 
 .layout { min-height: 100vh; display: grid; grid-template-columns: 212px minmax(0, 1fr); }
 .sidebar { background: #050505; border-right: 1px solid #262626; padding: 10px; }
+.sidebar-backdrop { display: none; }
 .brand-block { border-bottom: 1px dashed #3a3a3a; padding-bottom: 16px; margin-bottom: 18px; }
 .brand-block img { display: block; width: 195px; height: 50px; object-fit: contain; }
 .nav-title { color: #808080; font-size: 10px; letter-spacing: .18em; font-weight: 600; }
@@ -50,6 +51,7 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 
 .main { padding: 12px 22px 40px; overflow: hidden; }
 .topbar { min-height: 54px; display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.mobile-menu-button { display: none; }
 .topbar h1 { font-size: 26px; line-height: 1; margin: 0; }
 .topbar p { margin: 6px 0 0; color: #aaaaaa; }
 .top-actions { display: flex; gap: 8px; }
@@ -64,6 +66,125 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 .version-line.update-available { color: #ffd386; }
 .version-line.update-available code { color: #ff8c00; }
 .version-line.muted-version { color: #777777; }
+
+html[data-theme="light"] {
+  --bg: #eef3fb;
+  --panel: #f8fafc;
+  --card: #ffffff;
+  --line: #d8e1ec;
+  --muted: #64748b;
+  --text: #111827;
+  --green: #6f9500;
+  --cyan: #ff8c00;
+  --orange: #ff8c00;
+  --danger: #d97706;
+}
+html[data-theme="light"] body { background: var(--bg); color: var(--text); }
+html[data-theme="light"] .login-page { background: radial-gradient(circle at 50% 0, #ffffff, #eef3fb 58%); }
+html[data-theme="light"] .login-card,
+html[data-theme="light"] .card,
+html[data-theme="light"] .stat-card,
+html[data-theme="light"] .traffic-total,
+html[data-theme="light"] .traffic-row,
+html[data-theme="light"] .traffic-analytics-panel,
+html[data-theme="light"] .monitoring-status div,
+html[data-theme="light"] .monitoring-snippet,
+html[data-theme="light"] .status-item,
+html[data-theme="light"] .modal-qr-panel,
+html[data-theme="light"] .confirm-body {
+  background: #ffffff;
+  border-color: var(--line);
+  color: var(--text);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, .06);
+}
+html[data-theme="light"] .sidebar { background: #f8fafc; border-color: var(--line); }
+html[data-theme="light"] .brand-block { border-color: #cbd5e1; }
+html[data-theme="light"] .nav { color: #475569; }
+html[data-theme="light"] .nav:hover { background: rgba(111, 149, 0, .08); color: #111827; }
+html[data-theme="light"] .nav.active { background: rgba(111, 149, 0, .12); color: #4d6900; border-right-color: #6f9500; }
+html[data-theme="light"] .nav-title,
+html[data-theme="light"] .muted,
+html[data-theme="light"] .topbar p,
+html[data-theme="light"] .stat-label,
+html[data-theme="light"] .traffic-rates small,
+html[data-theme="light"] .traffic-meta,
+html[data-theme="light"] .traffic-total > span,
+html[data-theme="light"] .traffic-metric span,
+html[data-theme="light"] .traffic-metric small,
+html[data-theme="light"] .traffic-chart-head p,
+html[data-theme="light"] .clients-table small,
+html[data-theme="light"] .endpoint-host,
+html[data-theme="light"] .app-footer,
+html[data-theme="light"] .version-line,
+html[data-theme="light"] .monitoring-status span,
+html[data-theme="light"] .monitoring-snippet span {
+  color: var(--muted);
+}
+html[data-theme="light"] .top-actions button,
+html[data-theme="light"] .mobile-menu-button,
+html[data-theme="light"] .copy-button,
+html[data-theme="light"] .confirm-cancel {
+  background: #ffffff;
+  border-color: #cbd5e1;
+  color: #111827;
+}
+html[data-theme="light"] .login-card input,
+html[data-theme="light"] .name-input,
+html[data-theme="light"] .inline-number,
+html[data-theme="light"] .inline-password,
+html[data-theme="light"] .category-select,
+html[data-theme="light"] .category-create,
+html[data-theme="light"] .category-create input,
+html[data-theme="light"] .category-edit input,
+html[data-theme="light"] .table-category-select {
+  background: #ffffff;
+  border-color: #cbd5e1;
+  color: #111827;
+}
+html[data-theme="light"] code,
+html[data-theme="light"] .endpoint-host code,
+html[data-theme="light"] .clients-table code {
+  background: #f1f5f9;
+  border-color: #d8e1ec;
+  color: #111827;
+}
+html[data-theme="light"] .traffic-metric,
+html[data-theme="light"] .month-chart,
+html[data-theme="light"] .traffic-table-wrap,
+html[data-theme="light"] .raw-card pre,
+html[data-theme="light"] .raw-modal pre,
+html[data-theme="light"] .config-card pre {
+  background: #ffffff;
+  border-color: var(--line);
+  color: #111827;
+}
+html[data-theme="light"] .clients-table th,
+html[data-theme="light"] .traffic-data-table th,
+html[data-theme="light"] .status-table th { color: #64748b; }
+html[data-theme="light"] .clients-table th,
+html[data-theme="light"] .clients-table td,
+html[data-theme="light"] .traffic-data-table th,
+html[data-theme="light"] .traffic-data-table td,
+html[data-theme="light"] .status-table th,
+html[data-theme="light"] .status-table td { border-color: #e2e8f0; }
+html[data-theme="light"] .traffic-data-table td,
+html[data-theme="light"] .traffic-data-table b,
+html[data-theme="light"] .status-meta-grid span,
+html[data-theme="light"] .detail-grid b { color: #111827; }
+html[data-theme="light"] .traffic-bar,
+html[data-theme="light"] .table-progress { background: #e2e8f0; }
+html[data-theme="light"] .status-tracker i.idle { background: #cbd5e1; }
+html[data-theme="light"] .status-tracker i.empty { background: #e2e8f0; }
+html[data-theme="light"] .chart-grid-line { stroke: #d8e1ec; }
+html[data-theme="light"] .chart-axis-line { stroke: #cbd5e1; }
+html[data-theme="light"] .chart-axis-label,
+html[data-theme="light"] .chart-date-label { fill: #64748b; }
+html[data-theme="light"] .warning,
+html[data-theme="light"] .login-error { background: #fff7ed; border-color: #fed7aa; color: #9a3412; }
+html[data-theme="light"] .success { background: #f0fdf4; border-color: #bbf7d0; color: #166534; }
+html[data-theme="light"] .app-footer { border-color: #d8e1ec; }
+html[data-theme="light"] .app-footer a { color: #334155; }
+html[data-theme="light"] .sidebar-backdrop { background: rgba(15, 23, 42, .42); }
 
 .stats-grid { display: grid; grid-template-columns: repeat(4, minmax(180px, 1fr)); gap: 10px; margin: 8px 0 14px; }
 .stat-card, .card { border: 1px solid var(--line); border-radius: 8px; background: #0f0f0f; }
@@ -254,7 +375,41 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 
 @media (max-width: 900px) {
   .layout { grid-template-columns: 1fr; }
-  .sidebar { display: none; }
+  .sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 50;
+    width: min(280px, 86vw);
+    transform: translateX(-105%);
+    transition: transform .18s ease;
+    box-shadow: 22px 0 60px rgba(0, 0, 0, .45);
+    overflow-y: auto;
+  }
+  .sidebar.open { transform: translateX(0); }
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 45;
+    border: 0;
+    background: rgba(0, 0, 0, .54);
+    cursor: pointer;
+  }
+  .mobile-menu-button {
+    display: inline-grid;
+    place-items: center;
+    width: 36px;
+    height: 34px;
+    flex: 0 0 auto;
+    border: 1px solid #333333;
+    border-radius: 7px;
+    background: #101010;
+    color: #eeeeee;
+    cursor: pointer;
+  }
+  .topbar { align-items: flex-start; gap: 10px; }
+  .topbar h1 { font-size: 22px; line-height: 1.12; }
+  .topbar p { font-size: 12px; }
   .stats-grid { grid-template-columns: 1fr 1fr; }
   .dashboard-row { grid-template-columns: 1fr; }
   .traffic-layout { grid-template-columns: 1fr; }

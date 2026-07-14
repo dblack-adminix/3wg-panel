@@ -12,7 +12,9 @@ import {
   Home,
   Key,
   LogOut,
+  Menu,
   Network,
+  Moon,
   Power,
   Pencil,
   Plus,
@@ -21,12 +23,28 @@ import {
   Trash2,
   X,
   ShieldCheck,
+  Sun,
   Terminal,
   Users,
   Wifi,
   WifiOff,
 } from 'lucide-react';
 import './styles.css';
+
+const getInitialTheme = () => {
+  try {
+    return localStorage.getItem('3wg-theme') || 'light';
+  } catch {
+    return 'light';
+  }
+};
+
+const applyTheme = (theme) => {
+  document.documentElement.dataset.theme = theme;
+  try { localStorage.setItem('3wg-theme', theme); } catch {}
+};
+
+applyTheme(getInitialTheme());
 
 const api = async (path, options = {}) => {
   const res = await fetch(path, {
@@ -122,7 +140,7 @@ function Login({ onLogin }) {
   );
 }
 
-function Sidebar({ onLogout, protocols: initialProtocols = null, user }) {
+function Sidebar({ onLogout, protocols: initialProtocols = null, user, mobileOpen = false, onClose }) {
   const path = window.location.pathname;
   const isHome = path === '/' || path === '/ui';
   const [protocols, setProtocols] = useState(initialProtocols);
@@ -144,34 +162,49 @@ function Sidebar({ onLogout, protocols: initialProtocols = null, user }) {
   const showAmneziaStatus = protocols?.amneziawg?.available !== false;
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar ${mobileOpen ? 'open' : ''}`}>
       <div className="brand-block">
         <img src="/logogrin.png" alt="3WG" />
       </div>
       <div className="nav-title">ОБЗОР</div>
-      <a className={`nav ${isHome ? 'active' : ''}`} href="/"><Home size={14} /> <span>Главная</span></a>
-      {isAdmin && showWireGuardStatus && <a className={`nav ${path === '/status/wireguard' ? 'active' : ''}`} href="/status/wireguard"><Activity size={14} /> <span>WG status</span></a>}
-      {isAdmin && showAmneziaStatus && <a className={`nav ${path === '/status/amneziawg' ? 'active' : ''}`} href="/status/amneziawg"><Activity size={14} /> <span>AWG status</span></a>}
+      <a className={`nav ${isHome ? 'active' : ''}`} href="/" onClick={onClose}><Home size={14} /> <span>Главная</span></a>
+      {isAdmin && showWireGuardStatus && <a className={`nav ${path === '/status/wireguard' ? 'active' : ''}`} href="/status/wireguard" onClick={onClose}><Activity size={14} /> <span>WG status</span></a>}
+      {isAdmin && showAmneziaStatus && <a className={`nav ${path === '/status/amneziawg' ? 'active' : ''}`} href="/status/amneziawg" onClick={onClose}><Activity size={14} /> <span>AWG status</span></a>}
       {isAdmin && <div className="nav-title">УПРАВЛЕНИЕ</div>}
-      {isAdmin && <a className={`nav ${path === '/users' ? 'active' : ''}`} href="/users"><Users size={14} /> <span>Пользователи</span></a>}
-      {isAdmin && <a className={`nav ${path === '/apikeys' ? 'active' : ''}`} href="/apikeys"><Key size={14} /> <span>API-ключи</span></a>}
-      {isAdmin && <a className={`nav ${path === '/monitoring' ? 'active' : ''}`} href="/monitoring"><Activity size={14} /> <span>Мониторинг</span></a>}
+      {isAdmin && <a className={`nav ${path === '/users' ? 'active' : ''}`} href="/users" onClick={onClose}><Users size={14} /> <span>Пользователи</span></a>}
+      {isAdmin && <a className={`nav ${path === '/apikeys' ? 'active' : ''}`} href="/apikeys" onClick={onClose}><Key size={14} /> <span>API-ключи</span></a>}
+      {isAdmin && <a className={`nav ${path === '/monitoring' ? 'active' : ''}`} href="/monitoring" onClick={onClose}><Activity size={14} /> <span>Мониторинг</span></a>}
       <button className="nav logout" onClick={onLogout}><LogOut size={14} /> <span>Выход</span></button>
     </aside>
   );
 }
 
 function Shell({ title, subtitle, onLogout, protocols, user, children }) {
+  const [navOpen, setNavOpen] = useState(false);
+  const [theme, setTheme] = useState(getInitialTheme);
+  const toggleTheme = () => {
+    const next = theme === 'light' ? 'dark' : 'light';
+    setTheme(next);
+    applyTheme(next);
+  };
+
   return (
     <div className="layout" id="top">
-      <Sidebar onLogout={onLogout} protocols={protocols} user={user} />
+      <Sidebar onLogout={onLogout} protocols={protocols} user={user} mobileOpen={navOpen} onClose={() => setNavOpen(false)} />
+      {navOpen && <button className="sidebar-backdrop" type="button" aria-label="Закрыть меню" onClick={() => setNavOpen(false)} />}
       <main className="main">
         <header className="topbar">
+          <button className="mobile-menu-button" type="button" title="Меню" aria-label="Открыть меню" onClick={() => setNavOpen(true)}><Menu size={18} /></button>
           <div>
             <h1>{title}</h1>
             <p>{subtitle}</p>
           </div>
-          <div className="top-actions"><button onClick={onLogout} title="Выйти"><LogOut size={15} /></button></div>
+          <div className="top-actions">
+            <button onClick={toggleTheme} title={theme === 'light' ? 'Темная тема' : 'Светлая тема'} aria-label="Переключить тему">
+              {theme === 'light' ? <Moon size={15} /> : <Sun size={15} />}
+            </button>
+            <button onClick={onLogout} title="Выйти"><LogOut size={15} /></button>
+          </div>
         </header>
         {children}
         <footer className="app-footer">
