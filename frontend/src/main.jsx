@@ -1813,7 +1813,8 @@ function NetworkToolPage({ kind, onLogout, user }) {
 
   const selectPeer = (value) => {
     setSelectedPeer(value);
-    setTarget(value);
+    const peer = peers.find((item) => String(item.id) === String(value));
+    setTarget((peer?.ip_cidr || '').replace('/32', ''));
     setResult(null);
     setError('');
   };
@@ -1831,7 +1832,10 @@ function NetworkToolPage({ kind, onLogout, user }) {
     setError('');
     setResult(null);
     try {
-      const payload = isTrace ? { target, max_hops: maxHops } : { target, count };
+      const selected = peers.find((item) => String(item.id) === String(selectedPeer));
+      const payload = isTrace
+        ? { target, max_hops: maxHops, protocol: selected?.protocol || '' }
+        : { target, count, protocol: selected?.protocol || '' };
       const data = await api(`/api/tools/${kind}`, { method: 'POST', body: JSON.stringify(payload) });
       setResult(data);
     } catch (err) {
@@ -1856,7 +1860,7 @@ function NetworkToolPage({ kind, onLogout, user }) {
               <select className="category-select" value={selectedPeer} onChange={(e) => selectPeer(e.target.value)}>
                 <option value="">Выбрать клиента</option>
                 {peers.map((peer) => (
-                  <option key={peer.id} value={(peer.ip_cidr || '').replace('/32', '')}>{peer.name} · {peer.ip_cidr}</option>
+                  <option key={peer.id} value={String(peer.id)}>{peer.name} · {peer.protocol_title || peer.protocol} · {peer.ip_cidr}</option>
                 ))}
               </select>
             </label>
@@ -1891,6 +1895,7 @@ function NetworkToolPage({ kind, onLogout, user }) {
               <div className="monitoring-status">
                 <div><span>Команда</span><code>{result.command}</code></div>
                 <div><span>Время</span><b>{result.duration_ms} ms</b></div>
+                <div><span>Источник</span><b>{result.source?.label || '3wg-panel'}</b></div>
               </div>
               <NetworkToolResult kind={kind} result={result} />
             </>

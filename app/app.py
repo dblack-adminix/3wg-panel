@@ -6333,26 +6333,72 @@ def _tool_run(command: list[str], timeout: int = 20) -> dict:
         }
 
 
+def _tool_protocol(value: str | None) -> str | None:
+    protocol = str(value or '').strip()
+    if not protocol:
+        return None
+    if protocol not in PROTOCOLS:
+        raise HTTPException(status_code=400, detail='Некорректный protocol')
+    return protocol
+
+
+def _tool_run_in_protocol(protocol: str | None, command: list[str], timeout: int = 20) -> dict:
+    if not protocol:
+        payload = _tool_run(command, timeout=timeout)
+        payload['source'] = {'type': 'panel', 'label': PANEL_CONTAINER, 'protocol': None}
+        return payload
+
+    container_name = PROTOCOLS[protocol]['container']
+    started = time.time()
+    try:
+        container = docker_client().containers.get(container_name)
+        result = container.exec_run(command, stdout=True, stderr=True)
+        raw = result.output.decode('utf-8', errors='replace') if isinstance(result.output, (bytes, bytearray)) else str(result.output or '')
+        output = raw.strip()
+        lines = output.splitlines()[:120]
+        return {
+            'ok': int(result.exit_code or 0) == 0,
+            'return_code': int(result.exit_code or 0),
+            'duration_ms': int((time.time() - started) * 1000),
+            'command': f"{container_name}$ " + ' '.join(shlex.quote(x) for x in command),
+            'output': '\n'.join(lines),
+            'truncated': len(output.splitlines()) > len(lines),
+            'source': {'type': 'protocol', 'label': container_name, 'protocol': protocol},
+        }
+    except Exception as exc:
+        return {
+            'ok': False,
+            'return_code': 125,
+            'duration_ms': int((time.time() - started) * 1000),
+            'command': f"{container_name}$ " + ' '.join(shlex.quote(x) for x in command),
+            'output': str(exc),
+            'truncated': False,
+            'source': {'type': 'protocol', 'label': container_name, 'protocol': protocol},
+        }
+
+
 @app.post('/api/tools/ping')
 async def api_tools_ping(request: Request, user=Depends(api_require_admin)):
     payload = await api_read_payload(request)
     target = _tool_target(payload.get('target', ''))
+    protocol = _tool_protocol(payload.get('protocol'))
     count = max(1, min(10, int(payload.get('count') or 4)))
-    binary = _shutil.which('ping')
+    binary = 'ping' if protocol else _shutil.which('ping')
     if not binary:
         raise HTTPException(status_code=500, detail='ping не установлен в контейнере')
-    return _tool_run([binary, '-n', '-c', str(count), '-W', '2', target], timeout=count * 3 + 3)
+    return _tool_run_in_protocol(protocol, [binary, '-n', '-c', str(count), '-W', '2', target], timeout=count * 3 + 3)
 
 
 @app.post('/api/tools/traceroute')
 async def api_tools_traceroute(request: Request, user=Depends(api_require_admin)):
     payload = await api_read_payload(request)
     target = _tool_target(payload.get('target', ''))
+    protocol = _tool_protocol(payload.get('protocol'))
     max_hops = max(3, min(30, int(payload.get('max_hops') or 20)))
-    binary = _shutil.which('traceroute')
+    binary = 'traceroute' if protocol else _shutil.which('traceroute')
     if not binary:
         raise HTTPException(status_code=500, detail='traceroute не установлен в контейнере')
-    return _tool_run([binary, '-n', '-w', '2', '-q', '1', '-m', str(max_hops), target], timeout=max_hops * 3)
+    return _tool_run_in_protocol(protocol, [binary, '-n', '-w', '2', '-q', '1', '-m', str(max_hops), target], timeout=max_hops * 3)
 # === 3WG NETWORK TOOLS API END ===
 
 
