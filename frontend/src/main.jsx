@@ -974,19 +974,110 @@ function formatTrafficDay(day) {
   return new Date(Number(day) * 1000).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' });
 }
 
+function formatTrafficAxis(value) {
+  const text = formatBytes(value);
+  return text.replace('.00 ', ' ');
+}
+
+function TrafficMetric({ label, value, sub }) {
+  return (
+    <div className="traffic-metric">
+      <span>{label}</span>
+      <b>{value}</b>
+      {sub && <small>{sub}</small>}
+    </div>
+  );
+}
+
 function MonthlyTrafficChart({ series }) {
+  const width = 980;
+  const height = 360;
+  const margin = { top: 18, right: 22, bottom: 42, left: 72 };
+  const plotWidth = width - margin.left - margin.right;
+  const plotHeight = height - margin.top - margin.bottom;
   const max = Math.max(1, ...series.map((item) => item.total));
+  const ticks = [1, 0.75, 0.5, 0.25, 0];
+  const step = series.length ? plotWidth / series.length : plotWidth;
+  const barWidth = Math.min(22, Math.max(8, step * 0.48));
+  const xLabelEvery = Math.max(1, Math.ceil(series.length / 8));
+
   return (
     <div className="month-chart">
-      {series.map((item) => {
-        const height = Math.max(4, Math.round((item.total / max) * 100));
-        return (
-          <div className="month-bar" key={item.day} title={`${formatTrafficDay(item.day)}: ${formatBytes(item.total)}`}>
-            <i style={{ height: `${height}%` }} />
-            <span>{formatTrafficDay(item.day)}</span>
-          </div>
-        );
-      })}
+      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="График трафика за 30 дней">
+        {ticks.map((tick) => {
+          const y = margin.top + (1 - tick) * plotHeight;
+          return (
+            <g key={tick}>
+              <line className="chart-grid-line" x1={margin.left} x2={width - margin.right} y1={y} y2={y} />
+              <text className="chart-axis-label" x={margin.left - 12} y={y + 4} textAnchor="end">{formatTrafficAxis(max * tick)}</text>
+            </g>
+          );
+        })}
+        <line className="chart-axis-line" x1={margin.left} x2={width - margin.right} y1={margin.top + plotHeight} y2={margin.top + plotHeight} />
+        {series.map((item, index) => {
+          const x = margin.left + index * step + (step - barWidth) / 2;
+          const base = margin.top + plotHeight;
+          const rxHeight = item.total ? Math.max(2, (item.rx / max) * plotHeight) : 0;
+          const txHeight = item.total ? Math.max(item.tx ? 2 : 0, (item.tx / max) * plotHeight) : 0;
+          const totalHeight = item.total ? Math.max(2, rxHeight + txHeight) : 1;
+          const emptyY = base - totalHeight;
+          const showLabel = index % xLabelEvery === 0 || index === series.length - 1;
+
+          return (
+            <g className="month-bar" key={item.day}>
+              <title>{`${formatTrafficDay(item.day)}: ${formatBytes(item.total)} | RX ${formatBytes(item.rx)} | TX ${formatBytes(item.tx)}`}</title>
+              {item.total ? (
+                <>
+                  <rect className="chart-rx-bar" x={x} y={base - rxHeight} width={barWidth} height={rxHeight} rx="4" />
+                  <rect className="chart-tx-bar" x={x} y={base - rxHeight - txHeight} width={barWidth} height={txHeight} rx="4" />
+                </>
+              ) : (
+                <rect className="chart-empty-bar" x={x} y={emptyY} width={barWidth} height={totalHeight} rx="3" />
+              )}
+              {showLabel && (
+                <text className="chart-date-label" x={x + barWidth / 2} y={height - 16} textAnchor="middle">{formatTrafficDay(item.day)}</text>
+              )}
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
+function TrafficDayTable({ series }) {
+  const max = Math.max(1, ...series.map((item) => item.total));
+  return (
+    <div className="traffic-table-wrap">
+      <table className="traffic-data-table">
+        <thead>
+          <tr>
+            <th>Дата</th>
+            <th>RX</th>
+            <th>TX</th>
+            <th>Всего</th>
+            <th>Доля</th>
+          </tr>
+        </thead>
+        <tbody>
+          {series.slice().reverse().map((item) => {
+            const pct = item.total ? Math.max(3, Math.round((item.total / max) * 100)) : 0;
+            return (
+              <tr key={item.day}>
+                <td>{formatTrafficDay(item.day)}</td>
+                <td>{formatBytes(item.rx)}</td>
+                <td>{formatBytes(item.tx)}</td>
+                <td><b>{formatBytes(item.total)}</b></td>
+                <td>
+                  <div className="table-progress" aria-label={`${pct}%`}>
+                    <i style={{ width: `${pct}%` }} />
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -1013,11 +1104,13 @@ function TrafficPage({ protocol, onLogout, user }) {
   const current = data?.current || {};
   const series = data?.series || [];
   const today = series.at(-1) || { rx: 0, tx: 0, total: 0 };
+  const activeDays = series.filter((item) => item.total > 0).length;
+  const peak = series.reduce((best, item) => (item.total > best.total ? item : best), { rx: 0, tx: 0, total: 0, day: 0 });
   const title = data ? `${data.title} traffic` : 'Traffic';
 
   return (
     <Shell title={title} subtitle={data ? `${data.interface} / 30 дней` : 'Traffic history'} onLogout={onLogout} user={user}>
-      <section className="card traffic-page-card">
+      <section className="traffic-page-card">
         <div className="detail-head">
           <a className="back-link" href="/"><ChevronLeft size={16} /> Главная</a>
           <button className="copy-button" type="button" onClick={load}><RefreshCw size={14} /> Обновить</button>
@@ -1027,21 +1120,33 @@ function TrafficPage({ protocol, onLogout, user }) {
         {data && (
           <>
             <div className="traffic-kpi-grid">
-              <div><span>Текущий счётчик</span><b>{formatBytes(current.total)}</b></div>
-              <div><span>За сегодня</span><b>{formatBytes(today.total)}</b></div>
-              <div><span>За 30 дней</span><b>{formatBytes(data.month_total)}</b></div>
-              <div><span>Интерфейс</span><b>{data.interface}</b></div>
+              <TrafficMetric label="Текущий счётчик" value={formatBytes(current.total)} sub={`RX ${formatBytes(current.rx)} / TX ${formatBytes(current.tx)}`} />
+              <TrafficMetric label="За сегодня" value={formatBytes(today.total)} sub={`RX ${formatBytes(today.rx)} / TX ${formatBytes(today.tx)}`} />
+              <TrafficMetric label="За 30 дней" value={formatBytes(data.month_total)} sub={`${activeDays} активных дней`} />
+              <TrafficMetric label="Пиковый день" value={formatBytes(peak.total)} sub={peak.day ? formatTrafficDay(peak.day) : data.interface} />
             </div>
-            <MonthlyTrafficChart series={series} />
-            <div className="traffic-month-list">
-              {series.slice().reverse().map((item) => (
-                <div key={item.day}>
-                  <span>{formatTrafficDay(item.day)}</span>
-                  <b>{formatBytes(item.total)}</b>
-                  <small>RX {formatBytes(item.rx)} / TX {formatBytes(item.tx)}</small>
+            <section className="traffic-analytics-panel">
+              <div className="section-head traffic-chart-head">
+                <div>
+                  <h2>Динамика трафика</h2>
+                  <p>{data.interface} · последние 30 дней</p>
                 </div>
-              ))}
-            </div>
+                <div className="traffic-legend">
+                  <span><i className="rx-dot" /> RX</span>
+                  <span><i className="tx-dot" /> TX</span>
+                </div>
+              </div>
+              <MonthlyTrafficChart series={series} />
+            </section>
+            <section className="traffic-analytics-panel">
+              <div className="section-head traffic-chart-head">
+                <div>
+                  <h2>Разбор по дням</h2>
+                  <p>Приходящий, исходящий и общий объем</p>
+                </div>
+              </div>
+              <TrafficDayTable series={series} />
+            </section>
             <p className="traffic-note">{data.note}</p>
           </>
         )}
