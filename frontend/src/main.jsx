@@ -440,8 +440,8 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
             {filteredPeers.map((p) => (
               <tr key={p.id}>
                 <td>{p.id}</td>
-                <td><b>{p.name}</b><small>peer #{p.id}</small></td>
-                {isAdmin && <td><span className="owner-badge">{p.owner_username || 'admin'}</span></td>}
+                <td><b>{p.name}</b><small>создал: {p.created_by_label || p.owner_username || 'admin'}</small></td>
+                {isAdmin && <td><span className="owner-badge">{p.created_by_label || p.owner_username || 'admin'}</span></td>}
                 {isAdmin && (
                   <td>
                     <select className="category-select table-category-select" value={p.category_id || ''} disabled={busyId === p.id} onChange={(e) => changePeerCategory(p, e.target.value)}>

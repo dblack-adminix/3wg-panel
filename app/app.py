@@ -5800,6 +5800,7 @@ def api_peer_payload(c, live: dict | None = None, include_config: bool = False) 
     lp = live.get(protocol, {}).get(c['public_key']) if live else None
     active, handshake_age = api_recent_handshake(lp)
     enabled = bool(c['enabled'])
+    owner_username = c['owner_username'] if 'owner_username' in c.keys() and c['owner_username'] else PANEL_USER
     payload = {
         'id': int(c['id']),
         'name': c['name'],
@@ -5808,7 +5809,8 @@ def api_peer_payload(c, live: dict | None = None, include_config: bool = False) 
         'category_id': int(c['category_id']) if 'category_id' in c.keys() and c['category_id'] is not None else None,
         'category_name': c['category_name'] if 'category_name' in c.keys() else None,
         'owner_id': int(c['owner_id']) if 'owner_id' in c.keys() and c['owner_id'] is not None else None,
-        'owner_username': c['owner_username'] if 'owner_username' in c.keys() and c['owner_username'] else PANEL_USER,
+        'owner_username': owner_username,
+        'created_by_label': owner_username,
         'ip_cidr': c['ip_cidr'],
         'public_key': c['public_key'],
         'enabled': enabled,
