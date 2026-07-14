@@ -920,6 +920,23 @@ function TrafficChart({ points }) {
   );
 }
 
+function TrafficStatusTracker({ history, active = true }) {
+  const count = 36;
+  const samples = history.slice(-count);
+  const padded = [...Array(Math.max(0, count - samples.length)).fill(null), ...samples];
+
+  return (
+    <div className="status-tracker" aria-label="Последние замеры трафика">
+      {padded.map((item, index) => {
+        const moving = Number(item?.rate || 0) > 0;
+        const status = !active ? 'down' : !item ? 'empty' : moving ? 'live' : 'idle';
+        const title = item ? `${formatBytes(item.rxRate || 0)}/s RX · ${formatBytes(item.txRate || 0)}/s TX` : 'Нет замера';
+        return <i className={status} key={`${index}-${item?.t || 'empty'}`} title={title} />;
+      })}
+    </div>
+  );
+}
+
 function TrafficWidget({ peers, protocols, history }) {
   const rows = useMemo(() => protocolTrafficRows(peers, protocols), [peers, protocols]);
   const totals = rows.reduce((acc, row) => ({ rx: acc.rx + row.rx, tx: acc.tx + row.tx }), { rx: 0, tx: 0 });
@@ -928,39 +945,51 @@ function TrafficWidget({ peers, protocols, history }) {
   const rxRate = latest?.rxRate || 0;
   const txRate = latest?.txRate || 0;
   const maxRow = Math.max(1, ...rows.map((row) => row.rx + row.tx));
+  const operational = rows.filter((row) => row.available).length;
+  const moving = rxRate + txRate > 0;
 
   return (
     <section className="card traffic-card">
       <div className="section-head traffic-head">
         <h2><Activity size={18} /> Трафик интерфейсов</h2>
-        <span className="live-dot">LIVE</span>
+        <span className={`live-dot ${moving ? 'active' : 'idle'}`}>{moving ? 'LIVE' : 'IDLE'}</span>
       </div>
       <div className="traffic-layout">
         <div className="traffic-total">
+          <div className="traffic-status-title">
+            <span className={`status-orb ${moving ? 'live' : 'idle'}`} />
+            <b>{operational === rows.length ? 'Интерфейсы доступны' : 'Есть недоступные интерфейсы'}</b>
+          </div>
           <span>Общий трафик</span>
           <strong>{formatBytes(total)}</strong>
           <div className="traffic-rates">
             <div><small>RX / sec</small><b>{formatBytes(rxRate)}</b></div>
             <div><small>TX / sec</small><b>{formatBytes(txRate)}</b></div>
           </div>
-          <TrafficChart points={history} />
+          <TrafficStatusTracker history={history} active={operational > 0} />
+          <div className="tracker-scale"><span>раньше</span><span>сейчас</span></div>
         </div>
         <div className="traffic-interfaces">
           {rows.map((row) => {
             const rowTotal = row.rx + row.tx;
             const pct = Math.max(3, Math.round((rowTotal / maxRow) * 100));
+            const rowMoving = row.available && rowTotal > 0 && moving;
+            const statusText = !row.available ? 'DOWN' : rowMoving ? 'TRAFFIC' : 'READY';
             return (
               <a className="traffic-row" key={row.protocol} href={`/traffic/${row.protocol}`}>
                 <div className="traffic-row-top">
                   <span className={`traffic-proto ${row.protocol === 'wireguard' ? 'wg' : 'awg'}`}>{row.title}</span>
+                  <span className={`traffic-state ${!row.available ? 'down' : rowMoving ? 'live' : 'idle'}`}>{statusText}</span>
                   <b>{formatBytes(rowTotal)}</b>
                 </div>
                 <div className="traffic-meta">
                   <span>{row.interface}</span>
                   <span>RX {formatBytes(row.rx)}</span>
                   <span>TX {formatBytes(row.tx)}</span>
+                  <span>{row.peers} peer'ов</span>
                 </div>
                 <div className="traffic-bar"><i style={{ width: `${pct}%` }} /></div>
+                <TrafficStatusTracker history={history} active={row.available} />
               </a>
             );
           })}
