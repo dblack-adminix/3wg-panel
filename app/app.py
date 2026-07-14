@@ -5474,7 +5474,7 @@ async def react_frontend_middleware(request: Request, call_next):
         if asset_file.exists() and asset_file.is_file():
             return ReactFileResponse(asset_file)
 
-    if (path in ('/', '/login', '/ui', '/apikeys') or re.match(r'^/client/\d+$', path) or re.match(r'^/status/(wireguard|amneziawg)$', path) or re.match(r'^/traffic/(wireguard|amneziawg)$', path)) and index_file.exists():
+    if (path in ('/', '/login', '/ui', '/users', '/apikeys') or re.match(r'^/client/\d+$', path) or re.match(r'^/status/(wireguard|amneziawg)$', path) or re.match(r'^/traffic/(wireguard|amneziawg)$', path)) and index_file.exists():
         return ReactFileResponse(
             index_file,
             media_type='text/html; charset=utf-8',
