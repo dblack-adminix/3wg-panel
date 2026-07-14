@@ -37,11 +37,12 @@ ENDPOINT_HOST = os.getenv("ENDPOINT_HOST", "cz-prg-01.nodax.eu")
 DNS_SERVERS = os.getenv("DNS_SERVERS", "1.1.1.1, 1.0.0.1")
 SESSION_SECRET = os.getenv("SESSION_SECRET", PANEL_PASSWORD + ENDPOINT_HOST)
 SESSION_COOKIE = "3wg_session"
+SESSION_VERSION = "v2"
 RUNTIME_CACHE = {}
 RUNTIME_CACHE_TTL_SECONDS = float(os.getenv("RUNTIME_CACHE_TTL_SECONDS", "3"))
 PORT_CACHE_TTL_SECONDS = float(os.getenv("PORT_CACHE_TTL_SECONDS", "30"))
 VERSION_FILE = APP_DIR / "VERSION"
-APP_VERSION = os.getenv("APP_VERSION", VERSION_FILE.read_text(encoding="utf-8").strip() if VERSION_FILE.exists() else "v1.1.5")
+APP_VERSION = os.getenv("APP_VERSION", VERSION_FILE.read_text(encoding="utf-8").strip() if VERSION_FILE.exists() else "v1.2.0")
 VERSION_REPOSITORY = os.getenv("VERSION_REPOSITORY", "dblack-adminix/3wg-panel")
 VERSION_CHECK_URL = os.getenv("VERSION_CHECK_URL", f"https://api.github.com/repos/{VERSION_REPOSITORY}/tags")
 VERSION_CHECK_TTL_SECONDS = float(os.getenv("VERSION_CHECK_TTL_SECONDS", "3600"))
@@ -98,6 +99,85 @@ def make_session_token() -> str:
     msg = f"{PANEL_USER}:{PANEL_PASSWORD}".encode("utf-8")
     key = SESSION_SECRET.encode("utf-8")
     return hmac.new(key, msg, hashlib.sha256).hexdigest()
+
+
+def password_hash(password: str, salt: str | None = None) -> str:
+    salt = salt or secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac("sha256", str(password).encode("utf-8"), salt.encode("utf-8"), 200_000)
+    return f"pbkdf2_sha256${salt}${digest.hex()}"
+
+
+def password_verify(password: str, stored: str) -> bool:
+    try:
+        algo, salt, expected = str(stored or "").split("$", 2)
+    except ValueError:
+        return False
+    if algo != "pbkdf2_sha256":
+        return False
+    return secrets.compare_digest(password_hash(password, salt), stored)
+
+
+def make_user_session(username: str, role: str) -> str:
+    payload = f"{SESSION_VERSION}:{username}:{role}"
+    sig = hmac.new(SESSION_SECRET.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+    return f"{payload}:{sig}"
+
+
+def verify_user_session(token: str) -> dict | None:
+    parts = str(token or "").split(":")
+    if len(parts) != 4 or parts[0] != SESSION_VERSION:
+        return None
+    payload = ":".join(parts[:3])
+    sig = hmac.new(SESSION_SECRET.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+    if not secrets.compare_digest(sig, parts[3]):
+        return None
+    username, role = parts[1], parts[2]
+    if username == PANEL_USER and role == "admin":
+        return admin_user()
+    with db() as conn:
+        row = conn.execute(
+            "SELECT * FROM panel_users WHERE username = ? AND enabled = 1",
+            (username,),
+        ).fetchone()
+    return user_payload(row) if row else None
+
+
+def admin_user() -> dict:
+    return {
+        "id": None,
+        "username": PANEL_USER,
+        "role": "admin",
+        "peer_limit": None,
+        "enabled": True,
+        "is_admin": True,
+        "is_env_admin": True,
+    }
+
+
+def user_payload(row) -> dict:
+    return {
+        "id": int(row["id"]),
+        "username": row["username"],
+        "role": row["role"],
+        "peer_limit": int(row["peer_limit"]),
+        "enabled": bool(row["enabled"]),
+        "created_at": int(row["created_at"]),
+        "is_admin": row["role"] == "admin",
+        "is_env_admin": False,
+    }
+
+
+def authenticate_user(username: str, password: str) -> dict | None:
+    if secrets.compare_digest(username, PANEL_USER) and secrets.compare_digest(password, PANEL_PASSWORD):
+        return admin_user()
+    with db() as conn:
+        row = conn.execute(
+            "SELECT * FROM panel_users WHERE username = ? AND enabled = 1",
+            (username,),
+        ).fetchone()
+    if row and password_verify(password, row["password_hash"]):
+        return user_payload(row)
+    return None
 
 
 def version_tuple(value: str) -> tuple[int, int, int]:
@@ -174,13 +254,16 @@ def cached_version_status() -> dict:
 def auth(request: Request, credentials: HTTPBasicCredentials = Depends(security)):
     cookie_token = request.cookies.get(SESSION_COOKIE)
 
+    session_user = verify_user_session(cookie_token or "")
+    if session_user:
+        return session_user["username"]
+
     if cookie_token and secrets.compare_digest(cookie_token, make_session_token()):
         return PANEL_USER
 
     if credentials is not None:
-        ok_user = secrets.compare_digest(credentials.username, PANEL_USER)
-        ok_pass = secrets.compare_digest(credentials.password, PANEL_PASSWORD)
-        if ok_user and ok_pass:
+        login_user = authenticate_user(credentials.username, credentials.password)
+        if login_user:
             return credentials.username
 
     raise HTTPException(
@@ -332,16 +415,14 @@ async def login_submit(request: Request):
     username = str(form.get("username", ""))
     password = str(form.get("password", ""))
 
-    ok_user = secrets.compare_digest(username, PANEL_USER)
-    ok_pass = secrets.compare_digest(password, PANEL_PASSWORD)
-
-    if not (ok_user and ok_pass):
+    login_user = authenticate_user(username, password)
+    if not login_user:
         return HTMLResponse(login_html("Неверный логин или пароль"), status_code=401)
 
     resp = RedirectResponse("/", status_code=303)
     resp.set_cookie(
         SESSION_COOKIE,
-        make_session_token(),
+        make_user_session(login_user["username"], login_user["role"]),
         max_age=60 * 60 * 24 * 30,
         httponly=True,
         samesite="lax",
@@ -501,6 +582,8 @@ def init_db():
             conn.execute("ALTER TABLE clients ADD COLUMN deleted_at INTEGER NOT NULL DEFAULT 0")
         if "category_id" not in cols:
             conn.execute("ALTER TABLE clients ADD COLUMN category_id INTEGER")
+        if "owner_id" not in cols:
+            conn.execute("ALTER TABLE clients ADD COLUMN owner_id INTEGER")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS categories (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -509,6 +592,19 @@ def init_db():
             )
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_clients_category_id ON clients(category_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_clients_owner_id ON clients(owner_id)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS panel_users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'user',
+                peer_limit INTEGER NOT NULL DEFAULT 1,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                created_at INTEGER NOT NULL
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_panel_users_role ON panel_users(role)")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS traffic_snapshots (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -848,7 +944,7 @@ PersistentKeepalive = 25
     return text
 
 
-def create_client(name: str, protocol: str, category_id: int | None = None) -> int:
+def create_client(name: str, protocol: str, category_id: int | None = None, owner_id: int | None = None) -> int:
     p = proto(protocol)
 
     ip_cidr = next_ip(protocol)
@@ -871,10 +967,10 @@ def create_client(name: str, protocol: str, category_id: int | None = None) -> i
         cur = conn.execute(
             """
             INSERT INTO clients
-            (name, protocol, ip_cidr, private_key, public_key, preshared_key, config_path, enabled, created_at, category_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+            (name, protocol, ip_cidr, private_key, public_key, preshared_key, config_path, enabled, created_at, category_id, owner_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
             """,
-            (name, protocol, ip_cidr, private_key, public_key, psk, str(path), ts, category_id),
+            (name, protocol, ip_cidr, private_key, public_key, psk, str(path), ts, category_id, owner_id),
         )
         conn.commit()
         runtime_cache_clear()
@@ -5394,18 +5490,59 @@ from fastapi.responses import JSONResponse
 
 
 def api_is_authenticated(request: Request) -> bool:
+    return api_current_user(request) is not None
+
+
+def api_current_user(request: Request) -> dict | None:
     header_key = request.headers.get('x-api-key', '')
     validator = globals().get('api_key_valid')
     if header_key and callable(validator) and validator(header_key):
-        return True
+        return admin_user()
     cookie_token = request.cookies.get(SESSION_COOKIE)
-    return bool(cookie_token and secrets.compare_digest(cookie_token, make_session_token()))
+    session_user = verify_user_session(cookie_token or "")
+    if session_user:
+        return session_user
+    if cookie_token and secrets.compare_digest(cookie_token, make_session_token()):
+        return admin_user()
+    return None
 
 
 def api_require_auth(request: Request):
-    if api_is_authenticated(request):
-        return PANEL_USER
+    current = api_current_user(request)
+    if current:
+        return current
     raise HTTPException(status_code=401, detail='Unauthorized')
+
+
+def api_require_admin(user=Depends(api_require_auth)):
+    if user.get('is_admin'):
+        return user
+    raise HTTPException(status_code=403, detail='Admin only')
+
+
+def api_user_where(user: dict, alias: str = 'c') -> tuple[str, list]:
+    if user.get('is_admin'):
+        return '', []
+    return f" AND {alias}.owner_id = ?", [user.get('id')]
+
+
+def api_user_peer_count(user: dict) -> int:
+    if user.get('is_admin'):
+        return 0
+    with db() as conn:
+        row = conn.execute(
+            'SELECT COUNT(*) AS n FROM clients WHERE COALESCE(deleted_at, 0) = 0 AND owner_id = ?',
+            (user.get('id'),),
+        ).fetchone()
+    return int(row['n'])
+
+
+def api_user_quota(user: dict) -> dict:
+    if user.get('is_admin'):
+        return {'limited': False, 'limit': None, 'used': 0, 'remaining': None}
+    limit = int(user.get('peer_limit') or 0)
+    used = api_user_peer_count(user)
+    return {'limited': True, 'limit': limit, 'used': used, 'remaining': max(0, limit - used)}
 
 
 def api_error(message: str, status_code: int = 400, **extra):
@@ -5633,6 +5770,29 @@ def api_categories_payload() -> list[dict]:
     ]
 
 
+def api_panel_user_payload(row) -> dict:
+    with db() as conn:
+        count = conn.execute(
+            'SELECT COUNT(*) AS n FROM clients WHERE COALESCE(deleted_at, 0) = 0 AND owner_id = ?',
+            (int(row['id']),),
+        ).fetchone()['n']
+    return {
+        'id': int(row['id']),
+        'username': row['username'],
+        'role': row['role'],
+        'peer_limit': int(row['peer_limit']),
+        'peers_used': int(count),
+        'enabled': bool(row['enabled']),
+        'created_at': int(row['created_at']),
+    }
+
+
+def api_panel_users_payload() -> list[dict]:
+    with db() as conn:
+        rows = conn.execute('SELECT * FROM panel_users ORDER BY id DESC').fetchall()
+    return [api_panel_user_payload(row) for row in rows]
+
+
 def api_peer_payload(c, live: dict | None = None, include_config: bool = False) -> dict:
     protocol = c['protocol']
     p = PROTOCOLS[protocol]
@@ -5680,14 +5840,13 @@ async def api_auth_login(request: Request):
     data = await api_read_payload(request)
     username = str(data.get('username', ''))
     password = str(data.get('password', ''))
-    ok_user = secrets.compare_digest(username, PANEL_USER)
-    ok_pass = secrets.compare_digest(password, PANEL_PASSWORD)
-    if not (ok_user and ok_pass):
+    login_user = authenticate_user(username, password)
+    if not login_user:
         return api_error('Неверный логин или пароль', status_code=401)
-    resp = JSONResponse({'ok': True, 'authenticated': True, 'user': PANEL_USER})
+    resp = JSONResponse({'ok': True, 'authenticated': True, 'user': login_user})
     resp.set_cookie(
         SESSION_COOKIE,
-        make_session_token(),
+        make_user_session(login_user['username'], login_user['role']),
         max_age=60 * 60 * 24 * 30,
         httponly=True,
         samesite='lax',
@@ -5704,9 +5863,10 @@ def api_auth_logout(user=Depends(api_require_auth)):
 
 @app.get('/api/auth/me')
 def api_auth_me(request: Request):
-    if not api_is_authenticated(request):
+    current = api_current_user(request)
+    if not current:
         return JSONResponse({'ok': False, 'authenticated': False}, status_code=401)
-    return {'ok': True, 'authenticated': True, 'user': PANEL_USER}
+    return {'ok': True, 'authenticated': True, 'user': current, 'quota': api_user_quota(current)}
 
 
 @app.get('/api/version')
@@ -5744,24 +5904,118 @@ def api_node_status(user=Depends(api_require_auth)):
 def api_peers(user=Depends(api_require_auth)):
     live, errors = api_live_maps()
     api_record_traffic_snapshot(live)
+    where, params = api_user_where(user, 'c')
     with db() as conn:
-        rows = conn.execute("""
+        rows = conn.execute(f"""
             SELECT c.*, cat.name AS category_name
             FROM clients c
             LEFT JOIN categories cat ON cat.id = c.category_id
             WHERE COALESCE(c.deleted_at, 0) = 0
+            {where}
             ORDER BY c.id DESC
-        """).fetchall()
-    return {'ok': True, 'peers': [api_peer_payload(c, live=live) for c in rows], 'categories': api_categories_payload(), 'errors': errors}
+        """, params).fetchall()
+    return {
+        'ok': True,
+        'peers': [api_peer_payload(c, live=live) for c in rows],
+        'categories': api_categories_payload() if user.get('is_admin') else [],
+        'quota': api_user_quota(user),
+        'errors': errors,
+    }
 
 
 @app.get('/api/categories')
 def api_categories(user=Depends(api_require_auth)):
+    if not user.get('is_admin'):
+        return {'ok': True, 'categories': []}
     return {'ok': True, 'categories': api_categories_payload()}
 
 
+@app.get('/api/users')
+def api_users(user=Depends(api_require_admin)):
+    return {'ok': True, 'users': api_panel_users_payload()}
+
+
+@app.post('/api/users')
+async def api_user_create(request: Request, user=Depends(api_require_admin)):
+    data = await api_read_payload(request)
+    username = re.sub(r'\s+', '', str(data.get('username', '')).strip())[:64]
+    password = str(data.get('password', '')).strip()
+    role = str(data.get('role', 'user')).strip()
+    if role not in ('user', 'admin'):
+        role = 'user'
+    try:
+        peer_limit = max(0, int(data.get('peer_limit', 1)))
+    except (TypeError, ValueError):
+        return api_error('Некорректный лимит peerов', status_code=400)
+    if not username:
+        return api_error('Пустой логин', status_code=400)
+    if username == PANEL_USER:
+        return api_error('Этот логин занят системным администратором', status_code=409)
+    if len(password) < 6:
+        return api_error('Пароль должен быть не короче 6 символов', status_code=400)
+    try:
+        with db() as conn:
+            conn.execute(
+                'INSERT INTO panel_users(username, password_hash, role, peer_limit, enabled, created_at) VALUES (?, ?, ?, ?, 1, ?)',
+                (username, password_hash(password), role, peer_limit, int(time.time())),
+            )
+            conn.commit()
+    except sqlite3.IntegrityError:
+        return api_error('Такой пользователь уже есть', status_code=409)
+    return {'ok': True, 'users': api_panel_users_payload()}
+
+
+@app.patch('/api/users/{user_id}')
+async def api_user_update(user_id: int, request: Request, user=Depends(api_require_admin)):
+    data = await api_read_payload(request)
+    fields = []
+    values = []
+    if 'peer_limit' in data:
+        try:
+            fields.append('peer_limit = ?')
+            values.append(max(0, int(data.get('peer_limit'))))
+        except (TypeError, ValueError):
+            return api_error('Некорректный лимит peerов', status_code=400)
+    if 'enabled' in data:
+        fields.append('enabled = ?')
+        values.append(1 if bool(data.get('enabled')) else 0)
+    if 'role' in data:
+        role = str(data.get('role', 'user')).strip()
+        if role not in ('user', 'admin'):
+            return api_error('Некорректная роль', status_code=400)
+        fields.append('role = ?')
+        values.append(role)
+    if str(data.get('password', '')).strip():
+        password = str(data.get('password')).strip()
+        if len(password) < 6:
+            return api_error('Пароль должен быть не короче 6 символов', status_code=400)
+        fields.append('password_hash = ?')
+        values.append(password_hash(password))
+    if not fields:
+        return {'ok': True, 'users': api_panel_users_payload()}
+    values.append(user_id)
+    with db() as conn:
+        cur = conn.execute(f"UPDATE panel_users SET {', '.join(fields)} WHERE id = ?", values)
+        if cur.rowcount == 0:
+            return api_error('Пользователь не найден', status_code=404)
+        conn.commit()
+    return {'ok': True, 'users': api_panel_users_payload()}
+
+
+@app.delete('/api/users/{user_id}')
+def api_user_delete(user_id: int, user=Depends(api_require_admin)):
+    with db() as conn:
+        row = conn.execute('SELECT id FROM panel_users WHERE id = ?', (user_id,)).fetchone()
+        if not row:
+            return api_error('Пользователь не найден', status_code=404)
+        conn.execute('UPDATE clients SET owner_id = NULL WHERE owner_id = ?', (user_id,))
+        conn.execute('DELETE FROM panel_users WHERE id = ?', (user_id,))
+        conn.commit()
+    return {'ok': True, 'users': api_panel_users_payload()}
+
+
 @app.post('/api/categories')
-async def api_category_create(request: Request, user=Depends(api_require_auth)):
+async def api_category_create(request: Request, user=Depends(api_require_admin)):
     data = await api_read_payload(request)
     name = api_clean_category_name(data.get('name', ''))
     if not name:
@@ -5780,7 +6034,7 @@ async def api_category_create(request: Request, user=Depends(api_require_auth)):
 
 
 @app.patch('/api/categories/{category_id}')
-async def api_category_update(category_id: int, request: Request, user=Depends(api_require_auth)):
+async def api_category_update(category_id: int, request: Request, user=Depends(api_require_admin)):
     data = await api_read_payload(request)
     name = api_clean_category_name(data.get('name', ''))
     if not name:
@@ -5797,7 +6051,7 @@ async def api_category_update(category_id: int, request: Request, user=Depends(a
 
 
 @app.delete('/api/categories/{category_id}')
-def api_category_delete(category_id: int, user=Depends(api_require_auth)):
+def api_category_delete(category_id: int, user=Depends(api_require_admin)):
     with db() as conn:
         row = conn.execute('SELECT id FROM categories WHERE id = ?', (category_id,)).fetchone()
         if not row:
@@ -5817,10 +6071,12 @@ def api_traffic_history(protocol: str = 'amneziawg', days: int = 30, user=Depend
 async def api_create_peers(request: Request, user=Depends(api_require_auth)):
     data = await api_read_payload(request)
     name = str(data.get('name', '')).strip()
-    try:
-        category_id = api_category_id(data.get('category_id'))
-    except HTTPException as e:
-        return api_error(str(e.detail), status_code=e.status_code)
+    category_id = None
+    if user.get('is_admin'):
+        try:
+            category_id = api_category_id(data.get('category_id'))
+        except HTTPException as e:
+            return api_error(str(e.detail), status_code=e.status_code)
     protocols = data.get('protocols', data.get('protocol', []))
     if isinstance(protocols, str):
         protocols = [protocols]
@@ -5830,11 +6086,14 @@ async def api_create_peers(request: Request, user=Depends(api_require_auth)):
         return api_error('Пустое имя клиента', status_code=400)
     if not protocols:
         return api_error('Не выбран протокол', status_code=400)
+    quota = api_user_quota(user)
+    if quota.get('limited') and len(protocols) > int(quota.get('remaining') or 0):
+        return api_error(f"Лимит peer'ов исчерпан: доступно {quota.get('remaining')}", status_code=403, quota=quota)
 
     created_ids = []
     try:
         for protocol in protocols:
-            created_ids.append(create_client(name, protocol, category_id=category_id))
+            created_ids.append(create_client(name, protocol, category_id=category_id, owner_id=user.get('id')))
     except Exception as e:
         return api_error(str(e), status_code=500, created_ids=created_ids)
 
@@ -5853,6 +6112,8 @@ async def api_create_peers(request: Request, user=Depends(api_require_auth)):
 
 @app.patch('/api/peers/{client_id}')
 async def api_peer_update(client_id: int, request: Request, user=Depends(api_require_auth)):
+    if not user.get('is_admin'):
+        return api_error('Недостаточно прав', status_code=403)
     data = await api_read_payload(request)
     try:
         category_id = api_category_id(data.get('category_id'))
@@ -5881,18 +6142,24 @@ async def api_peer_update(client_id: int, request: Request, user=Depends(api_req
 def api_peer_get(client_id: int, user=Depends(api_require_auth)):
     live, _ = api_live_maps()
     c = load_client(client_id)
+    if not user.get('is_admin') and c['owner_id'] != user.get('id'):
+        raise HTTPException(status_code=404, detail='Client not found')
     return {'ok': True, 'peer': api_peer_payload(c, live=live, include_config=True)}
 
 
 @app.get('/api/peers/{client_id}/config')
 def api_peer_config(client_id: int, user=Depends(api_require_auth)):
     c = load_client(client_id)
+    if not user.get('is_admin') and c['owner_id'] != user.get('id'):
+        raise HTTPException(status_code=404, detail='Client not found')
     return PlainTextResponse(read_conf(c))
 
 
 @app.post('/api/peers/{client_id}/enable')
 def api_peer_enable(client_id: int, user=Depends(api_require_auth)):
     c = load_client(client_id)
+    if not user.get('is_admin') and c['owner_id'] != user.get('id'):
+        raise HTTPException(status_code=404, detail='Client not found')
     try:
         enable_peer(c)
     except Exception as e:
@@ -5905,6 +6172,8 @@ def api_peer_enable(client_id: int, user=Depends(api_require_auth)):
 @app.post('/api/peers/{client_id}/disable')
 def api_peer_disable(client_id: int, user=Depends(api_require_auth)):
     c = load_client(client_id)
+    if not user.get('is_admin') and c['owner_id'] != user.get('id'):
+        raise HTTPException(status_code=404, detail='Client not found')
     try:
         disable_peer(c)
     except Exception as e:
@@ -5917,6 +6186,8 @@ def api_peer_disable(client_id: int, user=Depends(api_require_auth)):
 @app.delete('/api/peers/{client_id}')
 def api_peer_delete(client_id: int, user=Depends(api_require_auth)):
     c = load_client(client_id)
+    if not user.get('is_admin') and c['owner_id'] != user.get('id'):
+        raise HTTPException(status_code=404, detail='Client not found')
     try:
         remove_peer(c['protocol'], c['public_key'])
         with db() as conn:
@@ -5985,8 +6256,11 @@ init_api_keys(DB_PATH)
 def _apikey_session_only(request: Request):
     """Управление ключами — только через cookie-сессию (не по самому ключу)."""
     cookie_token = request.cookies.get(SESSION_COOKIE)
-    if cookie_token and secrets.compare_digest(cookie_token, make_session_token()):
-        return PANEL_USER
+    current = verify_user_session(cookie_token or "")
+    if not current and cookie_token and secrets.compare_digest(cookie_token, make_session_token()):
+        current = admin_user()
+    if current and current.get('is_admin'):
+        return current
     raise HTTPException(status_code=401, detail='Unauthorized')
 
 
@@ -6054,19 +6328,22 @@ def api_protocol_view_model(protocol: dict) -> dict:
     }
 
 
-def api_dashboard_payload() -> dict:
+def api_dashboard_payload(user: dict) -> dict:
     live, errors = api_live_maps()
     protocols = {protocol: api_protocol_state(protocol) for protocol in PROTOCOLS}
+    where, params = api_user_where(user, 'c')
 
     with db() as conn:
         rows = conn.execute(
-            """
+            f"""
             SELECT c.*, cat.name AS category_name
             FROM clients c
             LEFT JOIN categories cat ON cat.id = c.category_id
             WHERE COALESCE(c.deleted_at, 0) = 0
+            {where}
             ORDER BY c.id DESC
-            """
+            """,
+            params,
         ).fetchall()
 
     peers = [api_peer_payload(c, live=live) for c in rows]
@@ -6081,6 +6358,8 @@ def api_dashboard_payload() -> dict:
         'subtitle': f"Node / {ENDPOINT_HOST}",
         'endpoint_host': ENDPOINT_HOST,
         'theme': {'name': 'classic-neo', 'source': 'legacy-html-design'},
+        'user': user,
+        'quota': api_user_quota(user),
         'navigation': [
             {'section': 'Обзор', 'items': [{'key': 'home', 'label': 'Главная', 'href': '/', 'active': True}]},
             {'section': 'Управление', 'items': [
@@ -6096,7 +6375,7 @@ def api_dashboard_payload() -> dict:
             {'key': 'primary_protocol', 'label': 'Основной протокол', 'value': primary_protocol, 'tone': 'accent'},
         ],
         'protocols': [api_protocol_view_model(p) for p in protocols.values()],
-        'categories': api_categories_payload(),
+        'categories': api_categories_payload() if user.get('is_admin') else [],
         'peers': [api_peer_view_model(p) for p in peers],
         'errors': errors,
         'actions': {
@@ -6108,10 +6387,10 @@ def api_dashboard_payload() -> dict:
 
 @app.get('/api/dashboard')
 def api_dashboard(user=Depends(api_require_auth)):
-    return api_dashboard_payload()
+    return api_dashboard_payload(user)
 
 
 @app.get('/api/ui/dashboard')
 def api_ui_dashboard(user=Depends(api_require_auth)):
-    return api_dashboard_payload()
+    return api_dashboard_payload(user)
 # === 3WG DASHBOARD MODEL API END ===

@@ -122,10 +122,11 @@ function Login({ onLogin }) {
   );
 }
 
-function Sidebar({ onLogout, protocols: initialProtocols = null }) {
+function Sidebar({ onLogout, protocols: initialProtocols = null, user }) {
   const path = window.location.pathname;
   const isHome = path === '/' || path === '/ui';
   const [protocols, setProtocols] = useState(initialProtocols);
+  const isAdmin = Boolean(user?.is_admin);
 
   useEffect(() => {
     if (initialProtocols) {
@@ -149,19 +150,20 @@ function Sidebar({ onLogout, protocols: initialProtocols = null }) {
       </div>
       <div className="nav-title">ОБЗОР</div>
       <a className={`nav ${isHome ? 'active' : ''}`} href="/"><Home size={14} /> <span>Главная</span></a>
-      {showWireGuardStatus && <a className={`nav ${path === '/status/wireguard' ? 'active' : ''}`} href="/status/wireguard"><Activity size={14} /> <span>WG status</span></a>}
-      {showAmneziaStatus && <a className={`nav ${path === '/status/amneziawg' ? 'active' : ''}`} href="/status/amneziawg"><Activity size={14} /> <span>AWG status</span></a>}
-      <div className="nav-title">УПРАВЛЕНИЕ</div>
-      <a className={`nav ${path === '/apikeys' ? 'active' : ''}`} href="/apikeys"><Key size={14} /> <span>API-ключи</span></a>
+      {isAdmin && showWireGuardStatus && <a className={`nav ${path === '/status/wireguard' ? 'active' : ''}`} href="/status/wireguard"><Activity size={14} /> <span>WG status</span></a>}
+      {isAdmin && showAmneziaStatus && <a className={`nav ${path === '/status/amneziawg' ? 'active' : ''}`} href="/status/amneziawg"><Activity size={14} /> <span>AWG status</span></a>}
+      {isAdmin && <div className="nav-title">УПРАВЛЕНИЕ</div>}
+      {isAdmin && <a className={`nav ${path === '/users' ? 'active' : ''}`} href="/users"><Users size={14} /> <span>Пользователи</span></a>}
+      {isAdmin && <a className={`nav ${path === '/apikeys' ? 'active' : ''}`} href="/apikeys"><Key size={14} /> <span>API-ключи</span></a>}
       <button className="nav logout" onClick={onLogout}><LogOut size={14} /> <span>Выход</span></button>
     </aside>
   );
 }
 
-function Shell({ title, subtitle, onLogout, protocols, children }) {
+function Shell({ title, subtitle, onLogout, protocols, user, children }) {
   return (
     <div className="layout" id="top">
-      <Sidebar onLogout={onLogout} protocols={protocols} />
+      <Sidebar onLogout={onLogout} protocols={protocols} user={user} />
       <main className="main">
         <header className="topbar">
           <div>
@@ -190,7 +192,7 @@ function StatCard({ value, label, icon: Icon }) {
   );
 }
 
-function CreateClient({ protocols, categories, onCreated }) {
+function CreateClient({ protocols, categories, quota, isAdmin, onCreated }) {
   const [name, setName] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const available = protocols?.amneziawg?.available;
@@ -224,17 +226,20 @@ function CreateClient({ protocols, categories, onCreated }) {
       <h2>Создать клиента</h2>
       <form onSubmit={submit}>
         <input className="name-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Например: Ivan iPhone" />
-        <select className="category-select create-category-select" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-          <option value="">Без категории</option>
-          {(categories || []).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
-        </select>
+        {isAdmin && (
+          <select className="category-select create-category-select" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+            <option value="">Без категории</option>
+            {(categories || []).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+          </select>
+        )}
         <div className="protocol-row">
           <label className={!wgAvailable ? 'muted' : ''}><input type="checkbox" checked={wireguard} disabled={!wgAvailable} onChange={(e) => setWireguard(e.target.checked)} /> WireGuard {!wgAvailable && <span className="pill bad">не установлен</span>}</label>
           <label><input type="checkbox" checked={amnezia} disabled={!available} onChange={(e) => setAmnezia(e.target.checked)} /> AmneziaWG</label>
         </div>
-        <button className="orange-btn" disabled={loading || !name.trim()}><Plus size={15} /> Создать клиента</button>
+        <button className="orange-btn" disabled={loading || !name.trim() || (quota?.limited && quota.remaining <= 0)}><Plus size={15} /> Создать клиента</button>
         {error && <div className="warning">{error}</div>}
       </form>
+      {quota?.limited && <div className="quota-note">Лимит peer'ов: <b>{quota.used}</b> из <b>{quota.limit}</b>, доступно <b>{quota.remaining}</b></div>}
       <div className={allProtocolsAvailable ? 'success compact-warning' : 'warning compact-warning'}>
         {allProtocolsAvailable ? (
           <>
@@ -254,7 +259,7 @@ function CreateClient({ protocols, categories, onCreated }) {
   );
 }
 
-function ClientsTable({ peers, categories, onRefresh }) {
+function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
   const [qrPeer, setQrPeer] = useState(null);
   const [pendingAction, setPendingAction] = useState(null);
   const [busyId, setBusyId] = useState(null);
@@ -365,7 +370,7 @@ function ClientsTable({ peers, categories, onRefresh }) {
         <h2>Клиенты</h2>
         <IconButton onClick={onRefresh} title="Обновить таблицу" tone="ghost"><RefreshCw size={15} /></IconButton>
       </div>
-      <div className="category-panel">
+      {isAdmin && <div className="category-panel">
         <div className="category-filters" aria-label="Категории клиентов">
           <button className={activeCategory === 'all' ? 'category-chip active' : 'category-chip'} onClick={() => setActiveCategory('all')} type="button">
             <Folder size={14} /> Все <span>{categoryCounts.all}</span>
@@ -398,13 +403,13 @@ function ClientsTable({ peers, categories, onRefresh }) {
           <input value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} placeholder="Новая категория" maxLength={64} />
           <button disabled={Boolean(categoryBusy) || !newCategoryName.trim()} type="submit">Создать</button>
         </form>
-      </div>
+      </div>}
       <div className="table-wrap">
         <table className="clients-table">
           <colgroup>
             <col style={{ width: 46 }} />
             <col style={{ width: 170 }} />
-            <col style={{ width: 145 }} />
+            {isAdmin && <col style={{ width: 145 }} />}
             <col style={{ width: 125 }} />
             <col style={{ width: 130 }} />
             <col style={{ width: 110 }} />
@@ -418,7 +423,7 @@ function ClientsTable({ peers, categories, onRefresh }) {
             <tr>
               <th>ID</th>
               <th>Имя пользователя</th>
-              <th>Категория</th>
+                {isAdmin && <th>Категория</th>}
               <th>Протокол</th>
               <th>Внутренний IP</th>
               <th>Статус</th>
@@ -434,12 +439,14 @@ function ClientsTable({ peers, categories, onRefresh }) {
               <tr key={p.id}>
                 <td>{p.id}</td>
                 <td><b>{p.name}</b><small>создан панелью</small></td>
-                <td>
-                  <select className="category-select table-category-select" value={p.category_id || ''} disabled={busyId === p.id} onChange={(e) => changePeerCategory(p, e.target.value)}>
-                    <option value="">Без категории</option>
-                    {(categories || []).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
-                  </select>
-                </td>
+                {isAdmin && (
+                  <td>
+                    <select className="category-select table-category-select" value={p.category_id || ''} disabled={busyId === p.id} onChange={(e) => changePeerCategory(p, e.target.value)}>
+                      <option value="">Без категории</option>
+                      {(categories || []).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                    </select>
+                  </td>
+                )}
                 <td><span className={`proto ${p.protocol === 'wireguard' ? 'proto-wireguard' : ''}`}>{p.protocol_title || p.protocol}</span></td>
                 <td><code>{p.ip_cidr}</code></td>
                 <td><PeerStatus peer={p} /></td>
@@ -464,7 +471,7 @@ function ClientsTable({ peers, categories, onRefresh }) {
             ))}
             {filteredPeers.length === 0 && (
               <tr>
-                <td colSpan={11} className="empty-table">В этой категории пока нет peer'ов</td>
+                <td colSpan={isAdmin ? 11 : 10} className="empty-table">В этой категории пока нет peer'ов</td>
               </tr>
             )}
           </tbody>
@@ -613,7 +620,7 @@ function QrModal({ peer, onClose }) {
 }
 
 
-function ClientPage({ clientId, onLogout }) {
+function ClientPage({ clientId, onLogout, user }) {
   const [state, setState] = useState({ loading: true, peer: null, error: '' });
 
   const load = async () => {
@@ -631,7 +638,7 @@ function ClientPage({ clientId, onLogout }) {
   const title = peer ? `${peer.name} ${peer.protocol_title || peer.protocol}` : 'Клиент';
 
   return (
-    <Shell title={title} subtitle="WireGuard / AmneziaWG node management" onLogout={onLogout}>
+    <Shell title={title} subtitle="WireGuard / AmneziaWG node management" onLogout={onLogout} user={user}>
       {state.error && <div className="warning">{state.error}</div>}
       {state.loading && <section className="card detail-card">Загрузка...</section>}
       {peer && (
@@ -711,7 +718,7 @@ function formatBytes(v) {
   return `${x.toFixed(2)} ${units[i]}`;
 }
 
-function StatusPage({ protocol, onLogout }) {
+function StatusPage({ protocol, onLogout, user }) {
   const [state, setState] = useState({ loading: true, status: null, error: '' });
 
   const load = async () => {
@@ -733,7 +740,7 @@ function StatusPage({ protocol, onLogout }) {
   const [rawOpen, setRawOpen] = useState(false);
 
   return (
-    <Shell title={title} subtitle={item ? `${item.container} / ${item.interface}` : 'Protocol health'} onLogout={onLogout}>
+    <Shell title={title} subtitle={item ? `${item.container} / ${item.interface}` : 'Protocol health'} onLogout={onLogout} user={user}>
       {state.error && <div className="warning">{state.error}</div>}
       {state.loading && <section className="card detail-card">Загрузка...</section>}
       {item && (
@@ -981,7 +988,7 @@ function MonthlyTrafficChart({ series }) {
   );
 }
 
-function TrafficPage({ protocol, onLogout }) {
+function TrafficPage({ protocol, onLogout, user }) {
   const [state, setState] = useState({ loading: true, data: null, error: '' });
 
   const load = async () => {
@@ -1006,7 +1013,7 @@ function TrafficPage({ protocol, onLogout }) {
   const title = data ? `${data.title} traffic` : 'Traffic';
 
   return (
-    <Shell title={title} subtitle={data ? `${data.interface} / 30 дней` : 'Traffic history'} onLogout={onLogout}>
+    <Shell title={title} subtitle={data ? `${data.interface} / 30 дней` : 'Traffic history'} onLogout={onLogout} user={user}>
       <section className="card traffic-page-card">
         <div className="detail-head">
           <a className="back-link" href="/"><ChevronLeft size={16} /> Главная</a>
@@ -1040,8 +1047,8 @@ function TrafficPage({ protocol, onLogout }) {
   );
 }
 
-function Dashboard({ onLogout }) {
-  const [state, setState] = useState({ loading: true, peers: [], categories: [], status: null, protocols: {}, error: '' });
+function Dashboard({ onLogout, user }) {
+  const [state, setState] = useState({ loading: true, peers: [], categories: [], status: null, protocols: {}, quota: null, error: '' });
   const [trafficHistory, setTrafficHistory] = useState([]);
 
   const load = async () => {
@@ -1055,7 +1062,7 @@ function Dashboard({ onLogout }) {
         clients_total: cards.clients_total?.value ?? nextPeers.length,
         peers_total: cards.peers_total?.value ?? 0,
       };
-      setState({ loading: false, peers: nextPeers, categories, status, protocols, error: '' });
+      setState({ loading: false, peers: nextPeers, categories, status, protocols, quota: data.quota || null, error: '' });
       const totals = nextPeers.reduce((acc, peer) => ({
         rx: acc.rx + Number(peer.live?.rx || 0),
         tx: acc.tx + Number(peer.live?.tx || 0),
@@ -1090,7 +1097,7 @@ function Dashboard({ onLogout }) {
   const available = Object.values(state.protocols || {}).filter((p) => p.available).length;
 
   return (
-    <Shell title="3WG Panel" subtitle="WireGuard / AmneziaWG node management" onLogout={onLogout} protocols={state.protocols}>
+    <Shell title="3WG Panel" subtitle={user?.is_admin ? 'WireGuard / AmneziaWG node management' : 'Личный кабинет peer-ов'} onLogout={onLogout} protocols={state.protocols} user={user}>
       {state.error && <div className="warning">{state.error}</div>}
       <div className="stats-grid">
         <StatCard value={state.status?.clients_total ?? state.peers.length} label="клиентов в панели" icon={Users} />
@@ -1099,16 +1106,135 @@ function Dashboard({ onLogout }) {
         <StatCard value={available} label="доступных протокола" icon={ShieldCheck} />
       </div>
       <div className="dashboard-row">
-        <CreateClient protocols={state.protocols} categories={state.categories} onCreated={load} />
-        <TrafficWidget peers={state.peers} protocols={state.protocols} history={trafficHistory} />
+        <CreateClient protocols={state.protocols} categories={state.categories} quota={state.quota} isAdmin={Boolean(user?.is_admin)} onCreated={load} />
+        {user?.is_admin && <TrafficWidget peers={state.peers} protocols={state.protocols} history={trafficHistory} />}
       </div>
-      <ClientsTable peers={state.peers} categories={state.categories} onRefresh={load} />
-      <section className="card status-card" id="status"><h2>Статус</h2><div className="status-grid">{Object.values(state.protocols || {}).map((p) => <div className="status-item" key={p.protocol}><b>{p.title}</b><span className={p.available ? 'status-ok' : 'status-bad'}>{p.available ? <Wifi size={14} /> : <WifiOff size={14} />}{p.available ? 'ONLINE' : 'OFFLINE'}</span><small>{p.container} / {p.interface}</small></div>)}</div></section>
+      <ClientsTable peers={state.peers} categories={state.categories} isAdmin={Boolean(user?.is_admin)} onRefresh={load} />
+      {user?.is_admin && <section className="card status-card" id="status"><h2>Статус</h2><div className="status-grid">{Object.values(state.protocols || {}).map((p) => <div className="status-item" key={p.protocol}><b>{p.title}</b><span className={p.available ? 'status-ok' : 'status-bad'}>{p.available ? <Wifi size={14} /> : <WifiOff size={14} />}{p.available ? 'ONLINE' : 'OFFLINE'}</span><small>{p.container} / {p.interface}</small></div>)}</div></section>}
     </Shell>
   );
 }
 
-function ApiKeysPage({ onLogout }) {
+function UsersPage({ onLogout, user }) {
+  const [users, setUsers] = useState([]);
+  const [form, setForm] = useState({ username: '', password: '', peer_limit: 1, role: 'user' });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const load = async () => {
+    try {
+      const data = await api('/api/users');
+      setUsers(data.users || []);
+      setError('');
+    } catch (err) {
+      setError(err.message || 'Ошибка пользователей');
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const create = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      const data = await api('/api/users', { method: 'POST', body: JSON.stringify(form) });
+      setUsers(data.users || []);
+      setForm({ username: '', password: '', peer_limit: 1, role: 'user' });
+      setError('');
+    } catch (err) {
+      setError(err.message || 'Ошибка создания пользователя');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const patchUser = async (id, payload) => {
+    setBusy(id);
+    try {
+      const data = await api(`/api/users/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+      setUsers(data.users || []);
+    } catch (err) {
+      window.alert(err.message || 'Ошибка изменения пользователя');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const deleteUser = async (item) => {
+    if (!window.confirm(`Удалить пользователя "${item.username}"? Его peer'ы перейдут администратору.`)) return;
+    setBusy(item.id);
+    try {
+      const data = await api(`/api/users/${item.id}`, { method: 'DELETE' });
+      setUsers(data.users || []);
+    } catch (err) {
+      window.alert(err.message || 'Ошибка удаления пользователя');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Shell title="Пользователи" subtitle="Лимиты доступа к созданию peer'ов" onLogout={onLogout} user={user}>
+      <div className="user-admin-grid">
+        <section className="card user-create-card">
+          <h2>Добавить пользователя</h2>
+          <form onSubmit={create}>
+            <input className="name-input" placeholder="Логин" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
+            <input className="name-input" placeholder="Пароль" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+            <input className="name-input" min="0" type="number" value={form.peer_limit} onChange={(e) => setForm({ ...form, peer_limit: Number(e.target.value) })} />
+            <select className="category-select" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
+              <option value="user">Пользователь</option>
+              <option value="admin">Администратор</option>
+            </select>
+            <button className="orange-btn" disabled={busy || !form.username.trim() || !form.password.trim()}><Plus size={15} /> Создать</button>
+          </form>
+          {error && <div className="warning">{error}</div>}
+        </section>
+        <section className="card users-list-card">
+          <div className="section-head"><h2>Аккаунты</h2><button className="copy-button" type="button" onClick={load}><RefreshCw size={14} /> Обновить</button></div>
+          <div className="table-wrap">
+            <table className="clients-table users-table">
+              <thead><tr><th>ID</th><th>Логин</th><th>Роль</th><th>Peer'ы</th><th>Лимит</th><th>Статус</th><th>Действия</th></tr></thead>
+              <tbody>
+                {users.map((item) => (
+                  <UserRow key={item.id} item={item} busy={busy === item.id} onPatch={patchUser} onDelete={deleteUser} />
+                ))}
+                {users.length === 0 && <tr><td className="empty-table" colSpan={7}>Дополнительных пользователей пока нет</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </Shell>
+  );
+}
+
+function UserRow({ item, busy, onPatch, onDelete }) {
+  const [limit, setLimit] = useState(item.peer_limit);
+  const [password, setPassword] = useState('');
+  useEffect(() => { setLimit(item.peer_limit); }, [item.peer_limit]);
+  return (
+    <tr>
+      <td>{item.id}</td>
+      <td><b>{item.username}</b></td>
+      <td>{item.role === 'admin' ? 'Администратор' : 'Пользователь'}</td>
+      <td>{item.peers_used}</td>
+      <td><input className="inline-number" type="number" min="0" value={limit} onChange={(e) => setLimit(Number(e.target.value))} /></td>
+      <td><span className={item.enabled ? 'status-ok' : 'status-bad'}>{item.enabled ? 'ON' : 'OFF'}</span></td>
+      <td className="actions-cell">
+        <div className="user-actions">
+          <button className="icon-button download" title="Сохранить лимит" disabled={busy} onClick={() => onPatch(item.id, { peer_limit: limit })}><Check size={14} /></button>
+          <button className="icon-button block" title={item.enabled ? 'Отключить' : 'Включить'} disabled={busy} onClick={() => onPatch(item.id, { enabled: !item.enabled })}><Power size={14} /></button>
+          <input className="inline-password" placeholder="новый пароль" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+          <button className="icon-button qr" title="Сменить пароль" disabled={busy || password.length < 6} onClick={async () => { await onPatch(item.id, { password }); setPassword(''); }}><Key size={14} /></button>
+          <button className="icon-button danger" title="Удалить" disabled={busy} onClick={() => onDelete(item)}><Trash2 size={14} /></button>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function ApiKeysPage({ onLogout, user }) {
   const [keys, setKeys] = useState([]);
   const [name, setName] = useState('');
   const [newToken, setNewToken] = useState(null);
@@ -1137,7 +1263,7 @@ function ApiKeysPage({ onLogout }) {
   };
   const fmt = (ts) => (ts ? new Date(ts * 1000).toLocaleString('ru-RU') : '—');
   return (
-    <Shell title="API-ключи" subtitle="Доступ внешних систем по заголовку X-API-Key" onLogout={onLogout}>
+    <Shell title="API-ключи" subtitle="Доступ внешних систем по заголовку X-API-Key" onLogout={onLogout} user={user}>
       <div className="card create-card compact-create">
         <h2>Создать ключ</h2>
         <form onSubmit={create}>
@@ -1182,23 +1308,25 @@ function ApiKeysPage({ onLogout }) {
 
 
 function App() {
-  const [auth, setAuth] = useState({ loading: true, ok: false });
+  const [auth, setAuth] = useState({ loading: true, ok: false, user: null });
   const check = async () => {
-    try { await api('/api/auth/me'); setAuth({ loading: false, ok: true }); }
-    catch { setAuth({ loading: false, ok: false }); }
+    try { const data = await api('/api/auth/me'); setAuth({ loading: false, ok: true, user: data.user }); }
+    catch { setAuth({ loading: false, ok: false, user: null }); }
   };
   useEffect(() => { check(); }, []);
-  const logout = async () => { try { await api('/api/auth/logout', { method: 'POST' }); } finally { setAuth({ loading: false, ok: false }); } };
+  const logout = async () => { try { await api('/api/auth/logout', { method: 'POST' }); } finally { setAuth({ loading: false, ok: false, user: null }); } };
   if (auth.loading) return <div className="boot">3WG</div>;
   if (!auth.ok) return <Login onLogin={check} />;
+  const isAdmin = Boolean(auth.user?.is_admin);
   const clientMatch = window.location.pathname.match(/^\/client\/(\d+)$/);
   const statusMatch = window.location.pathname.match(/^\/status\/(wireguard|amneziawg)$/);
   const trafficMatch = window.location.pathname.match(/^\/traffic\/(wireguard|amneziawg)$/);
-  if (clientMatch) return <ClientPage clientId={clientMatch[1]} onLogout={logout} />;
-  if (statusMatch) return <StatusPage protocol={statusMatch[1]} onLogout={logout} />;
-  if (trafficMatch) return <TrafficPage protocol={trafficMatch[1]} onLogout={logout} />;
-  if (window.location.pathname === '/apikeys') return <ApiKeysPage onLogout={logout} />;
-  return <Dashboard onLogout={logout} />;
+  if (clientMatch) return <ClientPage clientId={clientMatch[1]} onLogout={logout} user={auth.user} />;
+  if (isAdmin && statusMatch) return <StatusPage protocol={statusMatch[1]} onLogout={logout} user={auth.user} />;
+  if (isAdmin && trafficMatch) return <TrafficPage protocol={trafficMatch[1]} onLogout={logout} user={auth.user} />;
+  if (isAdmin && window.location.pathname === '/apikeys') return <ApiKeysPage onLogout={logout} user={auth.user} />;
+  if (isAdmin && window.location.pathname === '/users') return <UsersPage onLogout={logout} user={auth.user} />;
+  return <Dashboard onLogout={logout} user={auth.user} />;
 }
 
 createRoot(document.getElementById('root')).render(<App />);

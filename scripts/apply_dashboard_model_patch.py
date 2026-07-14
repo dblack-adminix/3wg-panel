@@ -51,19 +51,22 @@ def api_protocol_view_model(protocol: dict) -> dict:
     }
 
 
-def api_dashboard_payload() -> dict:
+def api_dashboard_payload(user: dict) -> dict:
     live, errors = api_live_maps()
     protocols = {protocol: api_protocol_state(protocol) for protocol in PROTOCOLS}
+    where, params = api_user_where(user, 'c')
 
     with db() as conn:
         rows = conn.execute(
-            """
+            f"""
             SELECT c.*, cat.name AS category_name
             FROM clients c
             LEFT JOIN categories cat ON cat.id = c.category_id
             WHERE COALESCE(c.deleted_at, 0) = 0
+            {where}
             ORDER BY c.id DESC
-            """
+            """,
+            params,
         ).fetchall()
 
     peers = [api_peer_payload(c, live=live) for c in rows]
@@ -78,6 +81,8 @@ def api_dashboard_payload() -> dict:
         'subtitle': f"Node / {ENDPOINT_HOST}",
         'endpoint_host': ENDPOINT_HOST,
         'theme': {'name': 'classic-neo', 'source': 'legacy-html-design'},
+        'user': user,
+        'quota': api_user_quota(user),
         'navigation': [
             {'section': 'Обзор', 'items': [{'key': 'home', 'label': 'Главная', 'href': '/', 'active': True}]},
             {'section': 'Управление', 'items': [
@@ -93,7 +98,7 @@ def api_dashboard_payload() -> dict:
             {'key': 'primary_protocol', 'label': 'Основной протокол', 'value': primary_protocol, 'tone': 'accent'},
         ],
         'protocols': [api_protocol_view_model(p) for p in protocols.values()],
-        'categories': api_categories_payload(),
+        'categories': api_categories_payload() if user.get('is_admin') else [],
         'peers': [api_peer_view_model(p) for p in peers],
         'errors': errors,
         'actions': {
@@ -105,12 +110,12 @@ def api_dashboard_payload() -> dict:
 
 @app.get('/api/dashboard')
 def api_dashboard(user=Depends(api_require_auth)):
-    return api_dashboard_payload()
+    return api_dashboard_payload(user)
 
 
 @app.get('/api/ui/dashboard')
 def api_ui_dashboard(user=Depends(api_require_auth)):
-    return api_dashboard_payload()
+    return api_dashboard_payload(user)
 # === 3WG DASHBOARD MODEL API END ===
 '''.strip() + '\n'
 

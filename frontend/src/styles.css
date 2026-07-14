@@ -82,6 +82,15 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 .traffic-total { min-height: 0; padding: 14px; overflow: hidden; }
 .traffic-total > span { display: block; color: #8a8a8a; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
 .traffic-total > strong { display: block; margin-top: 4px; font-size: 30px; line-height: 1; }
+.quota-note { margin-top: 10px; color: #aaaaaa; font-size: 12px; }
+.quota-note b { color: #ffffff; }
+.user-admin-grid { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 12px; align-items: start; }
+.user-create-card form { display: grid; gap: 10px; }
+.users-list-card { min-width: 0; }
+.users-table { min-width: 860px; }
+.inline-number { width: 82px; height: 30px; border: 1px solid #333333; border-radius: 6px; background: #0d0d0d; color: #ffffff; padding: 0 8px; }
+.inline-password { width: 140px; height: 30px; border: 1px solid #333333; border-radius: 6px; background: #0d0d0d; color: #ffffff; padding: 0 8px; }
+.user-actions { display: flex; align-items: center; gap: 5px; }
 .traffic-rates { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 16px; }
 .traffic-rates div { display: grid; gap: 4px; }
 .traffic-rates small, .traffic-meta { color: #8a8a8a; }
@@ -208,6 +217,8 @@ button:disabled { cursor: not-allowed; opacity: .58; }
   .category-create { min-width: 0; width: 100%; }
   .category-create input { width: 100%; }
   .orange-btn { width: fit-content; }
+  .user-admin-grid { grid-template-columns: 1fr; }
+  .user-actions { flex-wrap: wrap; }
 }
 
 .detail-card { min-height: 0; }
