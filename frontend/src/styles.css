@@ -556,3 +556,147 @@ h1, h2, h3, .brand-block, .login-subtitle { font-family: 'Montserrat', sans-seri
 /* WireGuard — фирменный красный цвет бренда WireGuard (#88171a) */
 .proto-wireguard { background: rgba(136, 23, 26, .18); color: #ff5252; border-color: #88171a; }
 .traffic-proto.wg { color: #ff5252; }
+
+/* Светлая тема: интерактивные элементы не должны оставаться "ночными" */
+html[data-theme="light"] .stat-mark {
+  background: #f3f8e8;
+  border-color: #c5d99a;
+  color: #5f7f00;
+}
+html[data-theme="light"] .top-actions button,
+html[data-theme="light"] .mobile-menu-button,
+html[data-theme="light"] .copy-button,
+html[data-theme="light"] .modal-close,
+html[data-theme="light"] .confirm-cancel {
+  background: #ffffff;
+  border-color: #cbd5e1;
+  color: #334155;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
+}
+html[data-theme="light"] .top-actions button:hover,
+html[data-theme="light"] .mobile-menu-button:hover,
+html[data-theme="light"] .copy-button:hover,
+html[data-theme="light"] .modal-close:hover {
+  border-color: #94a3b8;
+  color: #0f172a;
+  background: #f8fafc;
+}
+html[data-theme="light"] .category-item,
+html[data-theme="light"] .category-chip {
+  background: #ffffff;
+  border-color: #cbd5e1;
+  color: #475569;
+}
+html[data-theme="light"] .category-chip span {
+  background: #eef3fb;
+  color: #5f7f00;
+}
+html[data-theme="light"] .category-chip.active,
+html[data-theme="light"] .category-item.active {
+  background: #f3f8e8;
+  border-color: #9fbd54;
+  color: #334800;
+}
+html[data-theme="light"] .category-chip.active span,
+html[data-theme="light"] .category-item.active .category-chip span {
+  background: #dcebb6;
+  color: #334800;
+}
+html[data-theme="light"] .category-tool {
+  border-left-color: #cbd5e1;
+  color: #64748b;
+}
+html[data-theme="light"] .category-tool:hover {
+  background: #f8fafc;
+  color: #0f172a;
+}
+html[data-theme="light"] .category-tool.save { color: #5f7f00; }
+html[data-theme="light"] .category-tool.danger { color: #b45309; }
+html[data-theme="light"] .category-create button {
+  background: #f3f8e8;
+  color: #5f7f00;
+}
+html[data-theme="light"] .owner-badge {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #334155;
+}
+html[data-theme="light"] .proto {
+  background: #fff7ed;
+  border-color: #fed7aa;
+  color: #c2410c;
+}
+html[data-theme="light"] .proto-wireguard {
+  background: #fff1f2;
+  border-color: #fda4af;
+  color: #be123c;
+}
+html[data-theme="light"] .pill.bad {
+  background: #fff7ed;
+  color: #b45309;
+}
+html[data-theme="light"] .blue-btn,
+html[data-theme="light"] .icon-button.download {
+  background: #fff7ed;
+  border-color: #fed7aa;
+  color: #c2410c;
+}
+html[data-theme="light"] .icon-button.open {
+  background: var(--orange);
+  color: #111827;
+}
+html[data-theme="light"] .icon-button.qr,
+html[data-theme="light"] .icon-button.enable {
+  background: #f3f8e8;
+  border-color: #c5d99a;
+  color: #5f7f00;
+}
+html[data-theme="light"] .icon-button.block {
+  background: #fff7ed;
+  border-color: #fdba74;
+  color: #b45309;
+}
+html[data-theme="light"] .icon-button.danger {
+  background: #fff1f2;
+  border-color: #fda4af;
+  color: #be123c;
+}
+html[data-theme="light"] .icon-button.ghost {
+  background: #ffffff;
+  border-color: #cbd5e1;
+  color: #475569;
+}
+html[data-theme="light"] .icon-button:hover {
+  filter: none;
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px rgba(15, 23, 42, .08);
+}
+html[data-theme="light"] .traffic-row:hover {
+  border-color: #c5d99a;
+  background: #fbfdff;
+}
+html[data-theme="light"] .live-dot {
+  background: #f3f8e8;
+  border-color: #c5d99a;
+  color: #5f7f00;
+}
+html[data-theme="light"] .live-dot.idle {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #475569;
+}
+html[data-theme="light"] .traffic-state {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #475569;
+}
+html[data-theme="light"] .traffic-state.live {
+  background: #f3f8e8;
+  border-color: #c5d99a;
+  color: #5f7f00;
+}
+html[data-theme="light"] .traffic-state.idle {
+  background: #fff7ed;
+  border-color: #fed7aa;
+  color: #b45309;
+}
