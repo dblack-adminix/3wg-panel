@@ -6351,7 +6351,7 @@ def _tool_run_in_protocol(protocol: str | None, command: list[str], timeout: int
     container_name = PROTOCOLS[protocol]['container']
     started = time.time()
     try:
-        container = docker_client().containers.get(container_name)
+        container = dc().containers.get(container_name)
         result = container.exec_run(command, stdout=True, stderr=True)
         raw = result.output.decode('utf-8', errors='replace') if isinstance(result.output, (bytes, bytearray)) else str(result.output or '')
         output = raw.strip()
