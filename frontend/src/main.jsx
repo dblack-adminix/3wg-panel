@@ -21,6 +21,7 @@ import {
   QrCode,
   RefreshCw,
   RotateCcw,
+  Send,
   Trash2,
   X,
   ShieldCheck,
@@ -1962,15 +1963,22 @@ function ApiKeysPage({ onLogout, user }) {
 
 function MonitoringPage({ onLogout, user }) {
   const [state, setState] = useState({ loading: true, data: null, error: '' });
+  const [telegram, setTelegram] = useState({ loading: true, data: null, error: '' });
+  const [telegramForm, setTelegramForm] = useState({ enabled: false, bot_token: '', chat_id: '' });
   const [newToken, setNewToken] = useState('');
   const [busy, setBusy] = useState(false);
+  const [telegramBusy, setTelegramBusy] = useState(false);
+  const [telegramSaved, setTelegramSaved] = useState('');
 
   const load = async () => {
     try {
-      const data = await api('/api/monitoring');
+      const [data, telegramData] = await Promise.all([api('/api/monitoring'), api('/api/telegram')]);
       setState({ loading: false, data, error: '' });
+      setTelegram({ loading: false, data: telegramData, error: '' });
+      setTelegramForm({ enabled: Boolean(telegramData.enabled), bot_token: '', chat_id: telegramData.chat_id || '' });
     } catch (err) {
       setState({ loading: false, data: null, error: err.message || 'Ошибка мониторинга' });
+      setTelegram({ loading: false, data: null, error: err.message || 'Ошибка Telegram' });
     }
   };
 
@@ -2002,6 +2010,38 @@ function MonitoringPage({ onLogout, user }) {
     }
   };
 
+  const saveTelegram = async (e) => {
+    e.preventDefault();
+    setTelegramBusy(true);
+    setTelegramSaved('');
+    try {
+      const payload = { enabled: telegramForm.enabled, chat_id: telegramForm.chat_id };
+      if (telegramForm.bot_token.trim()) payload.bot_token = telegramForm.bot_token.trim();
+      const data = await api('/api/telegram', { method: 'PATCH', body: JSON.stringify(payload) });
+      setTelegram({ loading: false, data, error: '' });
+      setTelegramForm({ enabled: Boolean(data.enabled), bot_token: '', chat_id: data.chat_id || '' });
+      setTelegramSaved('Настройки Telegram сохранены');
+    } catch (err) {
+      setTelegram((s) => ({ ...s, error: err.message || 'Ошибка сохранения Telegram' }));
+    } finally {
+      setTelegramBusy(false);
+    }
+  };
+
+  const testTelegram = async () => {
+    setTelegramBusy(true);
+    setTelegramSaved('');
+    try {
+      const data = await api('/api/telegram/test', { method: 'POST' });
+      setTelegram({ loading: false, data, error: '' });
+      setTelegramSaved('Тестовое сообщение отправлено');
+    } catch (err) {
+      setTelegram((s) => ({ ...s, error: err.message || 'Ошибка отправки Telegram' }));
+    } finally {
+      setTelegramBusy(false);
+    }
+  };
+
   const data = state.data || {};
   const curlExample = data.token_configured
     ? 'curl -H "Authorization: Bearer <token>" http://127.0.0.1:18080/metrics'
@@ -2009,9 +2049,9 @@ function MonitoringPage({ onLogout, user }) {
 
   return (
     <Shell title="Мониторинг" subtitle="Prometheus / Grafana metrics" onLogout={onLogout} user={user}>
-      {state.error && <div className="warning">{state.error}</div>}
-      {state.loading && <section className="card">Загрузка...</section>}
-      {!state.loading && (
+      {(state.error || telegram.error) && <div className="warning">{state.error || telegram.error}</div>}
+      {(state.loading || telegram.loading) && <section className="card">Загрузка...</section>}
+      {!state.loading && !telegram.loading && (
         <div className="monitoring-grid">
           <section className="card monitoring-card">
             <div className="section-head">
@@ -2049,6 +2089,38 @@ function MonitoringPage({ onLogout, user }) {
               <span>Локальная проверка</span>
               <code>{curlExample}</code>
             </div>
+          </section>
+
+          <section className="card monitoring-card">
+            <div className="section-head">
+              <h2>Telegram notifications</h2>
+              <span className={telegram.data?.enabled ? 'active-text' : 'muted'}>{telegram.data?.enabled ? 'ENABLED' : 'DISABLED'}</span>
+            </div>
+            <form className="monitoring-form" onSubmit={saveTelegram}>
+              <label>
+                <span>Bot token</span>
+                <input className="name-input" type="password" placeholder={telegram.data?.token_suffix ? `настроен ...${telegram.data.token_suffix}` : '123456:ABC...'} value={telegramForm.bot_token} onChange={(e) => setTelegramForm({ ...telegramForm, bot_token: e.target.value })} />
+              </label>
+              <label>
+                <span>Chat ID</span>
+                <input className="name-input" placeholder="-1001234567890" value={telegramForm.chat_id} onChange={(e) => setTelegramForm({ ...telegramForm, chat_id: e.target.value })} />
+              </label>
+              <label className="toggle-row">
+                <input type="checkbox" checked={telegramForm.enabled} onChange={(e) => setTelegramForm({ ...telegramForm, enabled: e.target.checked })} />
+                <span>Отправлять важные события в Telegram</span>
+              </label>
+              <div className="monitoring-actions">
+                <button className="orange-btn" type="submit" disabled={telegramBusy}><Check size={15} /> Сохранить</button>
+                <button className="blue-btn" type="button" onClick={testTelegram} disabled={telegramBusy || !telegram.data?.configured}><Send size={15} /> Проверить</button>
+              </div>
+            </form>
+            <div className="monitoring-status compact">
+              <div><span>Token</span><b>{telegram.data?.configured ? `настроен ...${telegram.data?.token_suffix || ''}` : 'не настроен'}</b></div>
+              <div><span>Chat</span><b>{telegram.data?.chat_id || '-'}</b></div>
+              <div><span>Источник</span><b>{telegram.data?.db_token_present ? 'web UI' : telegram.data?.env_token_present ? '.env' : '-'}</b></div>
+            </div>
+            {telegramSaved && <div className="success">{telegramSaved}</div>}
+            <p className="muted">Уведомления отправляются при создании, включении, отключении и удалении peer'ов, backup, истечении срока и превышении лимитов трафика.</p>
           </section>
         </div>
       )}

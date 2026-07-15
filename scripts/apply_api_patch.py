@@ -478,6 +478,10 @@ def api_disable_expired_peers() -> int:
                 row['name'],
                 {'protocol': row['protocol'], 'ip_cidr': row['ip_cidr'], 'expires_at': int(row['expires_at'])},
             )
+            telegram_notify(
+                "peer отключён по сроку",
+                [f"{row['name']} / {row['protocol']}", f"IP: {row['ip_cidr']}"],
+            )
         except Exception as e:
             print(f"Failed to auto-disable expired peer {row['id']}: {e}")
     if rows:
@@ -524,6 +528,10 @@ def api_disable_traffic_limited_peers(live: dict, counters: dict | None = None) 
                 int(row['id']),
                 row['name'],
                 {'protocol': row['protocol'], 'ip_cidr': row['ip_cidr'], 'used_bytes': used, 'limit_bytes': limit},
+            )
+            telegram_notify(
+                "peer отключён по лимиту трафика",
+                [f"{row['name']} / {row['protocol']}", f"Использовано: {human_bytes(used)} из {human_bytes(limit)}"],
             )
         except Exception as e:
             print(f"Failed to auto-disable traffic-limited peer {row['id']}: {e}")
@@ -584,6 +592,14 @@ def api_disable_user_traffic_limited_peers() -> int:
                     'limit_bytes': limit,
                 },
             )
+            telegram_notify(
+                "пользователь превысил лимит трафика",
+                [
+                    f"Пользователь: {panel_user['username']}",
+                    f"Отключено peer'ов: {user_disabled}",
+                    f"Использовано: {human_bytes(traffic['used_bytes'])} из {human_bytes(limit)}",
+                ],
+            )
     if disabled:
         runtime_cache_clear()
     return disabled
@@ -593,6 +609,80 @@ def api_error(message: str, status_code: int = 400, **extra):
     payload = {'ok': False, 'error': message}
     payload.update(extra)
     return JSONResponse(payload, status_code=status_code)
+
+
+def telegram_enabled() -> bool:
+    value = panel_setting_get("telegram_enabled")
+    if value is None:
+        return TELEGRAM_ENABLED
+    return value == "1"
+
+
+def telegram_bot_token() -> str:
+    return panel_setting_get("telegram_bot_token", TELEGRAM_BOT_TOKEN) or ""
+
+
+def telegram_chat_id() -> str:
+    return panel_setting_get("telegram_chat_id", TELEGRAM_CHAT_ID) or ""
+
+
+def telegram_token_suffix() -> str:
+    token = telegram_bot_token()
+    return token[-6:] if token else ""
+
+
+def telegram_configured() -> bool:
+    return bool(telegram_bot_token() and telegram_chat_id())
+
+
+def telegram_status_payload() -> dict:
+    return {
+        "ok": True,
+        "enabled": telegram_enabled(),
+        "configured": telegram_configured(),
+        "chat_id": telegram_chat_id(),
+        "token_suffix": telegram_token_suffix(),
+        "env_token_present": bool(TELEGRAM_BOT_TOKEN),
+        "env_chat_present": bool(TELEGRAM_CHAT_ID),
+        "db_token_present": bool(panel_setting_get("telegram_bot_token", "")),
+        "db_chat_present": bool(panel_setting_get("telegram_chat_id", "")),
+    }
+
+
+def telegram_send_message(title: str, lines: list[str] | None = None) -> bool:
+    if not telegram_enabled() or not telegram_configured():
+        return False
+    text_lines = [f"3WG Panel: {title}"]
+    for line in lines or []:
+        clean = str(line).strip()
+        if clean:
+            text_lines.append(clean)
+    payload = json.dumps({
+        "chat_id": telegram_chat_id(),
+        "text": "\n".join(text_lines),
+        "disable_web_page_preview": True,
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        f"https://api.telegram.org/bot{telegram_bot_token()}/sendMessage",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=7) as resp:
+            return 200 <= int(resp.status) < 300
+    except Exception as e:
+        print(f"Telegram notify failed: {e}")
+        return False
+
+
+def telegram_notify(title: str, lines: list[str] | None = None, wait: bool = False) -> bool:
+    if wait:
+        return telegram_send_message(title, lines)
+    if not telegram_enabled() or not telegram_configured():
+        return False
+    threading.Thread(target=telegram_send_message, args=(title, lines), daemon=True).start()
+    return True
 
 
 async def api_read_payload(request: Request) -> dict:
@@ -1124,6 +1214,10 @@ async def api_backups_create(request: Request, user=Depends(api_require_admin)):
     path = api_create_backup_archive('manual')
     payload = api_backup_payload(path)
     api_audit_log(request, user, 'backup.create', 'backup', path.name, path.name, {'size': payload['size']})
+    telegram_notify(
+        "backup создан",
+        [f"Файл: {path.name}", f"Размер: {human_bytes(payload['size'])}", f"Кто: {user.get('username')}"],
+    )
     return {'ok': True, 'backup': payload, 'backups': api_list_backups()}
 
 
@@ -1388,6 +1482,14 @@ async def api_create_peers(request: Request, user=Depends(api_require_auth)):
             name,
             {'protocols': protocols, 'category_id': category_id, 'expires_at': expires_at, 'traffic_limit_bytes': traffic_limit_bytes},
         )
+    telegram_notify(
+        "создан peer",
+        [
+            f"Имя: {name}",
+            f"Протоколы: {', '.join(protocols)}",
+            f"Кто: {user.get('username')}",
+        ],
+    )
 
     live, _ = api_live_maps()
     with db() as conn:
@@ -1511,6 +1613,10 @@ def api_peer_enable(client_id: int, request: Request, user=Depends(api_require_a
     except Exception as e:
         return api_error(str(e), status_code=500)
     api_audit_log(request, user, 'peer.enable', 'peer', client_id, c['name'], {'protocol': c['protocol'], 'ip_cidr': c['ip_cidr']})
+    telegram_notify(
+        "peer включён",
+        [f"{c['name']} / {c['protocol']}", f"IP: {c['ip_cidr']}", f"Кто: {user.get('username')}"],
+    )
     live, _ = api_live_maps()
     counters = api_record_peer_traffic_counters(live)
     c = load_client(client_id)
@@ -1527,6 +1633,10 @@ def api_peer_disable(client_id: int, request: Request, user=Depends(api_require_
     except Exception as e:
         return api_error(str(e), status_code=500)
     api_audit_log(request, user, 'peer.disable', 'peer', client_id, c['name'], {'protocol': c['protocol'], 'ip_cidr': c['ip_cidr']})
+    telegram_notify(
+        "peer отключён",
+        [f"{c['name']} / {c['protocol']}", f"IP: {c['ip_cidr']}", f"Кто: {user.get('username')}"],
+    )
     live, _ = api_live_maps()
     counters = api_record_peer_traffic_counters(live)
     c = load_client(client_id)
@@ -1598,6 +1708,10 @@ def api_peer_delete(client_id: int, request: Request, user=Depends(api_require_a
     except Exception as e:
         return api_error(str(e), status_code=500)
     api_audit_log(request, user, 'peer.delete', 'peer', client_id, c['name'], {'protocol': c['protocol'], 'ip_cidr': c['ip_cidr']})
+    telegram_notify(
+        "peer удалён",
+        [f"{c['name']} / {c['protocol']}", f"IP: {c['ip_cidr']}", f"Кто: {user.get('username')}"],
+    )
     return {'ok': True, 'deleted_id': client_id}
 # === 3WG REACT API END ===
 '''.strip() + '\n'

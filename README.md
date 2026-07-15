@@ -11,6 +11,7 @@
 - Подробные страницы истории трафика.
 - Multi-user режим: суперпользователь создаёт пользователей, назначает лимит peer'ов и общий лимит трафика.
 - Prometheus `/metrics`, node_exporter/cAdvisor agent и стартовый Grafana dashboard.
+- Telegram-уведомления о важных событиях панели.
 - Хранение состояния панели в SQLite.
 - Постоянные volume'ы для базы, клиентов и backup'ов.
 - Интерактивный installer для развёртывания с GitHub.
@@ -25,7 +26,7 @@
 - `/traffic/amneziawg` — история трафика AmneziaWG
 - `/users` — пользователи панели, лимиты peer'ов и суммарные лимиты трафика
 - `/apikeys` — API-ключи для интеграций через `X-API-Key`
-- `/monitoring` — включение `/metrics` и выпуск Prometheus token
+- `/monitoring` — Prometheus metrics, Prometheus token и Telegram notifications
 - `/backups` — ручные backup'ы и restore состояния панели
 - `/tools/health` — диагностика Docker, протоколов, endpoint'ов и reverse proxy
 - `/health` — health-check
@@ -127,7 +128,7 @@ docs/                документация
 
 ## Версия
 
-Текущая версия продукта: `v1.3.23`
+Текущая версия продукта: `v1.3.24`
 
 ## Copyright
 
