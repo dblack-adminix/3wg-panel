@@ -358,14 +358,20 @@ html[data-theme="light"] .sidebar-backdrop { background: rgba(15, 23, 42, .42); 
 .category-create button { height: 26px; border: 0; border-radius: 6px; background: #1d2600; color: var(--green); font-weight: 700; cursor: pointer; padding: 0 10px; }
 .category-create button:disabled { opacity: .45; cursor: not-allowed; }
 .table-wrap { width: 100%; overflow-x: auto; }
-.clients-table { width: 1345px; min-width: 1345px; table-layout: fixed; border-collapse: collapse; font-size: 13px; }
+.clients-table { width: 1475px; min-width: 1475px; table-layout: fixed; border-collapse: collapse; font-size: 13px; }
 .clients-table th, .clients-table td { border-bottom: 1px solid #262626; padding: 8px 8px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .clients-table th { color: #999999; text-transform: uppercase; font-size: 11px; letter-spacing: .06em; }
 .clients-table td:first-child, .clients-table th:first-child { padding-left: 8px; }
 .clients-table small { display: block; color: #8a8a8a; margin-top: 4px; }
-.proto { display: inline-block; background: #2a1d00; color: #ff8c00; border: 1px solid #7a4d00; border-radius: 5px; padding: 4px 8px; font-weight: 700; }
-.proto-wireguard { background: #2a1d00; color: #ff8c00; border-color: #7a4d00; }
+.proto { display: inline-block; background: #052b31; color: #00e7ff; border: 1px solid #086f78; border-radius: 5px; padding: 4px 8px; font-weight: 700; }
+.proto-wireguard { background: #2b0d17; color: #ff5b7b; border-color: #7c1d36; }
+.expiration-cell { display: grid; gap: 5px; }
+.table-expiration-select { width: 100%; padding: 0 8px; }
+.expiration-cell small { margin: 0; }
+.expiration-soon { color: #ffd386 !important; }
+.expiration-bad { color: #ff5b7b !important; }
 .active-text { color: var(--green); font-weight: 700; }
+.blocked-text { color: var(--danger); font-weight: 700; }
 .clients-table td.actions-cell { width: 154px; min-width: 154px; overflow: visible; padding: 7px 8px; }
 .table-category-select { width: 100%; padding: 0 8px; }
 .empty-table { text-align: center !important; color: #8a8a8a; padding: 18px 8px !important; }

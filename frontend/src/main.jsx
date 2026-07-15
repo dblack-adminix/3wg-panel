@@ -236,6 +236,7 @@ function StatCard({ value, label, icon: Icon }) {
 function CreateClient({ protocols, categories, quota, isAdmin, onCreated }) {
   const [name, setName] = useState('');
   const [categoryId, setCategoryId] = useState('');
+  const [expiresPreset, setExpiresPreset] = useState('');
   const available = protocols?.amneziawg?.available;
   const wgAvailable = protocols?.wireguard?.available;
   const [amnezia, setAmnezia] = useState(true);
@@ -252,8 +253,11 @@ function CreateClient({ protocols, categories, quota, isAdmin, onCreated }) {
     setError('');
     setLoading(true);
     try {
-      await api('/api/peers', { method: 'POST', body: JSON.stringify({ name, protocols: selected, category_id: categoryId || null }) });
+      const payload = { name, protocols: selected, category_id: categoryId || null };
+      if (isAdmin) payload.expires_at = expiresPreset ? futureExpiresAt(Number(expiresPreset)) : null;
+      await api('/api/peers', { method: 'POST', body: JSON.stringify(payload) });
       setName('');
+      setExpiresPreset('');
       await onCreated();
     } catch (err) {
       setError(err.message || 'Ошибка создания');
@@ -271,6 +275,15 @@ function CreateClient({ protocols, categories, quota, isAdmin, onCreated }) {
           <select className="category-select create-category-select" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
             <option value="">Без категории</option>
             {(categories || []).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+          </select>
+        )}
+        {isAdmin && (
+          <select className="category-select create-category-select" value={expiresPreset} onChange={(e) => setExpiresPreset(e.target.value)}>
+            <option value="">Без срока</option>
+            <option value="1">На 1 день</option>
+            <option value="7">На 7 дней</option>
+            <option value="30">На 30 дней</option>
+            <option value="90">На 90 дней</option>
           </select>
         )}
         <div className="protocol-row">
@@ -385,6 +398,19 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
     }
   };
 
+  const changePeerExpiration = async (peer, preset) => {
+    setBusyId(peer.id);
+    try {
+      const expiresAt = preset ? futureExpiresAt(Number(preset)) : null;
+      await api(`/api/peers/${peer.id}`, { method: 'PATCH', body: JSON.stringify({ expires_at: expiresAt }) });
+      await onRefresh();
+    } catch (err) {
+      window.alert(err.message || 'Ошибка изменения срока');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const mutatePeer = async (peer, action) => {
     setBusyId(peer.id);
     try {
@@ -455,6 +481,7 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
             <col style={{ width: 125 }} />
             <col style={{ width: 130 }} />
             <col style={{ width: 110 }} />
+            {isAdmin && <col style={{ width: 130 }} />}
             <col style={{ width: 180 }} />
             <col style={{ width: 170 }} />
             <col style={{ width: 105 }} />
@@ -470,6 +497,7 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
               <th>Протокол</th>
               <th>Внутренний IP</th>
               <th>Статус</th>
+              {isAdmin && <th>Срок</th>}
               <th>Endpoint клиента</th>
               <th>Последнее подключение</th>
               <th>RX</th>
@@ -494,6 +522,20 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
                 <td><span className={`proto ${p.protocol === 'wireguard' ? 'proto-wireguard' : ''}`}>{p.protocol_title || p.protocol}</span></td>
                 <td><code>{p.ip_cidr}</code></td>
                 <td><PeerStatus peer={p} /></td>
+                {isAdmin && (
+                  <td>
+                    <div className="expiration-cell">
+                      <select className="category-select table-expiration-select" value={expirationPresetValue(p)} disabled={busyId === p.id} onChange={(e) => changePeerExpiration(p, e.target.value)}>
+                        <option value="">Без срока</option>
+                        <option value="1">1 день</option>
+                        <option value="7">7 дней</option>
+                        <option value="30">30 дней</option>
+                        <option value="90">90 дней</option>
+                      </select>
+                      <small className={p.expiration?.expired ? 'expiration-bad' : p.expiration?.enabled ? 'expiration-soon' : ''}>{p.expiration?.label || 'без срока'}</small>
+                    </div>
+                  </td>
+                )}
                 <td title={p.live?.endpoint || ''}>{p.live?.endpoint || '(none)'}</td>
                 <td>{p.live?.latest_handshake && p.live.latest_handshake !== '0' ? new Date(Number(p.live.latest_handshake) * 1000).toLocaleString('ru-RU') : '-'}</td>
                 <td>{formatBytes(p.live?.rx)}</td>
@@ -515,7 +557,7 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
             ))}
             {filteredPeers.length === 0 && (
               <tr>
-                <td colSpan={isAdmin ? 12 : 10} className="empty-table">В этой категории пока нет peer'ов</td>
+                <td colSpan={isAdmin ? 13 : 10} className="empty-table">В этой категории пока нет peer'ов</td>
               </tr>
             )}
           </tbody>
@@ -606,6 +648,9 @@ function ConfirmModal({ title, message, details, tone = 'default', confirmLabel,
 }
 
 function PeerStatus({ peer }) {
+  if (peer.expiration?.expired || peer.status === 'expired') {
+    return <span className="blocked-text">EXPIRED</span>;
+  }
   if (!peer.enabled || peer.status === 'disabled') {
     return <span className="blocked-text">BLOCKED</span>;
   }
@@ -737,6 +782,7 @@ function ClientPage({ clientId, onLogout, user }) {
               <div><span>Server endpoint</span><code>{peer.endpoint}</code></div>
               <div><span>Client endpoint</span><code>{clientEndpoint || '(none)'}</code></div>
               <div><span>Created</span><b>{formatPeerTime(peer.created_at)}</b></div>
+              <div><span>Expires</span><b>{peer.expiration?.label || 'без срока'}</b></div>
               <div><span>Public key</span><code title={peer.public_key}>{shortKey(peer.public_key)}</code></div>
               <div><span>RX / TX</span><b>{formatBytes(live.rx)} / {formatBytes(live.tx)}</b></div>
             </div>
@@ -809,6 +855,20 @@ function shortKey(value) {
 
 function formatPeerTime(ts) {
   return ts ? new Date(Number(ts) * 1000).toLocaleString('ru-RU') : '-';
+}
+
+function futureExpiresAt(days) {
+  return Math.floor(Date.now() / 1000) + Math.max(1, Number(days || 1)) * 86400;
+}
+
+function expirationPresetValue(peer) {
+  const secondsLeft = Number(peer?.expiration?.seconds_left || 0);
+  if (!peer?.expiration?.enabled || secondsLeft <= 0) return '';
+  const days = Math.max(1, Math.round(secondsLeft / 86400));
+  if (days <= 1) return '1';
+  if (days <= 7) return '7';
+  if (days <= 30) return '30';
+  return '90';
 }
 
 function formatDuration(seconds) {

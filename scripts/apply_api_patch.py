@@ -351,6 +351,79 @@ def api_user_quota(user: dict) -> dict:
     return {'limited': True, 'limit': limit, 'used': used, 'remaining': max(0, limit - used)}
 
 
+def api_parse_expires_at(value) -> int | None:
+    if value in (None, '', False):
+        return None
+    try:
+        ts = int(value)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail='Некорректный срок действия peer')
+    if ts <= 0:
+        return None
+    if ts < int(time.time()) - 86400:
+        raise HTTPException(status_code=400, detail='Срок действия уже в прошлом')
+    return ts
+
+
+def api_expiration_payload(expires_at: int | None, enabled: bool) -> dict:
+    if not expires_at:
+        return {'enabled': False, 'expires_at': None, 'expired': False, 'seconds_left': None, 'label': 'без срока'}
+    now = int(time.time())
+    seconds_left = int(expires_at) - now
+    expired = seconds_left <= 0
+    if expired:
+        label = 'истек'
+    elif seconds_left < 86400:
+        label = f"истекает через {max(1, seconds_left // 3600)} ч"
+    else:
+        label = f"истекает через {max(1, seconds_left // 86400)} д"
+    return {
+        'enabled': True,
+        'expires_at': int(expires_at),
+        'expired': expired,
+        'seconds_left': seconds_left,
+        'label': label,
+        'active': enabled and not expired,
+    }
+
+
+def api_disable_expired_peers() -> int:
+    now = int(time.time())
+    with db() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, name, protocol, public_key, ip_cidr, expires_at
+            FROM clients
+            WHERE COALESCE(deleted_at, 0) = 0
+              AND enabled = 1
+              AND expires_at IS NOT NULL
+              AND expires_at > 0
+              AND expires_at <= ?
+            """,
+            (now,),
+        ).fetchall()
+    for row in rows:
+        try:
+            remove_peer(row['protocol'], row['public_key'])
+            with db() as conn:
+                conn.execute('UPDATE clients SET enabled = 0 WHERE id = ?', (int(row['id']),))
+                conn.commit()
+            api_audit_log(
+                None,
+                {'username': 'system', 'role': 'system', 'is_admin': True},
+                'peer.expire',
+                'peer',
+                int(row['id']),
+                row['name'],
+                {'protocol': row['protocol'], 'ip_cidr': row['ip_cidr'], 'expires_at': int(row['expires_at'])},
+            )
+        except Exception as e:
+            print(f"Failed to auto-disable expired peer {row['id']}: {e}")
+    if rows:
+        runtime_cache_clear()
+    return len(rows)
+
+
 def api_error(message: str, status_code: int = 400, **extra):
     payload = {'ok': False, 'error': message}
     payload.update(extra)
@@ -606,6 +679,8 @@ def api_peer_payload(c, live: dict | None = None, include_config: bool = False) 
     lp = live.get(protocol, {}).get(c['public_key']) if live else None
     active, handshake_age = api_recent_handshake(lp)
     enabled = bool(c['enabled'])
+    expires_at = int(c['expires_at']) if 'expires_at' in c.keys() and c['expires_at'] else None
+    expiration = api_expiration_payload(expires_at, enabled)
     owner_username = c['owner_username'] if 'owner_username' in c.keys() and c['owner_username'] else PANEL_USER
     payload = {
         'id': int(c['id']),
@@ -621,9 +696,11 @@ def api_peer_payload(c, live: dict | None = None, include_config: bool = False) 
         'public_key': c['public_key'],
         'enabled': enabled,
         'created_at': int(c['created_at']),
+        'expires_at': expires_at,
+        'expiration': expiration,
         'deleted_at': int(c['deleted_at']) if 'deleted_at' in c.keys() else 0,
         'endpoint': endpoint,
-        'status': 'active' if enabled and active else ('offline' if enabled else 'disabled'),
+        'status': 'expired' if expiration['expired'] else ('active' if enabled and active else ('offline' if enabled else 'disabled')),
         'online_window_seconds': ONLINE_HANDSHAKE_WINDOW_SECONDS,
         'handshake_age_seconds': handshake_age,
         'live': lp or None,
@@ -717,6 +794,7 @@ def api_node_diagnostics(user=Depends(api_require_admin)):
 
 @app.get('/api/peers')
 def api_peers(user=Depends(api_require_auth)):
+    expired_disabled = api_disable_expired_peers()
     live, errors = api_live_maps()
     api_record_traffic_snapshot(live)
     where, params = api_user_where(user, 'c')
@@ -736,6 +814,7 @@ def api_peers(user=Depends(api_require_auth)):
         'categories': api_categories_payload() if user.get('is_admin') else [],
         'quota': api_user_quota(user),
         'errors': errors,
+        'expired_disabled': expired_disabled,
     }
 
 
@@ -1014,8 +1093,11 @@ async def api_create_peers(request: Request, user=Depends(api_require_auth)):
     if user.get('is_admin'):
         try:
             category_id = api_category_id(data.get('category_id'))
+            expires_at = api_parse_expires_at(data.get('expires_at'))
         except HTTPException as e:
             return api_error(str(e.detail), status_code=e.status_code)
+    else:
+        expires_at = None
     protocols = data.get('protocols', data.get('protocol', []))
     if isinstance(protocols, str):
         protocols = [protocols]
@@ -1032,7 +1114,7 @@ async def api_create_peers(request: Request, user=Depends(api_require_auth)):
     created_ids = []
     try:
         for protocol in protocols:
-            created_ids.append(create_client(name, protocol, category_id=category_id, owner_id=user.get('id')))
+            created_ids.append(create_client(name, protocol, category_id=category_id, owner_id=user.get('id'), expires_at=expires_at))
     except Exception as e:
         return api_error(str(e), status_code=500, created_ids=created_ids)
 
@@ -1044,7 +1126,7 @@ async def api_create_peers(request: Request, user=Depends(api_require_auth)):
             'peer',
             created_id,
             name,
-            {'protocols': protocols, 'category_id': category_id},
+            {'protocols': protocols, 'category_id': category_id, 'expires_at': expires_at},
         )
 
     live, _ = api_live_maps()
@@ -1067,19 +1149,31 @@ async def api_peer_update(client_id: int, request: Request, user=Depends(api_req
         return api_error('Недостаточно прав', status_code=403)
     data = await api_read_payload(request)
     try:
-        category_id = api_category_id(data.get('category_id'))
+        category_id = api_category_id(data.get('category_id')) if 'category_id' in data else None
+        expires_at = api_parse_expires_at(data.get('expires_at')) if 'expires_at' in data else None
     except HTTPException as e:
         return api_error(str(e.detail), status_code=e.status_code)
+    if 'category_id' not in data and 'expires_at' not in data:
+        return api_error('Нет изменений', status_code=400)
     with db() as conn:
         before = conn.execute(
-            'SELECT id, name, protocol, category_id FROM clients WHERE id = ? AND COALESCE(deleted_at, 0) = 0',
+            'SELECT id, name, protocol, category_id, expires_at FROM clients WHERE id = ? AND COALESCE(deleted_at, 0) = 0',
             (client_id,),
         ).fetchone()
         if not before:
             return api_error('Клиент не найден', status_code=404)
+        fields = []
+        values = []
+        if 'category_id' in data:
+            fields.append('category_id = ?')
+            values.append(category_id)
+        if 'expires_at' in data:
+            fields.append('expires_at = ?')
+            values.append(expires_at)
+        values.append(client_id)
         cur = conn.execute(
-            'UPDATE clients SET category_id = ? WHERE id = ? AND COALESCE(deleted_at, 0) = 0',
-            (category_id, client_id),
+            f"UPDATE clients SET {', '.join(fields)} WHERE id = ? AND COALESCE(deleted_at, 0) = 0",
+            values,
         )
         if cur.rowcount == 0:
             return api_error('Клиент не найден', status_code=404)
@@ -1091,7 +1185,13 @@ async def api_peer_update(client_id: int, request: Request, user=Depends(api_req
         'peer',
         client_id,
         before['name'],
-        {'protocol': before['protocol'], 'before_category_id': before['category_id'], 'category_id': category_id},
+        {
+            'protocol': before['protocol'],
+            'before_category_id': before['category_id'],
+            'category_id': category_id if 'category_id' in data else before['category_id'],
+            'before_expires_at': before['expires_at'],
+            'expires_at': expires_at if 'expires_at' in data else before['expires_at'],
+        },
     )
     live, _ = api_live_maps()
     with db() as conn:
@@ -1107,6 +1207,7 @@ async def api_peer_update(client_id: int, request: Request, user=Depends(api_req
 
 @app.get('/api/peers/{client_id}')
 def api_peer_get(client_id: int, user=Depends(api_require_auth)):
+    api_disable_expired_peers()
     live, _ = api_live_maps()
     c = load_client(client_id)
     if not user.get('is_admin') and c['owner_id'] != user.get('id'):
@@ -1127,6 +1228,8 @@ def api_peer_enable(client_id: int, request: Request, user=Depends(api_require_a
     c = load_client(client_id)
     if not user.get('is_admin') and c['owner_id'] != user.get('id'):
         raise HTTPException(status_code=404, detail='Client not found')
+    if c['expires_at'] and int(c['expires_at']) <= int(time.time()):
+        return api_error('Срок действия peer истек. Продлите срок перед включением.', status_code=409)
     try:
         enable_peer(c)
     except Exception as e:
