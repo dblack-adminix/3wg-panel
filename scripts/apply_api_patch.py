@@ -399,19 +399,24 @@ def api_expiration_payload(expires_at: int | None, enabled: bool) -> dict:
     }
 
 
-def api_traffic_limit_payload(limit_bytes: int, live_peer: dict | None) -> dict:
+def api_traffic_limit_payload(limit_bytes: int, live_peer: dict | None, counter: dict | None = None) -> dict:
     limit = max(0, int(limit_bytes or 0))
     rx = int((live_peer or {}).get('rx') or 0)
     tx = int((live_peer or {}).get('tx') or 0)
+    if counter:
+        rx = int(counter.get('rx_total') or 0)
+        tx = int(counter.get('tx_total') or 0)
     used = rx + tx
     if limit <= 0:
-        return {'enabled': False, 'limit_bytes': 0, 'used_bytes': used, 'remaining_bytes': None, 'percent': 0, 'exceeded': False, 'label': 'без лимита'}
+        return {'enabled': False, 'limit_bytes': 0, 'used_bytes': used, 'rx_bytes': rx, 'tx_bytes': tx, 'remaining_bytes': None, 'percent': 0, 'exceeded': False, 'label': 'без лимита'}
     remaining = max(0, limit - used)
     percent = min(100, round((used / limit) * 100, 1)) if limit else 0
     return {
         'enabled': True,
         'limit_bytes': limit,
         'used_bytes': used,
+        'rx_bytes': rx,
+        'tx_bytes': tx,
         'remaining_bytes': remaining,
         'percent': percent,
         'exceeded': used >= limit,
@@ -456,7 +461,8 @@ def api_disable_expired_peers() -> int:
     return len(rows)
 
 
-def api_disable_traffic_limited_peers(live: dict) -> int:
+def api_disable_traffic_limited_peers(live: dict, counters: dict | None = None) -> int:
+    counters = counters if counters is not None else api_record_peer_traffic_counters(live)
     with db() as conn:
         rows = conn.execute(
             """
@@ -470,9 +476,13 @@ def api_disable_traffic_limited_peers(live: dict) -> int:
     disabled = 0
     for row in rows:
         lp = (live.get(row['protocol']) or {}).get(row['public_key'])
-        if not lp:
+        counter = counters.get(int(row['id'])) if counters else None
+        if not lp and not counter:
             continue
-        used = int(lp.get('rx') or 0) + int(lp.get('tx') or 0)
+        if counter:
+            used = int(counter.get('rx_total') or 0) + int(counter.get('tx_total') or 0)
+        else:
+            used = int(lp.get('rx') or 0) + int(lp.get('tx') or 0)
         limit = int(row['traffic_limit_bytes'] or 0)
         if used < limit:
             continue
@@ -624,11 +634,72 @@ def api_record_traffic_snapshot(live: dict | None = None, min_interval: int = 60
     return totals
 
 
+def api_record_peer_traffic_counters(live: dict | None = None) -> dict[int, dict]:
+    live = live if live is not None else api_live_maps()[0]
+    now = int(time.time())
+    with db() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, protocol, public_key
+            FROM clients
+            WHERE COALESCE(deleted_at, 0) = 0
+            """
+        ).fetchall()
+        for row in rows:
+            lp = (live.get(row['protocol']) or {}).get(row['public_key'])
+            if not lp:
+                continue
+            rx = int(lp.get('rx') or 0)
+            tx = int(lp.get('tx') or 0)
+            current = conn.execute(
+                'SELECT * FROM peer_traffic_counters WHERE client_id = ?',
+                (int(row['id']),),
+            ).fetchone()
+            if current:
+                last_rx = int(current['last_rx'] or 0)
+                last_tx = int(current['last_tx'] or 0)
+                rx_delta = rx - last_rx if rx >= last_rx else rx
+                tx_delta = tx - last_tx if tx >= last_tx else tx
+                conn.execute(
+                    """
+                    UPDATE peer_traffic_counters
+                    SET protocol = ?, public_key = ?, rx_total = rx_total + ?, tx_total = tx_total + ?,
+                        last_rx = ?, last_tx = ?, updated_at = ?
+                    WHERE client_id = ?
+                    """,
+                    (row['protocol'], row['public_key'], max(0, rx_delta), max(0, tx_delta), rx, tx, now, int(row['id'])),
+                )
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO peer_traffic_counters(client_id, protocol, public_key, rx_total, tx_total, last_rx, last_tx, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (int(row['id']), row['protocol'], row['public_key'], rx, tx, rx, tx, now),
+                )
+        conn.commit()
+        counters = conn.execute('SELECT * FROM peer_traffic_counters').fetchall()
+    return {
+        int(row['client_id']): {
+            'client_id': int(row['client_id']),
+            'protocol': row['protocol'],
+            'public_key': row['public_key'],
+            'rx_total': int(row['rx_total']),
+            'tx_total': int(row['tx_total']),
+            'last_rx': int(row['last_rx']),
+            'last_tx': int(row['last_tx']),
+            'updated_at': int(row['updated_at']),
+        }
+        for row in counters
+    }
+
+
 def api_traffic_history_payload(protocol: str, days: int = 30) -> dict:
     if protocol not in PROTOCOLS:
         raise HTTPException(status_code=404, detail='Unknown protocol')
     days = max(1, min(int(days or 30), 90))
     live, _ = api_live_maps()
+    counters = api_record_peer_traffic_counters(live)
     current = api_record_traffic_snapshot(live, min_interval=60).get(protocol)
     since = int(time.time()) - days * 86400
     with db() as conn:
@@ -746,7 +817,7 @@ def api_panel_users_payload() -> list[dict]:
     return [api_panel_user_payload(row) for row in rows]
 
 
-def api_peer_payload(c, live: dict | None = None, include_config: bool = False) -> dict:
+def api_peer_payload(c, live: dict | None = None, include_config: bool = False, counters: dict | None = None) -> dict:
     protocol = c['protocol']
     p = PROTOCOLS[protocol]
     endpoint = client_endpoint(protocol)
@@ -756,7 +827,8 @@ def api_peer_payload(c, live: dict | None = None, include_config: bool = False) 
     expires_at = int(c['expires_at']) if 'expires_at' in c.keys() and c['expires_at'] else None
     expiration = api_expiration_payload(expires_at, enabled)
     traffic_limit_bytes = int(c['traffic_limit_bytes']) if 'traffic_limit_bytes' in c.keys() and c['traffic_limit_bytes'] else 0
-    traffic_limit = api_traffic_limit_payload(traffic_limit_bytes, lp)
+    counter = counters.get(int(c['id'])) if counters else None
+    traffic_limit = api_traffic_limit_payload(traffic_limit_bytes, lp, counter)
     owner_username = c['owner_username'] if 'owner_username' in c.keys() and c['owner_username'] else PANEL_USER
     payload = {
         'id': int(c['id']),
@@ -776,6 +848,7 @@ def api_peer_payload(c, live: dict | None = None, include_config: bool = False) 
         'expiration': expiration,
         'traffic_limit_bytes': traffic_limit_bytes,
         'traffic_limit': traffic_limit,
+        'traffic_counter': counter,
         'deleted_at': int(c['deleted_at']) if 'deleted_at' in c.keys() else 0,
         'endpoint': endpoint,
         'status': 'limited' if traffic_limit['exceeded'] else ('expired' if expiration['expired'] else ('active' if enabled and active else ('offline' if enabled else 'disabled'))),
@@ -874,9 +947,11 @@ def api_node_diagnostics(user=Depends(api_require_admin)):
 def api_peers(user=Depends(api_require_auth)):
     expired_disabled = api_disable_expired_peers()
     live, errors = api_live_maps()
-    traffic_limited_disabled = api_disable_traffic_limited_peers(live)
+    counters = api_record_peer_traffic_counters(live)
+    traffic_limited_disabled = api_disable_traffic_limited_peers(live, counters)
     if traffic_limited_disabled:
         live, errors = api_live_maps()
+        counters = api_record_peer_traffic_counters(live)
     api_record_traffic_snapshot(live)
     where, params = api_user_where(user, 'c')
     with db() as conn:
@@ -891,7 +966,7 @@ def api_peers(user=Depends(api_require_auth)):
         """, params).fetchall()
     return {
         'ok': True,
-        'peers': [api_peer_payload(c, live=live) for c in rows],
+        'peers': [api_peer_payload(c, live=live, counters=counters) for c in rows],
         'categories': api_categories_payload() if user.get('is_admin') else [],
         'quota': api_user_quota(user),
         'errors': errors,
@@ -1224,7 +1299,7 @@ async def api_create_peers(request: Request, user=Depends(api_require_auth)):
             WHERE c.id IN ({qmarks})
             ORDER BY c.id DESC
         """, created_ids).fetchall()
-    return {'ok': True, 'created_ids': created_ids, 'peers': [api_peer_payload(c, live=live) for c in rows]}
+    return {'ok': True, 'created_ids': created_ids, 'peers': [api_peer_payload(c, live=live, counters=counters) for c in rows]}
 
 
 @app.patch('/api/peers/{client_id}')
@@ -1284,6 +1359,7 @@ async def api_peer_update(client_id: int, request: Request, user=Depends(api_req
         },
     )
     live, _ = api_live_maps()
+    counters = api_record_peer_traffic_counters(live)
     with db() as conn:
         c = conn.execute("""
             SELECT c.*, cat.name AS category_name, u.username AS owner_username
@@ -1292,19 +1368,21 @@ async def api_peer_update(client_id: int, request: Request, user=Depends(api_req
             LEFT JOIN panel_users u ON u.id = c.owner_id
             WHERE c.id = ?
         """, (client_id,)).fetchone()
-    return {'ok': True, 'peer': api_peer_payload(c, live=live), 'categories': api_categories_payload()}
+    return {'ok': True, 'peer': api_peer_payload(c, live=live, counters=counters), 'categories': api_categories_payload()}
 
 
 @app.get('/api/peers/{client_id}')
 def api_peer_get(client_id: int, user=Depends(api_require_auth)):
     api_disable_expired_peers()
     live, _ = api_live_maps()
-    if api_disable_traffic_limited_peers(live):
+    counters = api_record_peer_traffic_counters(live)
+    if api_disable_traffic_limited_peers(live, counters):
         live, _ = api_live_maps()
+        counters = api_record_peer_traffic_counters(live)
     c = load_client(client_id)
     if not user.get('is_admin') and c['owner_id'] != user.get('id'):
         raise HTTPException(status_code=404, detail='Client not found')
-    return {'ok': True, 'peer': api_peer_payload(c, live=live, include_config=True)}
+    return {'ok': True, 'peer': api_peer_payload(c, live=live, include_config=True, counters=counters)}
 
 
 @app.get('/api/peers/{client_id}/config')
@@ -1324,7 +1402,8 @@ def api_peer_enable(client_id: int, request: Request, user=Depends(api_require_a
         return api_error('Срок действия peer истек. Продлите срок перед включением.', status_code=409)
     live, _ = api_live_maps()
     lp = (live.get(c['protocol']) or {}).get(c['public_key'])
-    if c['traffic_limit_bytes'] and api_traffic_limit_payload(int(c['traffic_limit_bytes']), lp)['exceeded']:
+    counters = api_record_peer_traffic_counters(live)
+    if c['traffic_limit_bytes'] and api_traffic_limit_payload(int(c['traffic_limit_bytes']), lp, counters.get(int(c['id'])))['exceeded']:
         return api_error('Лимит трафика peer исчерпан. Увеличьте или снимите лимит перед включением.', status_code=409)
     try:
         enable_peer(c)
@@ -1332,8 +1411,9 @@ def api_peer_enable(client_id: int, request: Request, user=Depends(api_require_a
         return api_error(str(e), status_code=500)
     api_audit_log(request, user, 'peer.enable', 'peer', client_id, c['name'], {'protocol': c['protocol'], 'ip_cidr': c['ip_cidr']})
     live, _ = api_live_maps()
+    counters = api_record_peer_traffic_counters(live)
     c = load_client(client_id)
-    return {'ok': True, 'peer': api_peer_payload(c, live=live)}
+    return {'ok': True, 'peer': api_peer_payload(c, live=live, counters=counters)}
 
 
 @app.post('/api/peers/{client_id}/disable')
@@ -1347,8 +1427,9 @@ def api_peer_disable(client_id: int, request: Request, user=Depends(api_require_
         return api_error(str(e), status_code=500)
     api_audit_log(request, user, 'peer.disable', 'peer', client_id, c['name'], {'protocol': c['protocol'], 'ip_cidr': c['ip_cidr']})
     live, _ = api_live_maps()
+    counters = api_record_peer_traffic_counters(live)
     c = load_client(client_id)
-    return {'ok': True, 'peer': api_peer_payload(c, live=live)}
+    return {'ok': True, 'peer': api_peer_payload(c, live=live, counters=counters)}
 
 
 @app.delete('/api/peers/{client_id}')
