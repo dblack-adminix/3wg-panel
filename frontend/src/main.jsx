@@ -20,6 +20,7 @@ import {
   Plus,
   QrCode,
   RefreshCw,
+  RotateCcw,
   Trash2,
   X,
   ShieldCheck,
@@ -442,6 +443,8 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
     try {
       if (action === 'delete') {
         await api(peer.links?.delete || `/api/peers/${peer.id}`, { method: 'DELETE' });
+      } else if (action === 'traffic_reset') {
+        await api(peer.links?.traffic_reset || `/api/peers/${peer.id}/traffic-reset`, { method: 'POST' });
       } else {
         await api(peer.links?.[action] || `/api/peers/${peer.id}/${action}`, { method: 'POST' });
       }
@@ -513,7 +516,7 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
             <col style={{ width: 170 }} />
             <col style={{ width: 105 }} />
             <col style={{ width: 105 }} />
-            <col style={{ width: 154 }} />
+            <col style={{ width: isAdmin ? 184 : 154 }} />
           </colgroup>
           <thead>
             <tr>
@@ -596,6 +599,7 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
                     ) : (
                       <IconButton onClick={() => askPeerAction(p, 'enable')} title="Включить peer" tone="enable" disabled={busyId === p.id}><Power size={14} /></IconButton>
                     )}
+                    {isAdmin && <IconButton onClick={() => askPeerAction(p, 'traffic_reset')} title="Сбросить счётчик трафика" tone="reset" disabled={busyId === p.id}><RotateCcw size={14} /></IconButton>}
                     <IconButton onClick={() => askPeerAction(p, 'delete')} title="Удалить peer" tone="danger" disabled={busyId === p.id}><Trash2 size={14} /></IconButton>
                   </div>
                 </td>
@@ -658,6 +662,15 @@ function getPeerConfirmMeta(peer, action) {
       details: 'Клиент останется в панели, но peer будет снят с интерфейса и не сможет подключаться.',
       tone: 'block',
       confirmLabel: 'Отключить',
+    };
+  }
+  if (action === 'traffic_reset') {
+    return {
+      title: 'Сбросить трафик',
+      message: `Сбросить счётчик трафика для "${peer.name}"?`,
+      details: `Накопленный RX/TX станет 0. Текущий live-счётчик контейнера будет принят как новая базовая точка. Сейчас: ${peer.traffic_limit?.label || 'без лимита'}.`,
+      tone: 'block',
+      confirmLabel: 'Сбросить',
     };
   }
   return {
@@ -795,6 +808,17 @@ function ClientPage({ clientId, onLogout, user }) {
     }
   };
 
+  const resetPeerTraffic = async () => {
+    if (!peer || !user?.is_admin) return;
+    if (!window.confirm(`Сбросить накопленный трафик для "${peer.name}"?`)) return;
+    try {
+      await api(peer.links?.traffic_reset || `/api/peers/${peer.id}/traffic-reset`, { method: 'POST' });
+      await load();
+    } catch (err) {
+      window.alert(err.message || 'Ошибка сброса счётчика');
+    }
+  };
+
   return (
     <Shell title={title} subtitle="WireGuard / AmneziaWG node management" onLogout={onLogout} user={user}>
       {state.error && <div className="warning">{state.error}</div>}
@@ -807,6 +831,7 @@ function ClientPage({ clientId, onLogout, user }) {
               <div className="peer-hero-actions">
                 <button className="copy-button" type="button" onClick={load}><RefreshCw size={14} /> Обновить</button>
                 {user?.is_admin && <button className="orange-btn small" type="button" onClick={runPeerPing} disabled={diag.loading}><Activity size={14} /> Диагностика</button>}
+                {user?.is_admin && <button className="blue-btn small" type="button" onClick={resetPeerTraffic}><RotateCcw size={14} /> Сброс трафика</button>}
                 <span className={isOnline ? 'status-pill online' : peer.enabled ? 'status-pill offline' : 'status-pill disabled'}>{isOnline ? 'ONLINE' : peer.enabled ? 'OFFLINE' : 'DISABLED'}</span>
               </div>
             </div>

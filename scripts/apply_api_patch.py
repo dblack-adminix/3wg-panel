@@ -865,6 +865,7 @@ def api_peer_payload(c, live: dict | None = None, include_config: bool = False, 
             'qr_amnezia_vpn_png': f"/client/{c['id']}/qr/amnezia-vpn/download" if protocol == 'amneziawg' else None,
             'enable': f"/api/peers/{c['id']}/enable",
             'disable': f"/api/peers/{c['id']}/disable",
+            'traffic_reset': f"/api/peers/{c['id']}/traffic-reset",
             'delete': f"/api/peers/{c['id']}",
         },
     }
@@ -1427,6 +1428,55 @@ def api_peer_disable(client_id: int, request: Request, user=Depends(api_require_
         return api_error(str(e), status_code=500)
     api_audit_log(request, user, 'peer.disable', 'peer', client_id, c['name'], {'protocol': c['protocol'], 'ip_cidr': c['ip_cidr']})
     live, _ = api_live_maps()
+    counters = api_record_peer_traffic_counters(live)
+    c = load_client(client_id)
+    return {'ok': True, 'peer': api_peer_payload(c, live=live, counters=counters)}
+
+
+@app.post('/api/peers/{client_id}/traffic-reset')
+def api_peer_traffic_reset(client_id: int, request: Request, user=Depends(api_require_auth)):
+    if not user.get('is_admin'):
+        return api_error('Недостаточно прав', status_code=403)
+    c = load_client(client_id)
+    live, _ = api_live_maps()
+    lp = (live.get(c['protocol']) or {}).get(c['public_key']) or {}
+    last_rx = int(lp.get('rx') or 0)
+    last_tx = int(lp.get('tx') or 0)
+    now = int(time.time())
+    with db() as conn:
+        before = conn.execute('SELECT * FROM peer_traffic_counters WHERE client_id = ?', (client_id,)).fetchone()
+        conn.execute(
+            """
+            INSERT INTO peer_traffic_counters(client_id, protocol, public_key, rx_total, tx_total, last_rx, last_tx, updated_at)
+            VALUES (?, ?, ?, 0, 0, ?, ?, ?)
+            ON CONFLICT(client_id) DO UPDATE SET
+                protocol = excluded.protocol,
+                public_key = excluded.public_key,
+                rx_total = 0,
+                tx_total = 0,
+                last_rx = excluded.last_rx,
+                last_tx = excluded.last_tx,
+                updated_at = excluded.updated_at
+            """,
+            (client_id, c['protocol'], c['public_key'], last_rx, last_tx, now),
+        )
+        conn.commit()
+    api_audit_log(
+        request,
+        user,
+        'peer.traffic_reset',
+        'peer',
+        client_id,
+        c['name'],
+        {
+            'protocol': c['protocol'],
+            'ip_cidr': c['ip_cidr'],
+            'before_rx_total': int(before['rx_total']) if before else 0,
+            'before_tx_total': int(before['tx_total']) if before else 0,
+            'last_rx': last_rx,
+            'last_tx': last_tx,
+        },
+    )
     counters = api_record_peer_traffic_counters(live)
     c = load_client(client_id)
     return {'ok': True, 'peer': api_peer_payload(c, live=live, counters=counters)}
