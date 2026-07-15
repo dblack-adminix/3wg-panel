@@ -7540,19 +7540,6 @@ def _container_system_metric(name: str) -> dict:
             {'container': key, 'host': ', '.join(f"{p.get('HostIp', '')}:{p.get('HostPort', '')}".strip(':') for p in (value or []))}
             for key, value in sorted(ports.items())
         ]
-        if c.status == 'running':
-            stats = c.stats(stream=False)
-            cpu = stats.get('cpu_stats', {})
-            precpu = stats.get('precpu_stats', {})
-            cpu_delta = (cpu.get('cpu_usage', {}).get('total_usage') or 0) - (precpu.get('cpu_usage', {}).get('total_usage') or 0)
-            system_delta = (cpu.get('system_cpu_usage') or 0) - (precpu.get('system_cpu_usage') or 0)
-            online_cpus = cpu.get('online_cpus') or len(cpu.get('cpu_usage', {}).get('percpu_usage') or []) or 1
-            if system_delta > 0 and cpu_delta >= 0:
-                payload['cpu_percent'] = round((cpu_delta / system_delta) * online_cpus * 100.0, 2)
-            mem = stats.get('memory_stats', {})
-            usage = int(mem.get('usage') or 0)
-            limit = int(mem.get('limit') or 0)
-            payload['memory'] = {'usage': usage, 'limit': limit, 'percent': round(usage / limit * 100, 2) if limit else 0.0}
     except Exception as exc:
         payload['status'] = f'error: {exc}'
     return payload
