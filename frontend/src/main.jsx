@@ -237,6 +237,7 @@ function CreateClient({ protocols, categories, quota, isAdmin, onCreated }) {
   const [name, setName] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [expiresPreset, setExpiresPreset] = useState('');
+  const [trafficLimitPreset, setTrafficLimitPreset] = useState('');
   const available = protocols?.amneziawg?.available;
   const wgAvailable = protocols?.wireguard?.available;
   const [amnezia, setAmnezia] = useState(true);
@@ -255,9 +256,11 @@ function CreateClient({ protocols, categories, quota, isAdmin, onCreated }) {
     try {
       const payload = { name, protocols: selected, category_id: categoryId || null };
       if (isAdmin) payload.expires_at = expiresPreset ? futureExpiresAt(Number(expiresPreset)) : null;
+      if (isAdmin) payload.traffic_limit_bytes = trafficLimitPreset ? gibToBytes(Number(trafficLimitPreset)) : 0;
       await api('/api/peers', { method: 'POST', body: JSON.stringify(payload) });
       setName('');
       setExpiresPreset('');
+      setTrafficLimitPreset('');
       await onCreated();
     } catch (err) {
       setError(err.message || 'Ошибка создания');
@@ -284,6 +287,16 @@ function CreateClient({ protocols, categories, quota, isAdmin, onCreated }) {
             <option value="7">На 7 дней</option>
             <option value="30">На 30 дней</option>
             <option value="90">На 90 дней</option>
+          </select>
+        )}
+        {isAdmin && (
+          <select className="category-select create-category-select" value={trafficLimitPreset} onChange={(e) => setTrafficLimitPreset(e.target.value)}>
+            <option value="">Без лимита трафика</option>
+            <option value="1">1 GiB</option>
+            <option value="5">5 GiB</option>
+            <option value="10">10 GiB</option>
+            <option value="50">50 GiB</option>
+            <option value="100">100 GiB</option>
           </select>
         )}
         <div className="protocol-row">
@@ -411,6 +424,19 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
     }
   };
 
+  const changePeerTrafficLimit = async (peer, preset) => {
+    setBusyId(peer.id);
+    try {
+      const limitBytes = preset ? gibToBytes(Number(preset)) : 0;
+      await api(`/api/peers/${peer.id}`, { method: 'PATCH', body: JSON.stringify({ traffic_limit_bytes: limitBytes }) });
+      await onRefresh();
+    } catch (err) {
+      window.alert(err.message || 'Ошибка изменения лимита');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const mutatePeer = async (peer, action) => {
     setBusyId(peer.id);
     try {
@@ -482,6 +508,7 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
             <col style={{ width: 130 }} />
             <col style={{ width: 110 }} />
             {isAdmin && <col style={{ width: 130 }} />}
+            {isAdmin && <col style={{ width: 145 }} />}
             <col style={{ width: 180 }} />
             <col style={{ width: 170 }} />
             <col style={{ width: 105 }} />
@@ -498,6 +525,7 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
               <th>Внутренний IP</th>
               <th>Статус</th>
               {isAdmin && <th>Срок</th>}
+              {isAdmin && <th>Лимит</th>}
               <th>Endpoint клиента</th>
               <th>Последнее подключение</th>
               <th>RX</th>
@@ -536,6 +564,24 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
                     </div>
                   </td>
                 )}
+                {isAdmin && (
+                  <td>
+                    <div className="traffic-limit-cell">
+                      <select className="category-select table-limit-select" value={trafficLimitPresetValue(p)} disabled={busyId === p.id} onChange={(e) => changePeerTrafficLimit(p, e.target.value)}>
+                        <option value="">Без лимита</option>
+                        <option value="1">1 GiB</option>
+                        <option value="5">5 GiB</option>
+                        <option value="10">10 GiB</option>
+                        <option value="50">50 GiB</option>
+                        <option value="100">100 GiB</option>
+                      </select>
+                      <span className={p.traffic_limit?.exceeded ? 'limit-bar exceeded' : 'limit-bar'}>
+                        <i style={{ width: `${p.traffic_limit?.enabled ? Math.max(4, p.traffic_limit.percent || 0) : 0}%` }} />
+                      </span>
+                      <small className={p.traffic_limit?.exceeded ? 'expiration-bad' : p.traffic_limit?.enabled ? 'expiration-soon' : ''}>{p.traffic_limit?.label || 'без лимита'}</small>
+                    </div>
+                  </td>
+                )}
                 <td title={p.live?.endpoint || ''}>{p.live?.endpoint || '(none)'}</td>
                 <td>{p.live?.latest_handshake && p.live.latest_handshake !== '0' ? new Date(Number(p.live.latest_handshake) * 1000).toLocaleString('ru-RU') : '-'}</td>
                 <td>{formatBytes(p.live?.rx)}</td>
@@ -557,7 +603,7 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
             ))}
             {filteredPeers.length === 0 && (
               <tr>
-                <td colSpan={isAdmin ? 13 : 10} className="empty-table">В этой категории пока нет peer'ов</td>
+                <td colSpan={isAdmin ? 14 : 10} className="empty-table">В этой категории пока нет peer'ов</td>
               </tr>
             )}
           </tbody>
@@ -648,6 +694,9 @@ function ConfirmModal({ title, message, details, tone = 'default', confirmLabel,
 }
 
 function PeerStatus({ peer }) {
+  if (peer.traffic_limit?.exceeded || peer.status === 'limited') {
+    return <span className="blocked-text">LIMIT</span>;
+  }
   if (peer.expiration?.expired || peer.status === 'expired') {
     return <span className="blocked-text">EXPIRED</span>;
   }
@@ -783,6 +832,7 @@ function ClientPage({ clientId, onLogout, user }) {
               <div><span>Client endpoint</span><code>{clientEndpoint || '(none)'}</code></div>
               <div><span>Created</span><b>{formatPeerTime(peer.created_at)}</b></div>
               <div><span>Expires</span><b>{peer.expiration?.label || 'без срока'}</b></div>
+              <div><span>Traffic limit</span><b>{peer.traffic_limit?.label || 'без лимита'}</b></div>
               <div><span>Public key</span><code title={peer.public_key}>{shortKey(peer.public_key)}</code></div>
               <div><span>RX / TX</span><b>{formatBytes(live.rx)} / {formatBytes(live.tx)}</b></div>
             </div>
@@ -861,6 +911,10 @@ function futureExpiresAt(days) {
   return Math.floor(Date.now() / 1000) + Math.max(1, Number(days || 1)) * 86400;
 }
 
+function gibToBytes(gib) {
+  return Math.round(Math.max(0, Number(gib || 0)) * 1024 * 1024 * 1024);
+}
+
 function expirationPresetValue(peer) {
   const secondsLeft = Number(peer?.expiration?.seconds_left || 0);
   if (!peer?.expiration?.enabled || secondsLeft <= 0) return '';
@@ -869,6 +923,17 @@ function expirationPresetValue(peer) {
   if (days <= 7) return '7';
   if (days <= 30) return '30';
   return '90';
+}
+
+function trafficLimitPresetValue(peer) {
+  const limit = Number(peer?.traffic_limit?.limit_bytes || 0);
+  if (!limit) return '';
+  const gib = Math.round(limit / 1024 / 1024 / 1024);
+  if (gib <= 1) return '1';
+  if (gib <= 5) return '5';
+  if (gib <= 10) return '10';
+  if (gib <= 50) return '50';
+  return '100';
 }
 
 function formatDuration(seconds) {

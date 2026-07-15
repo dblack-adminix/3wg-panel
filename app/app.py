@@ -594,6 +594,8 @@ def init_db():
             conn.execute("ALTER TABLE clients ADD COLUMN owner_id INTEGER")
         if "expires_at" not in cols:
             conn.execute("ALTER TABLE clients ADD COLUMN expires_at INTEGER")
+        if "traffic_limit_bytes" not in cols:
+            conn.execute("ALTER TABLE clients ADD COLUMN traffic_limit_bytes INTEGER NOT NULL DEFAULT 0")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS categories (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -604,6 +606,7 @@ def init_db():
         conn.execute("CREATE INDEX IF NOT EXISTS idx_clients_category_id ON clients(category_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_clients_owner_id ON clients(owner_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_clients_expires_at ON clients(expires_at)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_clients_traffic_limit_bytes ON clients(traffic_limit_bytes)")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS panel_users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1015,7 +1018,7 @@ PersistentKeepalive = 25
     return text
 
 
-def create_client(name: str, protocol: str, category_id: int | None = None, owner_id: int | None = None, expires_at: int | None = None) -> int:
+def create_client(name: str, protocol: str, category_id: int | None = None, owner_id: int | None = None, expires_at: int | None = None, traffic_limit_bytes: int = 0) -> int:
     p = proto(protocol)
 
     ip_cidr = next_ip(protocol)
@@ -1038,10 +1041,10 @@ def create_client(name: str, protocol: str, category_id: int | None = None, owne
         cur = conn.execute(
             """
             INSERT INTO clients
-            (name, protocol, ip_cidr, private_key, public_key, preshared_key, config_path, enabled, created_at, category_id, owner_id, expires_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
+            (name, protocol, ip_cidr, private_key, public_key, preshared_key, config_path, enabled, created_at, category_id, owner_id, expires_at, traffic_limit_bytes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
             """,
-            (name, protocol, ip_cidr, private_key, public_key, psk, str(path), ts, category_id, owner_id, expires_at),
+            (name, protocol, ip_cidr, private_key, public_key, psk, str(path), ts, category_id, owner_id, expires_at, int(traffic_limit_bytes or 0)),
         )
         conn.commit()
         runtime_cache_clear()
@@ -5911,6 +5914,18 @@ def api_parse_expires_at(value) -> int | None:
     return ts
 
 
+def api_parse_traffic_limit(value) -> int:
+    if value in (None, '', False):
+        return 0
+    try:
+        limit = int(value)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail='Некорректный лимит трафика')
+    if limit < 0:
+        raise HTTPException(status_code=400, detail='Лимит трафика не может быть отрицательным')
+    return limit
+
+
 def api_expiration_payload(expires_at: int | None, enabled: bool) -> dict:
     if not expires_at:
         return {'enabled': False, 'expires_at': None, 'expired': False, 'seconds_left': None, 'label': 'без срока'}
@@ -5930,6 +5945,26 @@ def api_expiration_payload(expires_at: int | None, enabled: bool) -> dict:
         'seconds_left': seconds_left,
         'label': label,
         'active': enabled and not expired,
+    }
+
+
+def api_traffic_limit_payload(limit_bytes: int, live_peer: dict | None) -> dict:
+    limit = max(0, int(limit_bytes or 0))
+    rx = int((live_peer or {}).get('rx') or 0)
+    tx = int((live_peer or {}).get('tx') or 0)
+    used = rx + tx
+    if limit <= 0:
+        return {'enabled': False, 'limit_bytes': 0, 'used_bytes': used, 'remaining_bytes': None, 'percent': 0, 'exceeded': False, 'label': 'без лимита'}
+    remaining = max(0, limit - used)
+    percent = min(100, round((used / limit) * 100, 1)) if limit else 0
+    return {
+        'enabled': True,
+        'limit_bytes': limit,
+        'used_bytes': used,
+        'remaining_bytes': remaining,
+        'percent': percent,
+        'exceeded': used >= limit,
+        'label': f"{human_bytes(used)} / {human_bytes(limit)}",
     }
 
 
@@ -5968,6 +6003,48 @@ def api_disable_expired_peers() -> int:
     if rows:
         runtime_cache_clear()
     return len(rows)
+
+
+def api_disable_traffic_limited_peers(live: dict) -> int:
+    with db() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, name, protocol, public_key, ip_cidr, traffic_limit_bytes
+            FROM clients
+            WHERE COALESCE(deleted_at, 0) = 0
+              AND enabled = 1
+              AND traffic_limit_bytes > 0
+            """
+        ).fetchall()
+    disabled = 0
+    for row in rows:
+        lp = (live.get(row['protocol']) or {}).get(row['public_key'])
+        if not lp:
+            continue
+        used = int(lp.get('rx') or 0) + int(lp.get('tx') or 0)
+        limit = int(row['traffic_limit_bytes'] or 0)
+        if used < limit:
+            continue
+        try:
+            remove_peer(row['protocol'], row['public_key'])
+            with db() as conn:
+                conn.execute('UPDATE clients SET enabled = 0 WHERE id = ?', (int(row['id']),))
+                conn.commit()
+            disabled += 1
+            api_audit_log(
+                None,
+                {'username': 'system', 'role': 'system', 'is_admin': True},
+                'peer.traffic_limit',
+                'peer',
+                int(row['id']),
+                row['name'],
+                {'protocol': row['protocol'], 'ip_cidr': row['ip_cidr'], 'used_bytes': used, 'limit_bytes': limit},
+            )
+        except Exception as e:
+            print(f"Failed to auto-disable traffic-limited peer {row['id']}: {e}")
+    if disabled:
+        runtime_cache_clear()
+    return disabled
 
 
 def api_error(message: str, status_code: int = 400, **extra):
@@ -6227,6 +6304,8 @@ def api_peer_payload(c, live: dict | None = None, include_config: bool = False) 
     enabled = bool(c['enabled'])
     expires_at = int(c['expires_at']) if 'expires_at' in c.keys() and c['expires_at'] else None
     expiration = api_expiration_payload(expires_at, enabled)
+    traffic_limit_bytes = int(c['traffic_limit_bytes']) if 'traffic_limit_bytes' in c.keys() and c['traffic_limit_bytes'] else 0
+    traffic_limit = api_traffic_limit_payload(traffic_limit_bytes, lp)
     owner_username = c['owner_username'] if 'owner_username' in c.keys() and c['owner_username'] else PANEL_USER
     payload = {
         'id': int(c['id']),
@@ -6244,9 +6323,11 @@ def api_peer_payload(c, live: dict | None = None, include_config: bool = False) 
         'created_at': int(c['created_at']),
         'expires_at': expires_at,
         'expiration': expiration,
+        'traffic_limit_bytes': traffic_limit_bytes,
+        'traffic_limit': traffic_limit,
         'deleted_at': int(c['deleted_at']) if 'deleted_at' in c.keys() else 0,
         'endpoint': endpoint,
-        'status': 'expired' if expiration['expired'] else ('active' if enabled and active else ('offline' if enabled else 'disabled')),
+        'status': 'limited' if traffic_limit['exceeded'] else ('expired' if expiration['expired'] else ('active' if enabled and active else ('offline' if enabled else 'disabled'))),
         'online_window_seconds': ONLINE_HANDSHAKE_WINDOW_SECONDS,
         'handshake_age_seconds': handshake_age,
         'live': lp or None,
@@ -6342,6 +6423,9 @@ def api_node_diagnostics(user=Depends(api_require_admin)):
 def api_peers(user=Depends(api_require_auth)):
     expired_disabled = api_disable_expired_peers()
     live, errors = api_live_maps()
+    traffic_limited_disabled = api_disable_traffic_limited_peers(live)
+    if traffic_limited_disabled:
+        live, errors = api_live_maps()
     api_record_traffic_snapshot(live)
     where, params = api_user_where(user, 'c')
     with db() as conn:
@@ -6361,6 +6445,7 @@ def api_peers(user=Depends(api_require_auth)):
         'quota': api_user_quota(user),
         'errors': errors,
         'expired_disabled': expired_disabled,
+        'traffic_limited_disabled': traffic_limited_disabled,
     }
 
 
@@ -6640,10 +6725,12 @@ async def api_create_peers(request: Request, user=Depends(api_require_auth)):
         try:
             category_id = api_category_id(data.get('category_id'))
             expires_at = api_parse_expires_at(data.get('expires_at'))
+            traffic_limit_bytes = api_parse_traffic_limit(data.get('traffic_limit_bytes'))
         except HTTPException as e:
             return api_error(str(e.detail), status_code=e.status_code)
     else:
         expires_at = None
+        traffic_limit_bytes = 0
     protocols = data.get('protocols', data.get('protocol', []))
     if isinstance(protocols, str):
         protocols = [protocols]
@@ -6660,7 +6747,7 @@ async def api_create_peers(request: Request, user=Depends(api_require_auth)):
     created_ids = []
     try:
         for protocol in protocols:
-            created_ids.append(create_client(name, protocol, category_id=category_id, owner_id=user.get('id'), expires_at=expires_at))
+            created_ids.append(create_client(name, protocol, category_id=category_id, owner_id=user.get('id'), expires_at=expires_at, traffic_limit_bytes=traffic_limit_bytes))
     except Exception as e:
         return api_error(str(e), status_code=500, created_ids=created_ids)
 
@@ -6672,7 +6759,7 @@ async def api_create_peers(request: Request, user=Depends(api_require_auth)):
             'peer',
             created_id,
             name,
-            {'protocols': protocols, 'category_id': category_id, 'expires_at': expires_at},
+            {'protocols': protocols, 'category_id': category_id, 'expires_at': expires_at, 'traffic_limit_bytes': traffic_limit_bytes},
         )
 
     live, _ = api_live_maps()
@@ -6697,13 +6784,14 @@ async def api_peer_update(client_id: int, request: Request, user=Depends(api_req
     try:
         category_id = api_category_id(data.get('category_id')) if 'category_id' in data else None
         expires_at = api_parse_expires_at(data.get('expires_at')) if 'expires_at' in data else None
+        traffic_limit_bytes = api_parse_traffic_limit(data.get('traffic_limit_bytes')) if 'traffic_limit_bytes' in data else None
     except HTTPException as e:
         return api_error(str(e.detail), status_code=e.status_code)
-    if 'category_id' not in data and 'expires_at' not in data:
+    if 'category_id' not in data and 'expires_at' not in data and 'traffic_limit_bytes' not in data:
         return api_error('Нет изменений', status_code=400)
     with db() as conn:
         before = conn.execute(
-            'SELECT id, name, protocol, category_id, expires_at FROM clients WHERE id = ? AND COALESCE(deleted_at, 0) = 0',
+            'SELECT id, name, protocol, category_id, expires_at, traffic_limit_bytes FROM clients WHERE id = ? AND COALESCE(deleted_at, 0) = 0',
             (client_id,),
         ).fetchone()
         if not before:
@@ -6716,6 +6804,9 @@ async def api_peer_update(client_id: int, request: Request, user=Depends(api_req
         if 'expires_at' in data:
             fields.append('expires_at = ?')
             values.append(expires_at)
+        if 'traffic_limit_bytes' in data:
+            fields.append('traffic_limit_bytes = ?')
+            values.append(traffic_limit_bytes)
         values.append(client_id)
         cur = conn.execute(
             f"UPDATE clients SET {', '.join(fields)} WHERE id = ? AND COALESCE(deleted_at, 0) = 0",
@@ -6737,6 +6828,8 @@ async def api_peer_update(client_id: int, request: Request, user=Depends(api_req
             'category_id': category_id if 'category_id' in data else before['category_id'],
             'before_expires_at': before['expires_at'],
             'expires_at': expires_at if 'expires_at' in data else before['expires_at'],
+            'before_traffic_limit_bytes': before['traffic_limit_bytes'],
+            'traffic_limit_bytes': traffic_limit_bytes if 'traffic_limit_bytes' in data else before['traffic_limit_bytes'],
         },
     )
     live, _ = api_live_maps()
@@ -6755,6 +6848,8 @@ async def api_peer_update(client_id: int, request: Request, user=Depends(api_req
 def api_peer_get(client_id: int, user=Depends(api_require_auth)):
     api_disable_expired_peers()
     live, _ = api_live_maps()
+    if api_disable_traffic_limited_peers(live):
+        live, _ = api_live_maps()
     c = load_client(client_id)
     if not user.get('is_admin') and c['owner_id'] != user.get('id'):
         raise HTTPException(status_code=404, detail='Client not found')
@@ -6776,6 +6871,10 @@ def api_peer_enable(client_id: int, request: Request, user=Depends(api_require_a
         raise HTTPException(status_code=404, detail='Client not found')
     if c['expires_at'] and int(c['expires_at']) <= int(time.time()):
         return api_error('Срок действия peer истек. Продлите срок перед включением.', status_code=409)
+    live, _ = api_live_maps()
+    lp = (live.get(c['protocol']) or {}).get(c['public_key'])
+    if c['traffic_limit_bytes'] and api_traffic_limit_payload(int(c['traffic_limit_bytes']), lp)['exceeded']:
+        return api_error('Лимит трафика peer исчерпан. Увеличьте или снимите лимит перед включением.', status_code=409)
     try:
         enable_peer(c)
     except Exception as e:

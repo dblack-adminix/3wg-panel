@@ -136,7 +136,9 @@ html[data-theme="light"] .category-select,
 html[data-theme="light"] .category-create,
 html[data-theme="light"] .category-create input,
 html[data-theme="light"] .category-edit input,
-html[data-theme="light"] .table-category-select {
+html[data-theme="light"] .table-category-select,
+html[data-theme="light"] .table-expiration-select,
+html[data-theme="light"] .table-limit-select {
   background: #ffffff;
   border-color: #cbd5e1;
   color: #111827;
@@ -172,7 +174,8 @@ html[data-theme="light"] .traffic-data-table b,
 html[data-theme="light"] .status-meta-grid span,
 html[data-theme="light"] .detail-grid b { color: #111827; }
 html[data-theme="light"] .traffic-bar,
-html[data-theme="light"] .table-progress { background: #e2e8f0; }
+html[data-theme="light"] .table-progress,
+html[data-theme="light"] .limit-bar { background: #e2e8f0; }
 html[data-theme="light"] .status-tracker i.idle { background: #cbd5e1; }
 html[data-theme="light"] .status-tracker i.empty { background: #e2e8f0; }
 html[data-theme="light"] .chart-grid-line { stroke: #d8e1ec; }
@@ -358,7 +361,7 @@ html[data-theme="light"] .sidebar-backdrop { background: rgba(15, 23, 42, .42); 
 .category-create button { height: 26px; border: 0; border-radius: 6px; background: #1d2600; color: var(--green); font-weight: 700; cursor: pointer; padding: 0 10px; }
 .category-create button:disabled { opacity: .45; cursor: not-allowed; }
 .table-wrap { width: 100%; overflow-x: auto; }
-.clients-table { width: 1475px; min-width: 1475px; table-layout: fixed; border-collapse: collapse; font-size: 13px; }
+.clients-table { width: 1620px; min-width: 1620px; table-layout: fixed; border-collapse: collapse; font-size: 13px; }
 .clients-table th, .clients-table td { border-bottom: 1px solid #262626; padding: 8px 8px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .clients-table th { color: #999999; text-transform: uppercase; font-size: 11px; letter-spacing: .06em; }
 .clients-table td:first-child, .clients-table th:first-child { padding-left: 8px; }
@@ -368,6 +371,12 @@ html[data-theme="light"] .sidebar-backdrop { background: rgba(15, 23, 42, .42); 
 .expiration-cell { display: grid; gap: 5px; }
 .table-expiration-select { width: 100%; padding: 0 8px; }
 .expiration-cell small { margin: 0; }
+.traffic-limit-cell { display: grid; gap: 5px; }
+.table-limit-select { width: 100%; padding: 0 8px; }
+.traffic-limit-cell small { margin: 0; }
+.limit-bar { display: block; width: 100%; height: 5px; overflow: hidden; border-radius: 999px; background: #1b1b1b; }
+.limit-bar i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--green), #ff8c00); }
+.limit-bar.exceeded i { background: #ff5b7b; }
 .expiration-soon { color: #ffd386 !important; }
 .expiration-bad { color: #ff5b7b !important; }
 .active-text { color: var(--green); font-weight: 700; }
