@@ -240,6 +240,8 @@ POST   /api/monitoring/token
 DELETE /api/monitoring/token
 ```
 
+Для пользователей поле `traffic_limit_bytes` задаёт общий лимит трафика в байтах по всем peer'ам этого аккаунта. Если значение `0`, лимит отключён. В ответе `/api/users` поле `traffic_limit` показывает использовано, осталось, процент заполнения и флаг `exceeded`.
+
 Только через web session администратора:
 
 ```text

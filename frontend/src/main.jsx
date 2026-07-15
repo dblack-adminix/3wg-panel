@@ -961,6 +961,17 @@ function trafficLimitPresetValue(peer) {
   return '100';
 }
 
+function userTrafficLimitPresetValue(user) {
+  const limit = Number(user?.traffic_limit?.limit_bytes || user?.traffic_limit_bytes || 0);
+  if (!limit) return '';
+  const gib = Math.round(limit / 1024 / 1024 / 1024);
+  if (gib <= 10) return '10';
+  if (gib <= 50) return '50';
+  if (gib <= 100) return '100';
+  if (gib <= 250) return '250';
+  return '500';
+}
+
 function formatDuration(seconds) {
   const n = Math.max(0, Number(seconds || 0));
   if (n < 60) return `${Math.round(n)} сек`;
@@ -1522,7 +1533,7 @@ function Dashboard({ onLogout, user }) {
 
 function UsersPage({ onLogout, user }) {
   const [users, setUsers] = useState([]);
-  const [form, setForm] = useState({ username: '', password: '', peer_limit: 1, role: 'user' });
+  const [form, setForm] = useState({ username: '', password: '', peer_limit: 1, role: 'user', traffic_limit_bytes: 0 });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -1544,7 +1555,7 @@ function UsersPage({ onLogout, user }) {
     try {
       const data = await api('/api/users', { method: 'POST', body: JSON.stringify(form) });
       setUsers(data.users || []);
-      setForm({ username: '', password: '', peer_limit: 1, role: 'user' });
+      setForm({ username: '', password: '', peer_limit: 1, role: 'user', traffic_limit_bytes: 0 });
       setError('');
     } catch (err) {
       setError(err.message || 'Ошибка создания пользователя');
@@ -1587,6 +1598,14 @@ function UsersPage({ onLogout, user }) {
             <input className="name-input" placeholder="Логин" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
             <input className="name-input" placeholder="Пароль" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
             <input className="name-input" min="0" type="number" value={form.peer_limit} onChange={(e) => setForm({ ...form, peer_limit: Number(e.target.value) })} />
+            <select className="category-select" value={form.traffic_limit_bytes ? String(Math.round(form.traffic_limit_bytes / 1024 / 1024 / 1024)) : ''} onChange={(e) => setForm({ ...form, traffic_limit_bytes: e.target.value ? gibToBytes(Number(e.target.value)) : 0 })}>
+              <option value="">Трафик без лимита</option>
+              <option value="10">10 GiB на пользователя</option>
+              <option value="50">50 GiB на пользователя</option>
+              <option value="100">100 GiB на пользователя</option>
+              <option value="250">250 GiB на пользователя</option>
+              <option value="500">500 GiB на пользователя</option>
+            </select>
             <select className="category-select" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
               <option value="user">Пользователь</option>
               <option value="admin">Администратор</option>
@@ -1599,12 +1618,12 @@ function UsersPage({ onLogout, user }) {
           <div className="section-head"><h2>Аккаунты</h2><button className="copy-button" type="button" onClick={load}><RefreshCw size={14} /> Обновить</button></div>
           <div className="table-wrap">
             <table className="clients-table users-table">
-              <thead><tr><th>ID</th><th>Логин</th><th>Роль</th><th>Peer'ы</th><th>Лимит</th><th>Статус</th><th>Действия</th></tr></thead>
+              <thead><tr><th>ID</th><th>Логин</th><th>Роль</th><th>Peer'ы</th><th>Лимит</th><th>Трафик</th><th>Статус</th><th>Действия</th></tr></thead>
               <tbody>
                 {users.map((item) => (
                   <UserRow key={item.id} item={item} busy={busy === item.id} onPatch={patchUser} onDelete={deleteUser} />
                 ))}
-                {users.length === 0 && <tr><td className="empty-table" colSpan={7}>Дополнительных пользователей пока нет</td></tr>}
+                {users.length === 0 && <tr><td className="empty-table" colSpan={8}>Дополнительных пользователей пока нет</td></tr>}
               </tbody>
             </table>
           </div>
@@ -1616,8 +1635,11 @@ function UsersPage({ onLogout, user }) {
 
 function UserRow({ item, busy, onPatch, onDelete }) {
   const [limit, setLimit] = useState(item.peer_limit);
+  const [trafficLimit, setTrafficLimit] = useState(userTrafficLimitPresetValue(item));
   const [password, setPassword] = useState('');
   useEffect(() => { setLimit(item.peer_limit); }, [item.peer_limit]);
+  useEffect(() => { setTrafficLimit(userTrafficLimitPresetValue(item)); }, [item.traffic_limit_bytes]);
+  const traffic = item.traffic_limit || {};
   return (
     <tr>
       <td>{item.id}</td>
@@ -1625,10 +1647,24 @@ function UserRow({ item, busy, onPatch, onDelete }) {
       <td>{item.role === 'admin' ? 'Администратор' : 'Пользователь'}</td>
       <td>{item.peers_used}</td>
       <td><input className="inline-number" type="number" min="0" value={limit} onChange={(e) => setLimit(Number(e.target.value))} /></td>
+      <td>
+        <div className="traffic-limit-cell user-traffic-limit-cell">
+          <select className="category-select table-limit-select" value={trafficLimit} disabled={busy} onChange={(e) => setTrafficLimit(e.target.value)}>
+            <option value="">без лимита</option>
+            <option value="10">10 GiB</option>
+            <option value="50">50 GiB</option>
+            <option value="100">100 GiB</option>
+            <option value="250">250 GiB</option>
+            <option value="500">500 GiB</option>
+          </select>
+          <small className={traffic.exceeded ? 'expiration-bad' : ''}>{traffic.label || 'без лимита'}</small>
+          <span className={`limit-bar ${traffic.exceeded ? 'exceeded' : ''}`}><i style={{ width: `${Math.max(2, Number(traffic.percent || 0))}%` }} /></span>
+        </div>
+      </td>
       <td><span className={item.enabled ? 'status-ok' : 'status-bad'}>{item.enabled ? 'ON' : 'OFF'}</span></td>
       <td className="actions-cell">
         <div className="user-actions">
-          <button className="icon-button download" title="Сохранить лимит" disabled={busy} onClick={() => onPatch(item.id, { peer_limit: limit })}><Check size={14} /></button>
+          <button className="icon-button download" title="Сохранить лимиты" disabled={busy} onClick={() => onPatch(item.id, { peer_limit: limit, traffic_limit_bytes: trafficLimit ? gibToBytes(Number(trafficLimit)) : 0 })}><Check size={14} /></button>
           <button className="icon-button block" title={item.enabled ? 'Отключить' : 'Включить'} disabled={busy} onClick={() => onPatch(item.id, { enabled: !item.enabled })}><Power size={14} /></button>
           <input className="inline-password" placeholder="новый пароль" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
           <button className="icon-button qr" title="Сменить пароль" disabled={busy || password.length < 6} onClick={async () => { await onPatch(item.id, { password }); setPassword(''); }}><Key size={14} /></button>

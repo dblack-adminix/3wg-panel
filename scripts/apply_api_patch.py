@@ -424,6 +424,30 @@ def api_traffic_limit_payload(limit_bytes: int, live_peer: dict | None, counter:
     }
 
 
+def api_user_traffic_totals(user_id: int) -> dict:
+    with db() as conn:
+        row = conn.execute(
+            """
+            SELECT
+                COALESCE(SUM(pt.rx_total), 0) AS rx_total,
+                COALESCE(SUM(pt.tx_total), 0) AS tx_total
+            FROM clients c
+            LEFT JOIN peer_traffic_counters pt ON pt.client_id = c.id
+            WHERE COALESCE(c.deleted_at, 0) = 0
+              AND c.owner_id = ?
+            """,
+            (int(user_id),),
+        ).fetchone()
+    return {
+        'rx_total': int(row['rx_total'] or 0),
+        'tx_total': int(row['tx_total'] or 0),
+    }
+
+
+def api_user_traffic_limit_payload(user_id: int, limit_bytes: int) -> dict:
+    return api_traffic_limit_payload(limit_bytes, None, api_user_traffic_totals(user_id))
+
+
 def api_disable_expired_peers() -> int:
     now = int(time.time())
     with db() as conn:
@@ -503,6 +527,63 @@ def api_disable_traffic_limited_peers(live: dict, counters: dict | None = None) 
             )
         except Exception as e:
             print(f"Failed to auto-disable traffic-limited peer {row['id']}: {e}")
+    if disabled:
+        runtime_cache_clear()
+    return disabled
+
+
+def api_disable_user_traffic_limited_peers() -> int:
+    with db() as conn:
+        users = conn.execute(
+            """
+            SELECT id, username, traffic_limit_bytes
+            FROM panel_users
+            WHERE enabled = 1
+              AND traffic_limit_bytes > 0
+            """
+        ).fetchall()
+    disabled = 0
+    for panel_user in users:
+        limit = int(panel_user['traffic_limit_bytes'] or 0)
+        traffic = api_user_traffic_limit_payload(int(panel_user['id']), limit)
+        if not traffic['exceeded']:
+            continue
+        with db() as conn:
+            peers = conn.execute(
+                """
+                SELECT id, name, protocol, public_key, ip_cidr
+                FROM clients
+                WHERE COALESCE(deleted_at, 0) = 0
+                  AND enabled = 1
+                  AND owner_id = ?
+                """,
+                (int(panel_user['id']),),
+            ).fetchall()
+        user_disabled = 0
+        for row in peers:
+            try:
+                remove_peer(row['protocol'], row['public_key'])
+                with db() as conn:
+                    conn.execute('UPDATE clients SET enabled = 0 WHERE id = ?', (int(row['id']),))
+                    conn.commit()
+                disabled += 1
+                user_disabled += 1
+            except Exception as e:
+                print(f"Failed to auto-disable user traffic-limited peer {row['id']}: {e}")
+        if user_disabled:
+            api_audit_log(
+                None,
+                {'username': 'system', 'role': 'system', 'is_admin': True},
+                'user.traffic_limit',
+                'panel_user',
+                int(panel_user['id']),
+                panel_user['username'],
+                {
+                    'disabled_peers': user_disabled,
+                    'used_bytes': traffic['used_bytes'],
+                    'limit_bytes': limit,
+                },
+            )
     if disabled:
         runtime_cache_clear()
     return disabled
@@ -800,12 +881,16 @@ def api_panel_user_payload(row) -> dict:
             'SELECT COUNT(*) AS n FROM clients WHERE COALESCE(deleted_at, 0) = 0 AND owner_id = ?',
             (int(row['id']),),
         ).fetchone()['n']
+    traffic_limit_bytes = int(row['traffic_limit_bytes']) if 'traffic_limit_bytes' in row.keys() and row['traffic_limit_bytes'] else 0
+    traffic_limit = api_user_traffic_limit_payload(int(row['id']), traffic_limit_bytes)
     return {
         'id': int(row['id']),
         'username': row['username'],
         'role': row['role'],
         'peer_limit': int(row['peer_limit']),
         'peers_used': int(count),
+        'traffic_limit_bytes': traffic_limit_bytes,
+        'traffic_limit': traffic_limit,
         'enabled': bool(row['enabled']),
         'created_at': int(row['created_at']),
     }
@@ -950,7 +1035,8 @@ def api_peers(user=Depends(api_require_auth)):
     live, errors = api_live_maps()
     counters = api_record_peer_traffic_counters(live)
     traffic_limited_disabled = api_disable_traffic_limited_peers(live, counters)
-    if traffic_limited_disabled:
+    user_traffic_limited_disabled = api_disable_user_traffic_limited_peers()
+    if traffic_limited_disabled or user_traffic_limited_disabled:
         live, errors = api_live_maps()
         counters = api_record_peer_traffic_counters(live)
     api_record_traffic_snapshot(live)
@@ -973,6 +1059,7 @@ def api_peers(user=Depends(api_require_auth)):
         'errors': errors,
         'expired_disabled': expired_disabled,
         'traffic_limited_disabled': traffic_limited_disabled,
+        'user_traffic_limited_disabled': user_traffic_limited_disabled,
     }
 
 
@@ -985,6 +1072,9 @@ def api_categories(user=Depends(api_require_auth)):
 
 @app.get('/api/users')
 def api_users(user=Depends(api_require_admin)):
+    live, _errors = api_live_maps()
+    api_record_peer_traffic_counters(live)
+    api_disable_user_traffic_limited_peers()
     return {'ok': True, 'users': api_panel_users_payload()}
 
 
@@ -1090,6 +1180,10 @@ async def api_user_create(request: Request, user=Depends(api_require_admin)):
         peer_limit = max(0, int(data.get('peer_limit', 1)))
     except (TypeError, ValueError):
         return api_error('Некорректный лимит peerов', status_code=400)
+    try:
+        traffic_limit_bytes = api_parse_traffic_limit(data.get('traffic_limit_bytes'))
+    except HTTPException as e:
+        return api_error(str(e.detail), status_code=e.status_code)
     if not username:
         return api_error('Пустой логин', status_code=400)
     if username == PANEL_USER:
@@ -1099,8 +1193,8 @@ async def api_user_create(request: Request, user=Depends(api_require_admin)):
     try:
         with db() as conn:
             conn.execute(
-                'INSERT INTO panel_users(username, password_hash, role, peer_limit, enabled, created_at) VALUES (?, ?, ?, ?, 1, ?)',
-                (username, password_hash(password), role, peer_limit, int(time.time())),
+                'INSERT INTO panel_users(username, password_hash, role, peer_limit, traffic_limit_bytes, enabled, created_at) VALUES (?, ?, ?, ?, ?, 1, ?)',
+                (username, password_hash(password), role, peer_limit, traffic_limit_bytes, int(time.time())),
             )
             conn.commit()
             created_id = int(conn.execute('SELECT last_insert_rowid() AS id').fetchone()['id'])
@@ -1113,7 +1207,7 @@ async def api_user_create(request: Request, user=Depends(api_require_admin)):
         'panel_user',
         created_id,
         username,
-        {'role': role, 'peer_limit': peer_limit},
+        {'role': role, 'peer_limit': peer_limit, 'traffic_limit_bytes': traffic_limit_bytes},
     )
     return {'ok': True, 'users': api_panel_users_payload()}
 
@@ -1129,6 +1223,12 @@ async def api_user_update(user_id: int, request: Request, user=Depends(api_requi
             values.append(max(0, int(data.get('peer_limit'))))
         except (TypeError, ValueError):
             return api_error('Некорректный лимит peerов', status_code=400)
+    if 'traffic_limit_bytes' in data:
+        try:
+            fields.append('traffic_limit_bytes = ?')
+            values.append(api_parse_traffic_limit(data.get('traffic_limit_bytes')))
+        except HTTPException as e:
+            return api_error(str(e.detail), status_code=e.status_code)
     if 'enabled' in data:
         fields.append('enabled = ?')
         values.append(1 if bool(data.get('enabled')) else 0)
@@ -1147,7 +1247,7 @@ async def api_user_update(user_id: int, request: Request, user=Depends(api_requi
     if not fields:
         return {'ok': True, 'users': api_panel_users_payload()}
     with db() as conn:
-        before = conn.execute('SELECT id, username, role, peer_limit, enabled FROM panel_users WHERE id = ?', (user_id,)).fetchone()
+        before = conn.execute('SELECT id, username, role, peer_limit, traffic_limit_bytes, enabled FROM panel_users WHERE id = ?', (user_id,)).fetchone()
     if not before:
         return api_error('Пользователь не найден', status_code=404)
     values.append(user_id)
@@ -1172,7 +1272,7 @@ async def api_user_update(user_id: int, request: Request, user=Depends(api_requi
 @app.delete('/api/users/{user_id}')
 def api_user_delete(user_id: int, request: Request, user=Depends(api_require_admin)):
     with db() as conn:
-        row = conn.execute('SELECT id, username, role, peer_limit, enabled FROM panel_users WHERE id = ?', (user_id,)).fetchone()
+        row = conn.execute('SELECT id, username, role, peer_limit, traffic_limit_bytes, enabled FROM panel_users WHERE id = ?', (user_id,)).fetchone()
         if not row:
             return api_error('Пользователь не найден', status_code=404)
         conn.execute('UPDATE clients SET owner_id = NULL WHERE owner_id = ?', (user_id,))

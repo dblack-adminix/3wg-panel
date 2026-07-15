@@ -217,7 +217,7 @@ html[data-theme="light"] .sidebar-backdrop { background: rgba(15, 23, 42, .42); 
 .user-admin-grid { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 12px; align-items: start; }
 .user-create-card form { display: grid; gap: 10px; }
 .users-list-card { min-width: 0; }
-.users-table { min-width: 860px; }
+.users-table { min-width: 1120px; }
 .audit-filter-card { margin-bottom: 12px; }
 .audit-filters { display: grid; grid-template-columns: 120px repeat(3, minmax(160px, 1fr)) auto; gap: 10px; align-items: end; }
 .audit-filters label { display: grid; gap: 7px; }
@@ -374,6 +374,7 @@ html[data-theme="light"] .sidebar-backdrop { background: rgba(15, 23, 42, .42); 
 .traffic-limit-cell { display: grid; gap: 5px; }
 .table-limit-select { width: 100%; padding: 0 8px; }
 .traffic-limit-cell small { margin: 0; }
+.user-traffic-limit-cell { min-width: 145px; }
 .limit-bar { display: block; width: 100%; height: 5px; overflow: hidden; border-radius: 999px; background: #1b1b1b; }
 .limit-bar i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--green), #ff8c00); }
 .limit-bar.exceeded i { background: #ff5b7b; }
