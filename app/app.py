@@ -11,6 +11,9 @@ import secrets
 import shlex
 import sqlite3
 import struct
+import shutil
+import tarfile
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -5523,7 +5526,7 @@ async def react_frontend_middleware(request: Request, call_next):
         if asset_file.exists() and asset_file.is_file():
             return ReactFileResponse(asset_file)
 
-    if (path in ('/', '/login', '/ui', '/users', '/apikeys', '/monitoring', '/audit', '/tools/system', '/tools/ping', '/tools/traceroute') or re.match(r'^/client/\d+$', path) or re.match(r'^/status/(wireguard|amneziawg)$', path) or re.match(r'^/traffic/(wireguard|amneziawg)$', path)) and index_file.exists():
+    if (path in ('/', '/login', '/ui', '/users', '/apikeys', '/monitoring', '/audit', '/backups', '/tools/system', '/tools/ping', '/tools/traceroute') or re.match(r'^/client/\d+$', path) or re.match(r'^/status/(wireguard|amneziawg)$', path) or re.match(r'^/traffic/(wireguard|amneziawg)$', path)) and index_file.exists():
         return ReactFileResponse(
             index_file,
             media_type='text/html; charset=utf-8',
@@ -5662,6 +5665,100 @@ def api_audit_event_payload(row) -> dict:
         'user_agent': row['user_agent'],
         'context': context,
     }
+
+
+def api_manual_backup_dir() -> Path:
+    path = BACKUPS_DIR / 'manual'
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def api_backup_path(name: str) -> Path:
+    clean = Path(str(name or '')).name
+    if not clean or clean != str(name or '') or not clean.endswith('.tgz'):
+        raise HTTPException(status_code=400, detail='Некорректное имя backup')
+    path = (api_manual_backup_dir() / clean).resolve()
+    root = api_manual_backup_dir().resolve()
+    if root not in path.parents:
+        raise HTTPException(status_code=400, detail='Некорректный путь backup')
+    if not path.exists() or not path.is_file():
+        raise HTTPException(status_code=404, detail='Backup не найден')
+    return path
+
+
+def api_backup_payload(path: Path) -> dict:
+    stat = path.stat()
+    return {
+        'name': path.name,
+        'size': int(stat.st_size),
+        'created_at': int(stat.st_mtime),
+        'download_url': f'/api/backups/{path.name}/download',
+    }
+
+
+def api_list_backups() -> list[dict]:
+    return [
+        api_backup_payload(p)
+        for p in sorted(api_manual_backup_dir().glob('*.tgz'), key=lambda x: x.stat().st_mtime, reverse=True)
+        if p.is_file()
+    ]
+
+
+def api_create_backup_archive(reason: str = 'manual') -> Path:
+    backup_dir = api_manual_backup_dir()
+    ts = time.strftime('%Y-%m-%d_%H-%M-%S', time.localtime())
+    path = backup_dir / f'3wg-panel.{reason}.{ts}.tgz'
+    manifest = {
+        'app': '3wg-panel',
+        'version': APP_VERSION,
+        'created_at': int(time.time()),
+        'reason': reason,
+        'includes': ['data', 'clients'],
+    }
+    with tarfile.open(path, 'w:gz') as tar:
+        if DATA_DIR.exists():
+            tar.add(DATA_DIR, arcname='data', recursive=True)
+        if CLIENTS_DIR.exists():
+            tar.add(CLIENTS_DIR, arcname='clients', recursive=True)
+        payload = json.dumps(manifest, ensure_ascii=False, indent=2).encode('utf-8')
+        info = tarfile.TarInfo('manifest.json')
+        info.size = len(payload)
+        info.mtime = int(time.time())
+        tar.addfile(info, io.BytesIO(payload))
+    return path
+
+
+def api_validate_backup_archive(path: Path) -> None:
+    allowed_roots = {'data', 'clients', 'manifest.json'}
+    try:
+        with tarfile.open(path, 'r:gz') as tar:
+            for member in tar.getmembers():
+                member_path = Path(member.name)
+                if member_path.is_absolute() or '..' in member_path.parts:
+                    raise HTTPException(status_code=400, detail='Backup содержит небезопасный путь')
+                if not member_path.parts or member_path.parts[0] not in allowed_roots:
+                    raise HTTPException(status_code=400, detail='Backup содержит неизвестные данные')
+    except tarfile.TarError as e:
+        raise HTTPException(status_code=400, detail=f'Некорректный backup: {e}')
+
+
+def api_clear_directory(path: Path) -> None:
+    path.mkdir(parents=True, exist_ok=True)
+    for child in path.iterdir():
+        if child.is_dir() and not child.is_symlink():
+            shutil.rmtree(child)
+        else:
+            child.unlink()
+
+
+def api_copy_directory_contents(src: Path, dst: Path) -> None:
+    dst.mkdir(parents=True, exist_ok=True)
+    for child in src.iterdir():
+        target = dst / child.name
+        if child.is_dir() and not child.is_symlink():
+            shutil.copytree(child, target, dirs_exist_ok=True)
+        else:
+            shutil.copy2(child, target)
 
 
 def api_user_where(user: dict, alias: str = 'c') -> tuple[str, list]:
@@ -6118,6 +6215,60 @@ def api_audit_events(
             [*values, limit],
         ).fetchall()
     return {'ok': True, 'events': [api_audit_event_payload(r) for r in rows]}
+
+
+@app.get('/api/backups')
+def api_backups_list(user=Depends(api_require_admin)):
+    return {'ok': True, 'backups': api_list_backups()}
+
+
+@app.post('/api/backups')
+async def api_backups_create(request: Request, user=Depends(api_require_admin)):
+    path = api_create_backup_archive('manual')
+    payload = api_backup_payload(path)
+    api_audit_log(request, user, 'backup.create', 'backup', path.name, path.name, {'size': payload['size']})
+    return {'ok': True, 'backup': payload, 'backups': api_list_backups()}
+
+
+@app.get('/api/backups/{name}/download')
+def api_backups_download(name: str, user=Depends(api_require_admin)):
+    path = api_backup_path(name)
+    return FileResponse(path, filename=path.name, media_type='application/gzip')
+
+
+@app.post('/api/backups/{name}/restore')
+async def api_backups_restore(name: str, request: Request, user=Depends(api_require_admin)):
+    data = await api_read_payload(request)
+    if str(data.get('confirm', '')).strip() != 'RESTORE':
+        return api_error('Для restore нужно подтверждение RESTORE', status_code=400)
+    path = api_backup_path(name)
+    api_validate_backup_archive(path)
+    pre_restore = api_create_backup_archive('pre-restore')
+    tmp_dir = Path(tempfile.mkdtemp(prefix='3wg-restore-', dir=str(BACKUPS_DIR)))
+    try:
+        with tarfile.open(path, 'r:gz') as tar:
+            tar.extractall(tmp_dir)
+        data_src = tmp_dir / 'data'
+        clients_src = tmp_dir / 'clients'
+        if data_src.exists():
+            api_clear_directory(DATA_DIR)
+            api_copy_directory_contents(data_src, DATA_DIR)
+        if clients_src.exists():
+            api_clear_directory(CLIENTS_DIR)
+            api_copy_directory_contents(clients_src, CLIENTS_DIR)
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+    init_db()
+    api_audit_log(
+        request,
+        user,
+        'backup.restore',
+        'backup',
+        path.name,
+        path.name,
+        {'pre_restore_backup': pre_restore.name, 'restored': ['data', 'clients']},
+    )
+    return {'ok': True, 'restored': path.name, 'pre_restore_backup': api_backup_payload(pre_restore), 'backups': api_list_backups()}
 
 
 @app.post('/api/users')

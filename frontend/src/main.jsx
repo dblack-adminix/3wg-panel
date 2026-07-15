@@ -175,6 +175,7 @@ function Sidebar({ onLogout, protocols: initialProtocols = null, user, mobileOpe
       {isAdmin && <a className={`nav ${path === '/apikeys' ? 'active' : ''}`} href="/apikeys" onClick={onClose}><Key size={14} /> <span>API-ключи</span></a>}
       {isAdmin && <a className={`nav ${path === '/monitoring' ? 'active' : ''}`} href="/monitoring" onClick={onClose}><Activity size={14} /> <span>Мониторинг</span></a>}
       {isAdmin && <a className={`nav ${path === '/audit' ? 'active' : ''}`} href="/audit" onClick={onClose}><Terminal size={14} /> <span>Audit log</span></a>}
+      {isAdmin && <a className={`nav ${path === '/backups' ? 'active' : ''}`} href="/backups" onClick={onClose}><Download size={14} /> <span>Backups</span></a>}
       {isAdmin && <div className="nav-title">ИНСТРУМЕНТЫ</div>}
       {isAdmin && <a className={`nav ${path === '/tools/system' ? 'active' : ''}`} href="/tools/system" onClick={onClose}><Activity size={14} /> <span>System Status</span></a>}
       {isAdmin && <a className={`nav ${path === '/tools/ping' ? 'active' : ''}`} href="/tools/ping" onClick={onClose}><Network size={14} /> <span>Ping</span></a>}
@@ -1515,6 +1516,125 @@ function AuditPage({ onLogout, user }) {
   );
 }
 
+function formatBackupTime(ts) {
+  return ts ? new Date(ts * 1000).toLocaleString('ru-RU') : '-';
+}
+
+function BackupsPage({ onLogout, user }) {
+  const [backups, setBackups] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+
+  const load = async () => {
+    setBusy(true);
+    try {
+      const data = await api('/api/backups');
+      setBackups(data.backups || []);
+      setError('');
+    } catch (err) {
+      setError(err.message || 'Ошибка загрузки backup');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const create = async () => {
+    setBusy(true);
+    setNotice('');
+    try {
+      const data = await api('/api/backups', { method: 'POST' });
+      setBackups(data.backups || []);
+      setNotice(`Backup создан: ${data.backup?.name || ''}`);
+      setError('');
+    } catch (err) {
+      setError(err.message || 'Ошибка создания backup');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const restore = async (backup, confirmText) => {
+    if (confirmText !== 'RESTORE') {
+      window.alert('Введите RESTORE для подтверждения.');
+      return;
+    }
+    if (!window.confirm(`Восстановить состояние панели из ${backup.name}? Перед restore будет создан pre-restore backup.`)) return;
+    setBusy(backup.name);
+    setNotice('');
+    try {
+      const data = await api(`/api/backups/${encodeURIComponent(backup.name)}/restore`, {
+        method: 'POST',
+        body: JSON.stringify({ confirm: confirmText }),
+      });
+      setBackups(data.backups || []);
+      setNotice(`Restore выполнен. Pre-restore backup: ${data.pre_restore_backup?.name || '-'}`);
+      setError('');
+    } catch (err) {
+      setError(err.message || 'Ошибка restore');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Shell title="Backups" subtitle="Ручные backup'ы data и clients с безопасным restore" onLogout={onLogout} user={user}>
+      <section className="card backup-hero-card">
+        <div>
+          <h2>Backup / Restore</h2>
+          <p className="muted">Backup из UI сохраняет `data/` и `clients/`. `.env` храните отдельно на сервере, потому что web-контейнер не должен читать production secrets.</p>
+        </div>
+        <div className="backup-actions">
+          <button className="orange-btn" type="button" onClick={create} disabled={busy}><Download size={15} /> Создать backup</button>
+          <button className="copy-button" type="button" onClick={load} disabled={busy}><RefreshCw size={14} /> Обновить</button>
+        </div>
+        {notice && <div className="success">{notice}</div>}
+        {error && <div className="warning">{error}</div>}
+      </section>
+
+      <section className="card">
+        <div className="section-head">
+          <h2>Файлы</h2>
+          <span className="muted">{backups.length} backup'ов</span>
+        </div>
+        <div className="table-wrap">
+          <table className="clients-table backup-table">
+            <thead><tr><th>Файл</th><th>Размер</th><th>Создан</th><th>Скачать</th><th>Restore</th></tr></thead>
+            <tbody>
+              {backups.length === 0 && <tr><td className="empty-table" colSpan={5}>{busy ? 'Загрузка...' : 'Backup пока нет'}</td></tr>}
+              {backups.map((backup) => (
+                <BackupRow key={backup.name} backup={backup} busy={busy === backup.name} onRestore={restore} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </Shell>
+  );
+}
+
+function BackupRow({ backup, busy, onRestore }) {
+  const [confirmText, setConfirmText] = useState('');
+  return (
+    <tr>
+      <td><b>{backup.name}</b></td>
+      <td>{formatBytes(backup.size)}</td>
+      <td>{formatBackupTime(backup.created_at)}</td>
+      <td>
+        <a className="copy-button" href={backup.download_url} title="Скачать backup"><Download size={14} /> Скачать</a>
+      </td>
+      <td>
+        <div className="backup-restore-controls">
+          <input className="name-input" placeholder="RESTORE" value={confirmText} onChange={(e) => setConfirmText(e.target.value)} />
+          <button className="icon-button danger" type="button" title="Restore" disabled={busy || confirmText !== 'RESTORE'} onClick={() => onRestore(backup, confirmText)}><RefreshCw size={14} /></button>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
 function ApiKeysPage({ onLogout, user }) {
   const [keys, setKeys] = useState([]);
   const [name, setName] = useState('');
@@ -2159,6 +2279,7 @@ function App() {
   if (isAdmin && window.location.pathname === '/users') return <UsersPage onLogout={logout} user={auth.user} />;
   if (isAdmin && window.location.pathname === '/monitoring') return <MonitoringPage onLogout={logout} user={auth.user} />;
   if (isAdmin && window.location.pathname === '/audit') return <AuditPage onLogout={logout} user={auth.user} />;
+  if (isAdmin && window.location.pathname === '/backups') return <BackupsPage onLogout={logout} user={auth.user} />;
   if (isAdmin && window.location.pathname === '/tools/system') return <SystemStatusPage onLogout={logout} user={auth.user} />;
   if (isAdmin && window.location.pathname === '/tools/ping') return <NetworkToolPage kind="ping" onLogout={logout} user={auth.user} />;
   if (isAdmin && window.location.pathname === '/tools/traceroute') return <NetworkToolPage kind="traceroute" onLogout={logout} user={auth.user} />;

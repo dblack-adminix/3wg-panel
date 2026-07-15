@@ -161,6 +161,25 @@ sudo bash scripts/install_monitoring_agent.sh
 
 ## Backup
 
+### Через web UI
+
+Страница `/backups` позволяет суперпользователю:
+
+- создать ручной backup состояния панели;
+- скачать `.tgz` архив;
+- выполнить restore с обязательным подтверждением `RESTORE`.
+
+UI backup сохраняет:
+
+- `data/`
+- `clients/`
+
+Перед restore панель автоматически создаёт pre-restore backup в `/app/backups/manual`.
+
+Важно: `.env` через web UI не архивируется. Это сделано специально, чтобы web-контейнер не читал production secrets. Для полного серверного backup используйте shell-вариант ниже.
+
+### Через shell
+
 Останавливать контейнер обычно не обязательно, но лучше делать backup в момент низкой нагрузки.
 
 ```bash

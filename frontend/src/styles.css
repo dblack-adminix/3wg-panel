@@ -223,6 +223,14 @@ html[data-theme="light"] .sidebar-backdrop { background: rgba(15, 23, 42, .42); 
 .audit-action { display: inline-flex; align-items: center; min-height: 24px; padding: 3px 8px; border: 1px solid rgba(200, 255, 0, .42); border-radius: 5px; background: rgba(200, 255, 0, .08); color: var(--green); font-weight: 800; }
 .audit-details-row td { padding: 0 8px 10px !important; background: #080808; white-space: normal; }
 .audit-details-row pre { margin: 0; max-height: 260px; overflow: auto; border: 1px solid #262626; border-radius: 8px; background: #050505; color: #d7d7d7; padding: 12px; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.backup-hero-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: start; }
+.backup-hero-card h2 { margin-bottom: 8px; }
+.backup-hero-card .success,
+.backup-hero-card .warning { grid-column: 1 / -1; }
+.backup-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.backup-table { width: 980px; min-width: 980px; }
+.backup-restore-controls { display: grid; grid-template-columns: 150px 34px; gap: 6px; align-items: center; }
+.backup-restore-controls .name-input { height: 32px; }
 .inline-number { width: 82px; height: 30px; border: 1px solid #333333; border-radius: 6px; background: #0d0d0d; color: #ffffff; padding: 0 8px; }
 .inline-password { width: 140px; height: 30px; border: 1px solid #333333; border-radius: 6px; background: #0d0d0d; color: #ffffff; padding: 0 8px; }
 .user-actions { display: flex; align-items: center; gap: 5px; }
@@ -612,6 +620,8 @@ html[data-theme="light"] .sidebar-backdrop { background: rgba(15, 23, 42, .42); 
   .tools-kpi-grid,
   .tool-service-grid { grid-template-columns: 1fr; }
   .audit-filters { grid-template-columns: 1fr; }
+  .backup-hero-card { grid-template-columns: 1fr; }
+  .backup-actions { justify-content: flex-start; }
   .system-facts { grid-template-columns: 1fr; }
   .container-list div { grid-template-columns: 12px 1fr; }
   .container-list small, .container-list em { grid-column: 2; }
@@ -960,4 +970,9 @@ html[data-theme="light"] .audit-details-row pre {
   background: #0f172a;
   border-color: #1e293b;
   color: #e2e8f0;
+}
+html[data-theme="light"] .backup-restore-controls .name-input {
+  background: #ffffff;
+  border-color: #cbd5e1;
+  color: #111827;
 }

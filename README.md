@@ -26,6 +26,7 @@
 - `/users` — пользователи панели и лимиты peer'ов
 - `/apikeys` — API-ключи для интеграций через `X-API-Key`
 - `/monitoring` — включение `/metrics` и выпуск Prometheus token
+- `/backups` — ручные backup'ы и restore состояния панели
 - `/health` — health-check
 - `/metrics` — Prometheus metrics endpoint, если включён в `.env`
 
@@ -125,7 +126,7 @@ docs/                документация
 
 ## Версия
 
-Текущая версия продукта: `v1.3.13`
+Текущая версия продукта: `v1.3.14`
 
 ## Copyright
 

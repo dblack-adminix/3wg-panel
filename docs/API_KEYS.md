@@ -222,6 +222,10 @@ POST   /api/categories
 PATCH  /api/categories/{category_id}
 DELETE /api/categories/{category_id}
 GET    /api/traffic/history
+GET    /api/backups
+POST   /api/backups
+GET    /api/backups/{name}/download
+POST   /api/backups/{name}/restore
 POST   /api/tools/ping
 POST   /api/tools/traceroute
 GET    /api/users
