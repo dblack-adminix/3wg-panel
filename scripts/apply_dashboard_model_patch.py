@@ -53,6 +53,7 @@ def api_protocol_view_model(protocol: dict) -> dict:
 
 def api_dashboard_payload(user: dict) -> dict:
     live, errors = api_live_maps()
+    counters = api_record_peer_traffic_counters(live)
     protocols = {protocol: api_protocol_state(protocol) for protocol in PROTOCOLS}
     where, params = api_user_where(user, 'c')
 
@@ -70,7 +71,7 @@ def api_dashboard_payload(user: dict) -> dict:
             params,
         ).fetchall()
 
-    peers = [api_peer_payload(c, live=live) for c in rows]
+    peers = [api_peer_payload(c, live=live, counters=counters) for c in rows]
     online = sum(1 for p in peers if p.get('status') == 'active')
     available_protocols = [p for p in protocols.values() if p.get('available')]
     primary_protocol = available_protocols[0]['title'] if available_protocols else 'нет активного протокола'
