@@ -241,11 +241,15 @@ DELETE /api/monitoring/token
 GET    /api/telegram
 PATCH  /api/telegram
 POST   /api/telegram/test
+GET    /api/update/status
+POST   /api/update/run
 ```
 
 Для пользователей поле `traffic_limit_bytes` задаёт общий лимит трафика в байтах по всем peer'ам этого аккаунта. Если значение `0`, лимит отключён. В ответе `/api/users` поле `traffic_limit` показывает использовано, осталось, процент заполнения и флаг `exceeded`.
 
 Telegram notifications настраиваются через `/monitoring` или API `/api/telegram`. В ответах bot token не раскрывается, показывается только suffix. Уведомления уходят при создании, включении, отключении и удалении peer'ов, создании backup, истечении срока peer и превышении traffic limit.
+
+Update Center доступен через `/updates`. `POST /api/update/run` запускает updater только если на хосте явно включён `UPDATE_RUNNER_ENABLED=1` и runner script доступен контейнеру. Перед запуском создаётся backup `pre-ui-update`.
 
 Только через web session администратора:
 

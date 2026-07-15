@@ -13,6 +13,7 @@ import sqlite3
 import socket
 import struct
 import shutil
+import subprocess
 import tarfile
 import tempfile
 import threading
@@ -58,6 +59,9 @@ METRICS_TOKEN = os.getenv("METRICS_TOKEN", "")
 TELEGRAM_ENABLED = os.getenv("TELEGRAM_ENABLED", "0") == "1"
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
+UPDATE_RUNNER_ENABLED = os.getenv("UPDATE_RUNNER_ENABLED", "0") == "1"
+UPDATE_RUNNER_PATH = os.getenv("UPDATE_RUNNER_PATH", "/host/3wg-panel/scripts/update.sh")
+UPDATE_JOB = {"running": False, "started_at": None, "finished_at": None, "exit_code": None, "log": []}
 PANEL_CONTAINER = os.getenv("PANEL_CONTAINER", "3wg-panel")
 
 PROTOCOLS = {
@@ -261,6 +265,92 @@ def cached_version_status() -> dict:
     VERSION_CACHE["checked_at"] = now
     VERSION_CACHE["payload"] = payload
     return payload
+
+
+def update_runner_payload() -> dict:
+    path = Path(UPDATE_RUNNER_PATH)
+    exists = path.exists()
+    can_run = bool(UPDATE_RUNNER_ENABLED and exists and path.is_file())
+    if not UPDATE_RUNNER_ENABLED:
+        reason = "UI update runner disabled"
+    elif not exists:
+        reason = f"Runner script not found: {UPDATE_RUNNER_PATH}"
+    elif not path.is_file():
+        reason = f"Runner path is not a file: {UPDATE_RUNNER_PATH}"
+    else:
+        reason = "ready"
+    return {
+        "enabled": UPDATE_RUNNER_ENABLED,
+        "path": UPDATE_RUNNER_PATH,
+        "exists": exists,
+        "can_run": can_run,
+        "reason": reason,
+        "confirm_text": "UPDATE",
+    }
+
+
+def update_job_payload() -> dict:
+    return {
+        "running": bool(UPDATE_JOB.get("running")),
+        "started_at": UPDATE_JOB.get("started_at"),
+        "finished_at": UPDATE_JOB.get("finished_at"),
+        "exit_code": UPDATE_JOB.get("exit_code"),
+        "log": list(UPDATE_JOB.get("log") or [])[-240:],
+    }
+
+
+def update_status_payload() -> dict:
+    version = cached_version_status()
+    latest = version.get("latest")
+    current = version.get("current") or APP_VERSION
+    repo = version.get("repository") or VERSION_REPOSITORY
+    return {
+        "ok": True,
+        "version": version,
+        "runner": update_runner_payload(),
+        "job": update_job_payload(),
+        "links": {
+            "repository": repo,
+            "tags": f"{repo}/tags",
+            "compare": f"{repo}/compare/{current}...{latest}" if latest else None,
+            "changelog": f"{repo}/releases/tag/{latest}" if latest else None,
+        },
+    }
+
+
+def update_log(line: str) -> None:
+    UPDATE_JOB.setdefault("log", []).append(str(line).rstrip())
+    UPDATE_JOB["log"] = UPDATE_JOB["log"][-500:]
+
+
+def run_update_job(actor: dict, backup_name: str) -> None:
+    UPDATE_JOB.update({"running": True, "started_at": int(time.time()), "finished_at": None, "exit_code": None, "log": []})
+    update_log(f"Pre-update backup: {backup_name}")
+    update_log(f"Running: bash {UPDATE_RUNNER_PATH}")
+    try:
+        proc = subprocess.Popen(
+            ["bash", UPDATE_RUNNER_PATH],
+            cwd=str(Path(UPDATE_RUNNER_PATH).resolve().parent.parent),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            update_log(line)
+        code = int(proc.wait())
+        UPDATE_JOB["exit_code"] = code
+        update_log(f"Exit code: {code}")
+        api_audit_log(None, actor, 'update.finish', 'update', 'runner', 'host', {'exit_code': code})
+        telegram_notify("UI update завершён", [f"Exit code: {code}", f"Кто: {actor.get('username')}"])
+    except Exception as e:
+        UPDATE_JOB["exit_code"] = -1
+        update_log(f"ERROR: {e}")
+        api_audit_log(None, actor, 'update.error', 'update', 'runner', 'host', {'error': str(e)})
+    finally:
+        UPDATE_JOB["finished_at"] = int(time.time())
+        UPDATE_JOB["running"] = False
 
 
 def auth(request: Request, credentials: HTTPBasicCredentials = Depends(security)):
@@ -5570,7 +5660,7 @@ async def react_frontend_middleware(request: Request, call_next):
         if asset_file.exists() and asset_file.is_file():
             return ReactFileResponse(asset_file)
 
-    if (path in ('/', '/login', '/ui', '/users', '/apikeys', '/monitoring', '/audit', '/backups', '/tools/system', '/tools/health', '/tools/ping', '/tools/traceroute') or re.match(r'^/client/\d+$', path) or re.match(r'^/status/(wireguard|amneziawg)$', path) or re.match(r'^/traffic/(wireguard|amneziawg)$', path)) and index_file.exists():
+    if (path in ('/', '/login', '/ui', '/users', '/apikeys', '/monitoring', '/updates', '/audit', '/backups', '/tools/system', '/tools/health', '/tools/ping', '/tools/traceroute') or re.match(r'^/client/\d+$', path) or re.match(r'^/status/(wireguard|amneziawg)$', path) or re.match(r'^/traffic/(wireguard|amneziawg)$', path)) and index_file.exists():
         return ReactFileResponse(
             index_file,
             media_type='text/html; charset=utf-8',
@@ -6657,6 +6747,28 @@ def api_auth_me(request: Request):
 @app.get('/api/version')
 def api_version(user=Depends(api_require_auth)):
     return cached_version_status()
+
+
+@app.get('/api/update/status')
+def api_update_status(user=Depends(api_require_admin)):
+    return update_status_payload()
+
+
+@app.post('/api/update/run')
+async def api_update_run(request: Request, user=Depends(api_require_admin)):
+    data = await api_read_payload(request)
+    runner = update_runner_payload()
+    if not runner['can_run']:
+        return api_error(runner['reason'], status_code=409, runner=runner)
+    if UPDATE_JOB.get("running"):
+        return api_error('Update уже выполняется', status_code=409, job=update_job_payload())
+    if str(data.get('confirm', '')).strip() != runner['confirm_text']:
+        return api_error(f"Для запуска нужно подтверждение {runner['confirm_text']}", status_code=400)
+    backup = api_create_backup_archive('pre-ui-update')
+    actor = dict(user)
+    api_audit_log(request, user, 'update.start', 'update', 'runner', 'host', {'backup': backup.name, 'runner': runner})
+    threading.Thread(target=run_update_job, args=(actor, backup.name), daemon=True).start()
+    return update_status_payload()
 
 
 @app.get('/api/node/protocols')

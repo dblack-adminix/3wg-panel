@@ -176,6 +176,7 @@ function Sidebar({ onLogout, protocols: initialProtocols = null, user, mobileOpe
       {isAdmin && <a className={`nav ${path === '/users' ? 'active' : ''}`} href="/users" onClick={onClose}><Users size={14} /> <span>Пользователи</span></a>}
       {isAdmin && <a className={`nav ${path === '/apikeys' ? 'active' : ''}`} href="/apikeys" onClick={onClose}><Key size={14} /> <span>API-ключи</span></a>}
       {isAdmin && <a className={`nav ${path === '/monitoring' ? 'active' : ''}`} href="/monitoring" onClick={onClose}><Activity size={14} /> <span>Мониторинг</span></a>}
+      {isAdmin && <a className={`nav ${path === '/updates' ? 'active' : ''}`} href="/updates" onClick={onClose}><RefreshCw size={14} /> <span>Обновления</span></a>}
       {isAdmin && <a className={`nav ${path === '/audit' ? 'active' : ''}`} href="/audit" onClick={onClose}><Terminal size={14} /> <span>Audit log</span></a>}
       {isAdmin && <a className={`nav ${path === '/backups' ? 'active' : ''}`} href="/backups" onClick={onClose}><Download size={14} /> <span>Backups</span></a>}
       {isAdmin && <div className="nav-title">ИНСТРУМЕНТЫ</div>}
@@ -2128,6 +2129,98 @@ function MonitoringPage({ onLogout, user }) {
   );
 }
 
+function UpdateCenterPage({ onLogout, user }) {
+  const [state, setState] = useState({ loading: true, data: null, error: '' });
+  const [busy, setBusy] = useState(false);
+
+  const load = async () => {
+    try {
+      const data = await api('/api/update/status');
+      setState({ loading: false, data, error: '' });
+    } catch (err) {
+      setState({ loading: false, data: null, error: err.message || 'Ошибка проверки обновлений' });
+    }
+  };
+
+  useEffect(() => {
+    load();
+    const timer = setInterval(load, 5000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const runUpdate = async () => {
+    const confirmText = state.data?.runner?.confirm_text || 'UPDATE';
+    const typed = window.prompt(`Для запуска обновления введите ${confirmText}`);
+    if (typed !== confirmText) return;
+    setBusy(true);
+    try {
+      const data = await api('/api/update/run', { method: 'POST', body: JSON.stringify({ confirm: typed }) });
+      setState({ loading: false, data, error: '' });
+    } catch (err) {
+      window.alert(err.message || 'Не удалось запустить обновление');
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const data = state.data || {};
+  const version = data.version || {};
+  const runner = data.runner || {};
+  const job = data.job || {};
+  const links = data.links || {};
+  const stateLabel = version.state === 'latest' ? 'последняя' : version.state === 'outdated' ? 'доступно обновление' : version.state === 'ahead' ? 'dev/ahead' : 'unknown';
+
+  return (
+    <Shell title="Обновления" subtitle="Версия, changelog и безопасный запуск updater" onLogout={onLogout} user={user}>
+      {state.error && <div className="warning">{state.error}</div>}
+      {state.loading && <section className="card">Загрузка...</section>}
+      {!state.loading && (
+        <div className="update-grid">
+          <section className="card update-hero-card">
+            <div>
+              <h2>Версия продукта</h2>
+              <div className={`update-state ${version.state || 'unknown'}`}>{stateLabel}</div>
+            </div>
+            <div className="update-version-grid">
+              <div><span>Установлена</span><b>{version.current || '-'}</b></div>
+              <div><span>Latest tag</span><b>{version.latest || '-'}</b></div>
+              <div><span>Проверено</span><b>{version.checked_at ? new Date(version.checked_at * 1000).toLocaleString('ru-RU') : '-'}</b></div>
+            </div>
+            <div className="update-actions">
+              <button className="copy-button" type="button" onClick={load}><RefreshCw size={14} /> Обновить статус</button>
+              {links.tags && <a className="blue-btn" href={links.tags} target="_blank" rel="noreferrer"><ArrowUpRight size={14} /> Tags</a>}
+              {links.compare && <a className="blue-btn" href={links.compare} target="_blank" rel="noreferrer"><ArrowUpRight size={14} /> Compare</a>}
+            </div>
+          </section>
+
+          <section className="card update-runner-card">
+            <div className="section-head">
+              <h2>Host update runner</h2>
+              <span className={runner.can_run ? 'active-text' : 'blocked-text'}>{runner.can_run ? 'READY' : 'DISABLED'}</span>
+            </div>
+            <div className="monitoring-status compact">
+              <div><span>Path</span><code>{runner.path || '-'}</code></div>
+              <div><span>Status</span><b>{runner.reason || '-'}</b></div>
+              <div><span>Script</span><b>{runner.exists ? 'найден' : 'не найден'}</b></div>
+              <div><span>Job</span><b>{job.running ? 'running' : job.exit_code === null || job.exit_code === undefined ? 'idle' : `exit ${job.exit_code}`}</b></div>
+            </div>
+            {!runner.can_run && <div className="warning">Запуск updater из UI выключен. Это правильно для текущего контейнера: updater должен выполняться на хосте через отдельный runner, а не внутри web-контейнера.</div>}
+            <div className="update-actions">
+              <button className="orange-btn" type="button" disabled={!runner.can_run || job.running || busy} onClick={runUpdate}><RefreshCw size={15} /> Запустить update</button>
+            </div>
+          </section>
+
+          <section className="card update-log-card">
+            <div className="section-head"><h2>Live output</h2><button className="copy-button" type="button" onClick={load}><RefreshCw size={14} /></button></div>
+            {job.log?.length ? <pre>{job.log.join('\n')}</pre> : <div className="empty-state"><Terminal size={28} /><span>Update ещё не запускался.</span></div>}
+          </section>
+        </div>
+      )}
+    </Shell>
+  );
+}
+
 function percentStyle(value) {
   return { width: `${Math.max(0, Math.min(100, Number(value || 0)))}%` };
 }
@@ -2686,6 +2779,7 @@ function App() {
   if (isAdmin && window.location.pathname === '/apikeys') return <ApiKeysPage onLogout={logout} user={auth.user} />;
   if (isAdmin && window.location.pathname === '/users') return <UsersPage onLogout={logout} user={auth.user} />;
   if (isAdmin && window.location.pathname === '/monitoring') return <MonitoringPage onLogout={logout} user={auth.user} />;
+  if (isAdmin && window.location.pathname === '/updates') return <UpdateCenterPage onLogout={logout} user={auth.user} />;
   if (isAdmin && window.location.pathname === '/audit') return <AuditPage onLogout={logout} user={auth.user} />;
   if (isAdmin && window.location.pathname === '/backups') return <BackupsPage onLogout={logout} user={auth.user} />;
   if (isAdmin && window.location.pathname === '/tools/system') return <SystemStatusPage onLogout={logout} user={auth.user} />;

@@ -1088,6 +1088,28 @@ def api_version(user=Depends(api_require_auth)):
     return cached_version_status()
 
 
+@app.get('/api/update/status')
+def api_update_status(user=Depends(api_require_admin)):
+    return update_status_payload()
+
+
+@app.post('/api/update/run')
+async def api_update_run(request: Request, user=Depends(api_require_admin)):
+    data = await api_read_payload(request)
+    runner = update_runner_payload()
+    if not runner['can_run']:
+        return api_error(runner['reason'], status_code=409, runner=runner)
+    if UPDATE_JOB.get("running"):
+        return api_error('Update уже выполняется', status_code=409, job=update_job_payload())
+    if str(data.get('confirm', '')).strip() != runner['confirm_text']:
+        return api_error(f"Для запуска нужно подтверждение {runner['confirm_text']}", status_code=400)
+    backup = api_create_backup_archive('pre-ui-update')
+    actor = dict(user)
+    api_audit_log(request, user, 'update.start', 'update', 'runner', 'host', {'backup': backup.name, 'runner': runner})
+    threading.Thread(target=run_update_job, args=(actor, backup.name), daemon=True).start()
+    return update_status_payload()
+
+
 @app.get('/api/node/protocols')
 def api_node_protocols(user=Depends(api_require_auth)):
     return {

@@ -140,6 +140,8 @@
 
 ## 10. Обновление из UI
 
+Статус: Update Center со статусом версии, changelog/compare ссылками, runner diagnostics и защищённым API запуска реализован в `v1.3.25`; host runner/systemd integration остаётся следующим шагом.
+
 Цель: сделать обновление понятным и управляемым.
 
 План:
