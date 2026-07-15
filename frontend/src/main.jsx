@@ -1837,33 +1837,19 @@ function MiniLineChart({ points, keys = ['value'], colors = ['#c8ff00'], height 
 
 function SystemStatusPage({ onLogout, user }) {
   const [state, setState] = useState({ loading: true, system: null, status: null, dashboard: null, error: '' });
-  const [samples, setSamples] = useState([]);
+  const [historyHours, setHistoryHours] = useState(24);
+  const [history, setHistory] = useState([]);
 
   const load = async () => {
     try {
-      const [system, status, dashboard] = await Promise.all([
+      const [system, status, dashboard, historyData] = await Promise.all([
         api('/api/node/system'),
         api('/api/node/status'),
         api('/api/dashboard'),
+        api(`/api/node/system/history?hours=${historyHours}`),
       ]);
       setState({ loading: false, system, status, dashboard, error: '' });
-      setSamples((items) => {
-        const netTotal = (system.network?.interfaces || []).reduce((acc, item) => ({ rx: acc.rx + Number(item.rx || 0), tx: acc.tx + Number(item.tx || 0) }), { rx: 0, tx: 0 });
-        const last = items[items.length - 1];
-        const rxRate = last ? Math.max(0, (netTotal.rx - last.rxBytes) / Math.max(1, (system.ts || Date.now() / 1000) - last.ts)) : 0;
-        const txRate = last ? Math.max(0, (netTotal.tx - last.txBytes) / Math.max(1, (system.ts || Date.now() / 1000) - last.ts)) : 0;
-        return [...items, {
-          ts: system.ts || Math.floor(Date.now() / 1000),
-          cpu: system.cpu_percent || system.cpu?.percent || 0,
-          memory: system.memory?.percent || 0,
-          disk: system.disk?.percent || 0,
-          load: system.load_average?.one || 0,
-          rx: rxRate,
-          tx: txRate,
-          rxBytes: netTotal.rx,
-          txBytes: netTotal.tx,
-        }].slice(-36);
-      });
+      setHistory(historyData.points || []);
     } catch (err) {
       setState((s) => ({ ...s, loading: false, error: err.message || 'Ошибка system status' }));
     }
@@ -1873,7 +1859,7 @@ function SystemStatusPage({ onLogout, user }) {
     load();
     const timer = setInterval(load, 10000);
     return () => clearInterval(timer);
-  }, []);
+  }, [historyHours]);
 
   const system = state.system || {};
   const memory = system.memory || {};
@@ -1897,6 +1883,10 @@ function SystemStatusPage({ onLogout, user }) {
     tx: traffic[key]?.tx || 0,
   }));
   const netTotal = network.reduce((acc, item) => ({ rx: acc.rx + Number(item.rx || 0), tx: acc.tx + Number(item.tx || 0) }), { rx: 0, tx: 0 });
+  const lastHistory = history[history.length - 1] || {};
+  const peakCpu = history.reduce((max, item) => Math.max(max, Number(item.cpu || 0)), 0);
+  const peakRx = history.reduce((max, item) => Math.max(max, Number(item.rx_rate || 0)), 0);
+  const peakTx = history.reduce((max, item) => Math.max(max, Number(item.tx_rate || 0)), 0);
 
   return (
     <Shell title="System Status" subtitle="Состояние панели, контейнеров и сетевых интерфейсов" onLogout={onLogout} user={user}>
@@ -1938,24 +1928,36 @@ function SystemStatusPage({ onLogout, user }) {
             <section className="card system-chart-card">
               <div className="section-head">
                 <h2>Ресурсы</h2>
-                <span className="muted">auto refresh 10s</span>
+                <select className="category-select system-range-select" value={historyHours} onChange={(e) => setHistoryHours(Number(e.target.value))}>
+                  <option value="1">1 час</option>
+                  <option value="24">24 часа</option>
+                  <option value="168">7 дней</option>
+                </select>
               </div>
-              <MiniLineChart points={samples} keys={['cpu', 'memory', 'disk']} colors={['#c8ff00', '#ff8c00', '#6aa7ff']} maxValue={100} height={118} />
+              <MiniLineChart points={history} keys={['cpu', 'memory', 'disk']} colors={['#c8ff00', '#ff8c00', '#6aa7ff']} maxValue={100} height={118} />
               <div className="traffic-color-legend">
                 <span><i className="rx" /> CPU</span>
                 <span><i className="tx" /> Memory</span>
                 <span><i style={{ background: '#6aa7ff' }} /> Storage</span>
               </div>
+              <div className="system-history-meta">
+                <span>точек: <b>{history.length}</b></span>
+                <span>CPU peak: <b>{peakCpu.toFixed(1)}%</b></span>
+              </div>
             </section>
             <section className="card system-chart-card">
               <div className="section-head">
                 <h2>Сеть</h2>
-                <span className="muted">RX {formatBytes(samples[samples.length - 1]?.rx)}/s · TX {formatBytes(samples[samples.length - 1]?.tx)}/s</span>
+                <span className="muted">RX {formatBytes(lastHistory.rx_rate)}/s · TX {formatBytes(lastHistory.tx_rate)}/s</span>
               </div>
-              <MiniLineChart points={samples} keys={['rx', 'tx']} colors={['#c8ff00', '#ff8c00']} height={118} />
+              <MiniLineChart points={history} keys={['rx_rate', 'tx_rate']} colors={['#c8ff00', '#ff8c00']} height={118} />
               <div className="system-net-total">
                 <span>RX total <b>{formatBytes(netTotal.rx)}</b></span>
                 <span>TX total <b>{formatBytes(netTotal.tx)}</b></span>
+              </div>
+              <div className="system-history-meta">
+                <span>RX peak: <b>{formatBytes(peakRx)}/s</b></span>
+                <span>TX peak: <b>{formatBytes(peakTx)}/s</b></span>
               </div>
             </section>
           </div>

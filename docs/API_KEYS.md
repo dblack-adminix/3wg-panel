@@ -209,6 +209,7 @@ GET    /api/ui/dashboard
 GET    /api/node/protocols
 GET    /api/node/status
 GET    /api/node/system
+GET    /api/node/system/history
 GET    /api/peers
 POST   /api/peers
 GET    /api/peers/{client_id}

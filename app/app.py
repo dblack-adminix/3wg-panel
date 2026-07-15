@@ -649,6 +649,21 @@ def init_db():
         conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_events_ts ON audit_events(ts)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_events_actor ON audit_events(actor_username, ts)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_events_object ON audit_events(object_type, object_id, ts)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS system_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts INTEGER NOT NULL,
+                cpu_percent REAL NOT NULL,
+                memory_percent REAL NOT NULL,
+                disk_percent REAL NOT NULL,
+                load_one REAL NOT NULL,
+                rx INTEGER NOT NULL,
+                tx INTEGER NOT NULL,
+                containers_running INTEGER NOT NULL,
+                containers_total INTEGER NOT NULL
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_system_snapshots_ts ON system_snapshots(ts)")
         conn.commit()
 
 
@@ -6659,6 +6674,88 @@ def _container_system_metric(name: str) -> dict:
         payload['status'] = f'error: {exc}'
     return payload
 
+
+def _system_network_totals(interfaces: list[dict]) -> dict:
+    return {
+        'rx': sum(int(item.get('rx') or 0) for item in interfaces),
+        'tx': sum(int(item.get('tx') or 0) for item in interfaces),
+    }
+
+
+def _record_system_snapshot(payload: dict, min_interval: int = 60) -> None:
+    ts = int(payload.get('ts') or time.time())
+    network_totals = _system_network_totals(payload.get('network', {}).get('interfaces') or [])
+    containers = payload.get('containers') or []
+    running = sum(1 for item in containers if item.get('running'))
+    with db() as conn:
+        last = conn.execute('SELECT ts FROM system_snapshots ORDER BY ts DESC LIMIT 1').fetchone()
+        if last and ts - int(last['ts']) < min_interval:
+            return
+        conn.execute(
+            """
+            INSERT INTO system_snapshots(
+                ts, cpu_percent, memory_percent, disk_percent, load_one,
+                rx, tx, containers_running, containers_total
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                ts,
+                float(payload.get('cpu_percent') or payload.get('cpu', {}).get('percent') or 0),
+                float(payload.get('memory', {}).get('percent') or 0),
+                float(payload.get('disk', {}).get('percent') or 0),
+                float(payload.get('load_average', {}).get('one') or 0),
+                int(network_totals['rx']),
+                int(network_totals['tx']),
+                int(running),
+                int(len(containers)),
+            ),
+        )
+        cutoff = ts - 60 * 60 * 24 * 14
+        conn.execute('DELETE FROM system_snapshots WHERE ts < ?', (cutoff,))
+        conn.commit()
+
+
+def _system_history_payload(hours: int = 24) -> dict:
+    hours = max(1, min(int(hours or 24), 24 * 14))
+    since = int(time.time()) - hours * 3600
+    with db() as conn:
+        rows = conn.execute(
+            """
+            SELECT ts, cpu_percent, memory_percent, disk_percent, load_one, rx, tx, containers_running, containers_total
+            FROM system_snapshots
+            WHERE ts >= ?
+            ORDER BY ts ASC
+            """,
+            (since,),
+        ).fetchall()
+    points = []
+    prev = None
+    for row in rows:
+        ts = int(row['ts'])
+        rx_rate = 0.0
+        tx_rate = 0.0
+        if prev:
+            dt = max(1, ts - int(prev['ts']))
+            rx_rate = max(0.0, (int(row['rx']) - int(prev['rx'])) / dt)
+            tx_rate = max(0.0, (int(row['tx']) - int(prev['tx'])) / dt)
+        points.append({
+            'ts': ts,
+            'cpu': round(float(row['cpu_percent']), 2),
+            'memory': round(float(row['memory_percent']), 2),
+            'disk': round(float(row['disk_percent']), 2),
+            'load': round(float(row['load_one']), 2),
+            'rx': int(row['rx']),
+            'tx': int(row['tx']),
+            'rx_rate': round(rx_rate, 2),
+            'tx_rate': round(tx_rate, 2),
+            'containers_running': int(row['containers_running']),
+            'containers_total': int(row['containers_total']),
+        })
+        prev = row
+    return {'ok': True, 'hours': hours, 'points': points}
+
+
 @app.get('/api/node/system')
 def api_node_system(user=Depends(api_require_auth)):
     # CPU: два замера /proc/stat с паузой
@@ -6698,7 +6795,7 @@ def api_node_system(user=Depends(api_require_auth)):
     for p in PROTOCOLS.values():
         containers.append(_container_system_metric(p['container']))
 
-    return {
+    payload = {
         'ok': True,
         'ts': int(time.time()),
         'hostname': os.uname().nodename,
@@ -6712,6 +6809,13 @@ def api_node_system(user=Depends(api_require_auth)):
         'network': {'interfaces': _read_proc_net_dev()},
         'containers': containers,
     }
+    _record_system_snapshot(payload)
+    return payload
+
+
+@app.get('/api/node/system/history')
+def api_node_system_history(hours: int = 24, user=Depends(api_require_auth)):
+    return _system_history_payload(hours)
 # === 3WG SYSTEM STATUS API END ===
 
 
