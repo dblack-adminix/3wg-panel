@@ -666,6 +666,7 @@ function QrModal({ peer, onClose }) {
 
 function ClientPage({ clientId, onLogout, user }) {
   const [state, setState] = useState({ loading: true, peer: null, error: '' });
+  const [diag, setDiag] = useState({ loading: false, result: null, error: '' });
 
   const load = async () => {
     try {
@@ -680,6 +681,25 @@ function ClientPage({ clientId, onLogout, user }) {
 
   const peer = state.peer;
   const title = peer ? `${peer.name} ${peer.protocol_title || peer.protocol}` : 'Клиент';
+  const live = peer?.live || {};
+  const clientEndpoint = live.endpoint && live.endpoint !== '(none)' ? live.endpoint : null;
+  const lastHandshake = live.latest_handshake && live.latest_handshake !== '0' ? Number(live.latest_handshake) : null;
+  const peerIp = peer?.ip_cidr ? peer.ip_cidr.split('/')[0] : '';
+  const isOnline = peer?.status === 'active';
+
+  const runPeerPing = async () => {
+    if (!peerIp || !peer?.protocol) return;
+    setDiag({ loading: true, result: null, error: '' });
+    try {
+      const result = await api('/api/tools/ping', {
+        method: 'POST',
+        body: JSON.stringify({ target: peerIp, count: 4, protocol: peer.protocol }),
+      });
+      setDiag({ loading: false, result, error: '' });
+    } catch (err) {
+      setDiag({ loading: false, result: null, error: err.message || 'Ошибка диагностики peer' });
+    }
+  };
 
   return (
     <Shell title={title} subtitle="WireGuard / AmneziaWG node management" onLogout={onLogout} user={user}>
@@ -687,18 +707,52 @@ function ClientPage({ clientId, onLogout, user }) {
       {state.loading && <section className="card detail-card">Загрузка...</section>}
       {peer && (
         <>
-          <section className="card detail-card">
+          <section className="card detail-card peer-hero-card">
             <div className="detail-head">
               <a className="back-link" href="/"><ChevronLeft size={16} /> Назад</a>
-              <span className={peer.status === 'active' ? 'active-text' : 'muted'}>{peer.status === 'active' ? 'ONLINE' : 'OFFLINE'}</span>
+              <div className="peer-hero-actions">
+                <button className="copy-button" type="button" onClick={load}><RefreshCw size={14} /> Обновить</button>
+                {user?.is_admin && <button className="orange-btn small" type="button" onClick={runPeerPing} disabled={diag.loading}><Activity size={14} /> Диагностика</button>}
+                <span className={isOnline ? 'status-pill online' : peer.enabled ? 'status-pill offline' : 'status-pill disabled'}>{isOnline ? 'ONLINE' : peer.enabled ? 'OFFLINE' : 'DISABLED'}</span>
+              </div>
             </div>
-            <div className="detail-grid">
-              <div><span>IP</span><code>{peer.ip_cidr}</code></div>
-              <div><span>Endpoint</span><code>{peer.endpoint}</code></div>
-              <div><span>Protocol</span><b>{peer.protocol_title || peer.protocol}</b></div>
+            <div className="peer-hero-grid">
+              <div className="peer-identity">
+                <span className="eyebrow">Peer #{peer.id}</span>
+                <h2>{peer.name}</h2>
+                <div className="peer-badges">
+                  <span className={peer.protocol === 'wireguard' ? 'protocol-badge wg' : 'protocol-badge awg'}>{peer.protocol_title || peer.protocol}</span>
+                  <span>{peer.category_name || 'Без категории'}</span>
+                  <span>создал: {peer.created_by_label || peer.owner_username || 'admin'}</span>
+                </div>
+              </div>
+              <div className="peer-live-card">
+                <span>Последний handshake</span>
+                <b>{lastHandshake ? formatPeerTime(lastHandshake) : '-'}</b>
+                <small>{peer.handshake_age_seconds != null ? `${formatDuration(peer.handshake_age_seconds)} назад` : 'нет подключения'}</small>
+              </div>
+            </div>
+            <div className="detail-grid peer-detail-grid">
+              <div><span>Internal IP</span><code>{peer.ip_cidr}</code></div>
+              <div><span>Server endpoint</span><code>{peer.endpoint}</code></div>
+              <div><span>Client endpoint</span><code>{clientEndpoint || '(none)'}</code></div>
+              <div><span>Created</span><b>{formatPeerTime(peer.created_at)}</b></div>
               <div><span>Public key</span><code title={peer.public_key}>{shortKey(peer.public_key)}</code></div>
+              <div><span>RX / TX</span><b>{formatBytes(live.rx)} / {formatBytes(live.tx)}</b></div>
             </div>
           </section>
+
+          {(diag.result || diag.error || diag.loading) && (
+            <section className="card peer-diagnostics-card">
+              <div className="section-head">
+                <h2>Диагностика peer</h2>
+                <span className={diag.result?.ok ? 'status-pill online' : diag.loading ? 'status-pill offline' : 'status-pill disabled'}>{diag.loading ? 'RUNNING' : diag.result?.ok ? 'OK' : 'CHECK'}</span>
+              </div>
+              {diag.loading && <div className="tool-placeholder"><Terminal size={28} /><span>Проверяю {peerIp} из контейнера {peer.protocol_title}...</span></div>}
+              {diag.error && <div className="warning">{diag.error}</div>}
+              {diag.result && <NetworkToolResult kind="ping" result={diag.result} peer={peer} />}
+            </section>
+          )}
 
           <section className="qr-grid">
             <QrPanel
@@ -751,6 +805,18 @@ function QrPanel({ title, hint, img, config, qr, configLabel }) {
 function shortKey(value) {
   if (!value) return '-';
   return value.length > 22 ? `${value.slice(0, 10)}...${value.slice(-8)}` : value;
+}
+
+function formatPeerTime(ts) {
+  return ts ? new Date(Number(ts) * 1000).toLocaleString('ru-RU') : '-';
+}
+
+function formatDuration(seconds) {
+  const n = Math.max(0, Number(seconds || 0));
+  if (n < 60) return `${Math.round(n)} сек`;
+  if (n < 3600) return `${Math.floor(n / 60)} мин`;
+  if (n < 86400) return `${Math.floor(n / 3600)} ч ${Math.floor((n % 3600) / 60)} мин`;
+  return `${Math.floor(n / 86400)} д ${Math.floor((n % 86400) / 3600)} ч`;
 }
 
 function formatBytes(v) {

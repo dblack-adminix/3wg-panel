@@ -451,6 +451,21 @@ html[data-theme="light"] .sidebar-backdrop { background: rgba(15, 23, 42, .42); 
 .detail-grid div { display: grid; gap: 7px; }
 .detail-grid span { color: #8a8a8a; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
 .detail-grid b { color: #ffffff; }
+.peer-hero-card { border-color: rgba(200, 255, 0, .16); background: linear-gradient(145deg, rgba(13, 13, 13, .98), rgba(9, 14, 13, .98)); }
+.peer-hero-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.peer-hero-grid { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(260px, 340px); gap: 12px; align-items: stretch; margin-bottom: 14px; }
+.peer-identity { min-height: 128px; display: flex; flex-direction: column; justify-content: center; gap: 12px; border: 1px solid #262626; border-radius: 8px; background: #0d0d0d; padding: 18px; }
+.peer-identity h2 { margin: 0; font-size: 28px; line-height: 1.1; }
+.peer-badges { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; color: #bbbbbb; font-size: 12px; }
+.peer-badges span { display: inline-flex; min-height: 28px; align-items: center; border: 1px solid #262626; border-radius: 7px; background: #090909; padding: 0 10px; }
+.protocol-badge { font-weight: 800; }
+.protocol-badge.awg { border-color: #086f78; background: #052b31; color: #00e7ff; }
+.protocol-badge.wg { border-color: #7c1d36; background: #2b0d17; color: #ff5b7b; }
+.peer-live-card { display: grid; align-content: center; gap: 8px; border: 1px solid #2f3f0a; border-radius: 8px; background: radial-gradient(circle at top right, rgba(200, 255, 0, .12), transparent 42%), #0d0d0d; padding: 18px; }
+.peer-live-card span, .peer-live-card small { color: #8a8a8a; font-size: 12px; }
+.peer-live-card b { color: #ffffff; font-size: 22px; line-height: 1.15; }
+.peer-detail-grid { grid-template-columns: repeat(3, minmax(190px, 1fr)); }
+.peer-diagnostics-card { margin-top: 12px; }
 .qr-grid { display: grid; grid-template-columns: repeat(2, minmax(280px, 390px)); gap: 12px; align-items: start; margin-bottom: 12px; }
 .qr-card { min-height: 0; }
 .qr-card h2 { margin-bottom: 8px; font-size: 17px; }
@@ -464,7 +479,17 @@ html[data-theme="light"] .sidebar-backdrop { background: rgba(15, 23, 42, .42); 
 
 @media (max-width: 1100px) {
   .detail-grid { grid-template-columns: repeat(2, minmax(150px, 1fr)); }
+  .peer-hero-grid { grid-template-columns: 1fr; }
+  .peer-detail-grid { grid-template-columns: repeat(2, minmax(150px, 1fr)); }
   .qr-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 720px) {
+  .detail-head { align-items: stretch; flex-direction: column; }
+  .peer-hero-actions { justify-content: flex-start; }
+  .peer-identity { min-height: 0; padding: 14px; }
+  .peer-identity h2 { font-size: 22px; overflow-wrap: anywhere; }
+  .peer-detail-grid { grid-template-columns: 1fr; }
 }
 
 .modal-backdrop { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 24px; background: rgba(3, 7, 12, .72); backdrop-filter: blur(5px); }
@@ -508,6 +533,7 @@ html[data-theme="light"] .sidebar-backdrop { background: rgba(15, 23, 42, .42); 
 .status-pill { height: 30px; display: inline-flex; align-items: center; gap: 6px; border-radius: 7px; padding: 0 10px; font-weight: 700; font-size: 12px; }
 .status-pill.online { border: 1px solid #5a7300; background: #161d00; color: var(--green); }
 .status-pill.offline { border: 1px solid #6e2c3f; background: #22101a; color: var(--danger); }
+.status-pill.disabled { border: 1px solid #3a3a3a; background: #151515; color: #8a8a8a; }
 .status-meta-grid { display: grid; grid-template-columns: repeat(2, minmax(180px, 1fr)); gap: 12px; }
 .status-meta-grid div { display: grid; gap: 7px; }
 .status-meta-grid span { color: #8a8a8a; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
@@ -867,6 +893,39 @@ html[data-theme="light"] .qr-image {
 html[data-theme="light"] .status-summary-card {
   background: #ffffff;
 }
+html[data-theme="light"] .peer-hero-card {
+  border-color: #d8e1ec;
+  background: #ffffff;
+}
+html[data-theme="light"] .peer-identity,
+html[data-theme="light"] .peer-live-card,
+html[data-theme="light"] .peer-badges span {
+  background: #f8fafc;
+  border-color: #d8e1ec;
+  color: #111827;
+}
+html[data-theme="light"] .peer-identity h2,
+html[data-theme="light"] .peer-live-card b {
+  color: #111827;
+}
+html[data-theme="light"] .peer-live-card {
+  background: radial-gradient(circle at top right, rgba(139, 181, 0, .14), transparent 42%), #f8fafc;
+}
+html[data-theme="light"] .peer-badges,
+html[data-theme="light"] .peer-live-card span,
+html[data-theme="light"] .peer-live-card small {
+  color: #64748b;
+}
+html[data-theme="light"] .protocol-badge.awg {
+  border-color: #67e8f9;
+  background: #ecfeff;
+  color: #0e7490;
+}
+html[data-theme="light"] .protocol-badge.wg {
+  border-color: #fecdd3;
+  background: #fff1f2;
+  color: #e11d48;
+}
 html[data-theme="light"] .status-meta-grid div,
 html[data-theme="light"] .detail-grid div {
   min-width: 0;
@@ -896,6 +955,11 @@ html[data-theme="light"] .status-pill.offline {
   background: #fff1f2;
   border-color: #fda4af;
   color: #be123c;
+}
+html[data-theme="light"] .status-pill.disabled {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #64748b;
 }
 html[data-theme="light"] .tool-service,
 html[data-theme="light"] .tool-output,
