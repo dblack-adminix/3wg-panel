@@ -375,15 +375,26 @@ html[data-theme="light"] .sidebar-backdrop { background: rgba(15, 23, 42, .42); 
 .category-create input { width: 150px; height: 26px; border: 0; background: transparent; color: #ffffff; outline: none; }
 .category-create button { height: 26px; border: 0; border-radius: 6px; background: #1d2600; color: var(--green); font-weight: 700; cursor: pointer; padding: 0 10px; }
 .category-create button:disabled { opacity: .45; cursor: not-allowed; }
-.table-wrap { width: 100%; overflow-x: auto; }
-.clients-table { width: 100%; min-width: 1450px; table-layout: fixed; border-collapse: collapse; font-size: 12px; }
-.clients-table th, .clients-table td { border-bottom: 1px solid #262626; padding: 7px 5px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.table-wrap { width: 100%; overflow-x: auto; overflow-y: visible; }
+.clients-table { width: 100%; min-width: 1180px; table-layout: fixed; border-collapse: collapse; font-size: 12px; }
+.clients-table th, .clients-table td { border-bottom: 1px solid #262626; padding: 7px 5px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
 .clients-table th { color: #999999; text-transform: uppercase; font-size: 10px; letter-spacing: .05em; }
 .clients-table td:first-child, .clients-table th:first-child { padding-left: 6px; }
 .clients-table small { display: block; color: #8a8a8a; margin-top: 3px; font-size: 10px; line-height: 1.2; }
 .clients-table .category-select { height: 28px; font-size: 11px; border-radius: 6px; }
 .proto { display: inline-block; background: #052b31; color: #00e7ff; border: 1px solid #086f78; border-radius: 5px; padding: 4px 7px; font-weight: 700; font-size: 11px; }
 .proto-wireguard { background: #2b0d17; color: #ff5b7b; border-color: #7c1d36; }
+.policy-cell { display: grid; gap: 4px; min-width: 0; }
+.policy-selects { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 5px; }
+.policy-selects .category-select { width: 100%; min-width: 0; padding: 0 8px; }
+.policy-cell small { display: flex; align-items: center; gap: 6px; min-width: 0; margin: 0; }
+.policy-cell small span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.network-cell { display: grid; gap: 3px; min-width: 0; }
+.network-cell b { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.network-cell small { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.traffic-cell { display: grid; gap: 3px; justify-items: start; }
+.traffic-cell span { display: block; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.traffic-cell b { color: #8a8a8a; font-size: 10px; }
 .expiration-cell { display: grid; gap: 4px; }
 .table-expiration-select { width: 100%; padding: 0 7px; }
 .expiration-cell small { margin: 0; }
@@ -398,10 +409,10 @@ html[data-theme="light"] .sidebar-backdrop { background: rgba(15, 23, 42, .42); 
 .expiration-bad { color: #ff5b7b !important; }
 .active-text { color: var(--green); font-weight: 700; }
 .blocked-text { color: var(--danger); font-weight: 700; }
-.clients-table td.actions-cell { width: 150px; min-width: 130px; overflow: visible; padding: 6px 5px; }
+.clients-table td.actions-cell { width: 132px; min-width: 118px; overflow: visible; padding: 5px; }
 .table-category-select { width: 100%; padding: 0 7px; }
 .empty-table { text-align: center !important; color: #8a8a8a; padding: 18px 8px !important; }
-.actions { display: flex; gap: 3px; align-items: center; justify-content: flex-start; }
+.actions { display: flex; gap: 3px; align-items: center; justify-content: flex-start; flex-wrap: wrap; }
 .icon-button { flex: 0 0 auto; display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 5px; border: 1px solid transparent; text-decoration: none; cursor: pointer; }
 .icon-button.open { background: #ff8c00; color: #111; }
 .icon-button.download { background: #2a1d00; border-color: #7a4d00; color: #ff8c00; }

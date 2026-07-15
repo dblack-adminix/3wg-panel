@@ -506,19 +506,16 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
         <table className="clients-table">
           <colgroup>
             <col style={{ width: 42 }} />
-            <col style={{ width: 150 }} />
+            <col style={{ width: 155 }} />
             {isAdmin && <col style={{ width: 78 }} />}
-            {isAdmin && <col style={{ width: 130 }} />}
-            <col style={{ width: 108 }} />
-            <col style={{ width: 110 }} />
-            <col style={{ width: 88 }} />
-            {isAdmin && <col style={{ width: 118 }} />}
-            {isAdmin && <col style={{ width: 128 }} />}
-            <col style={{ width: 150 }} />
-            <col style={{ width: 138 }} />
-            <col style={{ width: 80 }} />
-            <col style={{ width: 80 }} />
-            <col style={{ width: isAdmin ? 150 : 130 }} />
+            {isAdmin && <col style={{ width: 120 }} />}
+            <col style={{ width: 100 }} />
+            <col style={{ width: 100 }} />
+            <col style={{ width: 82 }} />
+            {isAdmin && <col style={{ width: 210 }} />}
+            <col style={{ width: 180 }} />
+            <col style={{ width: 100 }} />
+            <col style={{ width: isAdmin ? 132 : 118 }} />
           </colgroup>
           <thead>
             <tr>
@@ -529,12 +526,9 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
               <th>Протокол</th>
               <th>Внутренний IP</th>
               <th>Статус</th>
-              {isAdmin && <th>Срок</th>}
-              {isAdmin && <th>Лимит</th>}
-              <th>Endpoint клиента</th>
-              <th>Последнее подключение</th>
-              <th>RX</th>
-              <th>TX</th>
+              {isAdmin && <th>Ограничения</th>}
+              <th>Сеть</th>
+              <th>Трафик</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -557,40 +551,46 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
                 <td><PeerStatus peer={p} /></td>
                 {isAdmin && (
                   <td>
-                    <div className="expiration-cell">
-                      <select className="category-select table-expiration-select" value={expirationPresetValue(p)} disabled={busyId === p.id} onChange={(e) => changePeerExpiration(p, e.target.value)}>
-                        <option value="">Без срока</option>
-                        <option value="1">1 день</option>
-                        <option value="7">7 дней</option>
-                        <option value="30">30 дней</option>
-                        <option value="90">90 дней</option>
-                      </select>
-                      <small className={p.expiration?.expired ? 'expiration-bad' : p.expiration?.enabled ? 'expiration-soon' : ''}>{p.expiration?.label || 'без срока'}</small>
-                    </div>
-                  </td>
-                )}
-                {isAdmin && (
-                  <td>
-                    <div className="traffic-limit-cell">
-                      <select className="category-select table-limit-select" value={trafficLimitPresetValue(p)} disabled={busyId === p.id} onChange={(e) => changePeerTrafficLimit(p, e.target.value)}>
-                        <option value="">Без лимита</option>
-                        <option value="1">1 GiB</option>
-                        <option value="5">5 GiB</option>
-                        <option value="10">10 GiB</option>
-                        <option value="50">50 GiB</option>
-                        <option value="100">100 GiB</option>
-                      </select>
-                      <span className={p.traffic_limit?.exceeded ? 'limit-bar exceeded' : 'limit-bar'}>
+                    <div className="policy-cell">
+                      <div className="policy-selects">
+                        <select className="category-select table-expiration-select" value={expirationPresetValue(p)} disabled={busyId === p.id} onChange={(e) => changePeerExpiration(p, e.target.value)}>
+                          <option value="">Без срока</option>
+                          <option value="1">1 день</option>
+                          <option value="7">7 дней</option>
+                          <option value="30">30 дней</option>
+                          <option value="90">90 дней</option>
+                        </select>
+                        <select className="category-select table-limit-select" value={trafficLimitPresetValue(p)} disabled={busyId === p.id} onChange={(e) => changePeerTrafficLimit(p, e.target.value)}>
+                          <option value="">Без лимита</option>
+                          <option value="1">1 GiB</option>
+                          <option value="5">5 GiB</option>
+                          <option value="10">10 GiB</option>
+                          <option value="50">50 GiB</option>
+                          <option value="100">100 GiB</option>
+                        </select>
+                      </div>
+                      <span className={p.traffic_limit?.exceeded ? 'limit-bar exceeded' : 'limit-bar'} title={p.traffic_limit?.label || 'без лимита'}>
                         <i style={{ width: `${p.traffic_limit?.enabled ? Math.max(4, p.traffic_limit.percent || 0) : 0}%` }} />
                       </span>
-                      <small className={p.traffic_limit?.exceeded ? 'expiration-bad' : p.traffic_limit?.enabled ? 'expiration-soon' : ''}>{p.traffic_limit?.label || 'без лимита'}</small>
+                      <small>
+                        <span className={p.expiration?.expired ? 'expiration-bad' : p.expiration?.enabled ? 'expiration-soon' : ''}>{p.expiration?.label || 'без срока'}</span>
+                        <span className={p.traffic_limit?.exceeded ? 'expiration-bad' : p.traffic_limit?.enabled ? 'expiration-soon' : ''}>{p.traffic_limit?.label || 'без лимита'}</span>
+                      </small>
                     </div>
                   </td>
                 )}
-                <td title={p.live?.endpoint || ''}>{p.live?.endpoint || '(none)'}</td>
-                <td>{p.live?.latest_handshake && p.live.latest_handshake !== '0' ? new Date(Number(p.live.latest_handshake) * 1000).toLocaleString('ru-RU') : '-'}</td>
-                <td>{formatBytes(p.live?.rx)}</td>
-                <td>{formatBytes(p.live?.tx)}</td>
+                <td title={`${p.live?.endpoint || '(none)'} ${p.live?.latest_handshake || ''}`}>
+                  <div className="network-cell">
+                    <b>{p.live?.endpoint || '(none)'}</b>
+                    <small>{p.live?.latest_handshake && p.live.latest_handshake !== '0' ? new Date(Number(p.live.latest_handshake) * 1000).toLocaleString('ru-RU') : '-'}</small>
+                  </div>
+                </td>
+                <td>
+                  <div className="traffic-cell">
+                    <span><b>RX</b> {formatBytes(p.live?.rx)}</span>
+                    <span><b>TX</b> {formatBytes(p.live?.tx)}</span>
+                  </div>
+                </td>
                 <td className="actions-cell">
                   <div className="actions">
                     <IconButton href={p.links?.html || '#'} title="Открыть клиента" tone="open"><ArrowUpRight size={14} /></IconButton>
@@ -609,7 +609,7 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
             ))}
             {filteredPeers.length === 0 && (
               <tr>
-                <td colSpan={isAdmin ? 14 : 10} className="empty-table">В этой категории пока нет peer'ов</td>
+                <td colSpan={isAdmin ? 11 : 8} className="empty-table">В этой категории пока нет peer'ов</td>
               </tr>
             )}
           </tbody>
