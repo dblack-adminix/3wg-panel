@@ -505,20 +505,20 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
       <div className="table-wrap">
         <table className="clients-table">
           <colgroup>
-            <col style={{ width: 46 }} />
-            <col style={{ width: 170 }} />
+            <col style={{ width: 42 }} />
+            <col style={{ width: 150 }} />
+            {isAdmin && <col style={{ width: 78 }} />}
             {isAdmin && <col style={{ width: 130 }} />}
-            {isAdmin && <col style={{ width: 145 }} />}
-            <col style={{ width: 125 }} />
-            <col style={{ width: 130 }} />
+            <col style={{ width: 108 }} />
             <col style={{ width: 110 }} />
-            {isAdmin && <col style={{ width: 130 }} />}
-            {isAdmin && <col style={{ width: 145 }} />}
-            <col style={{ width: 180 }} />
-            <col style={{ width: 170 }} />
-            <col style={{ width: 105 }} />
-            <col style={{ width: 105 }} />
-            <col style={{ width: isAdmin ? 184 : 154 }} />
+            <col style={{ width: 88 }} />
+            {isAdmin && <col style={{ width: 118 }} />}
+            {isAdmin && <col style={{ width: 128 }} />}
+            <col style={{ width: 150 }} />
+            <col style={{ width: 138 }} />
+            <col style={{ width: 80 }} />
+            <col style={{ width: 80 }} />
+            <col style={{ width: isAdmin ? 150 : 130 }} />
           </colgroup>
           <thead>
             <tr>
@@ -542,7 +542,7 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
             {filteredPeers.map((p) => (
               <tr key={p.id}>
                 <td>{p.id}</td>
-                <td><b>{p.name}</b><small>создал: {p.created_by_label || p.owner_username || 'admin'}</small></td>
+                <td><b>{p.name}</b>{!isAdmin && <small>создал: {p.created_by_label || p.owner_username || 'admin'}</small>}</td>
                 {isAdmin && <td><span className="owner-badge">{p.created_by_label || p.owner_username || 'admin'}</span></td>}
                 {isAdmin && (
                   <td>
