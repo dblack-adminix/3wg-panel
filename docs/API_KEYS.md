@@ -208,6 +208,7 @@ GET    /api/dashboard
 GET    /api/ui/dashboard
 GET    /api/node/protocols
 GET    /api/node/status
+GET    /api/node/diagnostics
 GET    /api/node/system
 GET    /api/node/system/history
 GET    /api/peers

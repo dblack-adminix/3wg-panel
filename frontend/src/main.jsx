@@ -178,6 +178,7 @@ function Sidebar({ onLogout, protocols: initialProtocols = null, user, mobileOpe
       {isAdmin && <a className={`nav ${path === '/backups' ? 'active' : ''}`} href="/backups" onClick={onClose}><Download size={14} /> <span>Backups</span></a>}
       {isAdmin && <div className="nav-title">ИНСТРУМЕНТЫ</div>}
       {isAdmin && <a className={`nav ${path === '/tools/system' ? 'active' : ''}`} href="/tools/system" onClick={onClose}><Activity size={14} /> <span>System Status</span></a>}
+      {isAdmin && <a className={`nav ${path === '/tools/health' ? 'active' : ''}`} href="/tools/health" onClick={onClose}><ShieldCheck size={14} /> <span>Diagnostics</span></a>}
       {isAdmin && <a className={`nav ${path === '/tools/ping' ? 'active' : ''}`} href="/tools/ping" onClick={onClose}><Network size={14} /> <span>Ping</span></a>}
       {isAdmin && <a className={`nav ${path === '/tools/traceroute' ? 'active' : ''}`} href="/tools/traceroute" onClick={onClose}><ArrowUpRight size={14} /> <span>Traceroute</span></a>}
       <button className="nav logout" onClick={onLogout}><LogOut size={14} /> <span>Выход</span></button>
@@ -2071,6 +2072,87 @@ function parseTraceSummary(output = '') {
   return { hops, lastHop: hops[hops.length - 1] || null };
 }
 
+function healthStatusLabel(status) {
+  if (status === 'ok') return 'OK';
+  if (status === 'fail') return 'FAIL';
+  return 'WARN';
+}
+
+function HealthDiagnosticsPage({ onLogout, user }) {
+  const [state, setState] = useState({ loading: true, data: null, error: '' });
+  const [expanded, setExpanded] = useState(null);
+
+  const load = async () => {
+    try {
+      const data = await api('/api/node/diagnostics');
+      setState({ loading: false, data, error: '' });
+    } catch (err) {
+      setState({ loading: false, data: null, error: err.message || 'Ошибка diagnostics' });
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const data = state.data || {};
+  const checks = data.checks || [];
+  const groups = checks.reduce((acc, item) => {
+    const key = item.group || 'General';
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(item);
+    return acc;
+  }, {});
+  const summary = data.summary || { ok: 0, warn: 0, fail: 0 };
+
+  return (
+    <Shell title="Health diagnostics" subtitle="Проверки панели, Docker, протоколов и endpoint'ов" onLogout={onLogout} user={user}>
+      {state.error && <div className="warning">{state.error}</div>}
+      <div className="section-head">
+        <h2>Диагностика</h2>
+        <button className="copy-button" type="button" onClick={load}><RefreshCw size={14} /> Обновить</button>
+      </div>
+      {state.loading ? <section className="card">Загрузка...</section> : (
+        <>
+          <div className="health-summary-grid">
+            <section className="card health-summary ok"><span>OK</span><b>{summary.ok || 0}</b></section>
+            <section className="card health-summary warn"><span>WARN</span><b>{summary.warn || 0}</b></section>
+            <section className="card health-summary fail"><span>FAIL</span><b>{summary.fail || 0}</b></section>
+          </div>
+          <div className="health-group-grid">
+            {Object.entries(groups).map(([group, items]) => (
+              <section className="card health-group-card" key={group}>
+                <div className="section-head">
+                  <h2>{group}</h2>
+                  <span className="muted">{items.length} checks</span>
+                </div>
+                <div className="health-check-list">
+                  {items.map((item, idx) => {
+                    const key = `${group}-${idx}-${item.name}`;
+                    return (
+                      <div className={`health-check ${item.status}`} key={key}>
+                        <div className="health-check-main">
+                          <span className={`health-pill ${item.status}`}>{healthStatusLabel(item.status)}</span>
+                          <div>
+                            <b>{item.name}</b>
+                            <small>{item.message}</small>
+                          </div>
+                          <button className="copy-button" type="button" onClick={() => setExpanded(expanded === key ? null : key)}>
+                            {expanded === key ? 'Скрыть' : 'Детали'}
+                          </button>
+                        </div>
+                        {expanded === key && <pre>{JSON.stringify(item.details || {}, null, 2)}</pre>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            ))}
+          </div>
+        </>
+      )}
+    </Shell>
+  );
+}
+
 function NetworkToolResult({ kind, result, peer }) {
   const isTrace = kind === 'traceroute';
   const ping = !isTrace ? parsePingSummary(result.output || '') : null;
@@ -2283,6 +2365,7 @@ function App() {
   if (isAdmin && window.location.pathname === '/audit') return <AuditPage onLogout={logout} user={auth.user} />;
   if (isAdmin && window.location.pathname === '/backups') return <BackupsPage onLogout={logout} user={auth.user} />;
   if (isAdmin && window.location.pathname === '/tools/system') return <SystemStatusPage onLogout={logout} user={auth.user} />;
+  if (isAdmin && window.location.pathname === '/tools/health') return <HealthDiagnosticsPage onLogout={logout} user={auth.user} />;
   if (isAdmin && window.location.pathname === '/tools/ping') return <NetworkToolPage kind="ping" onLogout={logout} user={auth.user} />;
   if (isAdmin && window.location.pathname === '/tools/traceroute') return <NetworkToolPage kind="traceroute" onLogout={logout} user={auth.user} />;
   return <Dashboard onLogout={logout} user={auth.user} />;

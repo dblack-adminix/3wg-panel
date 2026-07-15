@@ -234,6 +234,98 @@ def api_copy_directory_contents(src: Path, dst: Path) -> None:
             shutil.copy2(child, target)
 
 
+def api_diag_item(group: str, name: str, status: str, message: str, details: dict | None = None) -> dict:
+    return {
+        'group': group,
+        'name': name,
+        'status': status if status in ('ok', 'warn', 'fail') else 'warn',
+        'message': message,
+        'details': api_json_safe(details or {}),
+    }
+
+
+def api_node_diagnostics_payload() -> dict:
+    checks = []
+
+    try:
+        docker_client = dc()
+        docker_client.ping()
+        checks.append(api_diag_item('Docker', 'Docker socket', 'ok', 'Docker API доступен'))
+    except Exception as e:
+        checks.append(api_diag_item('Docker', 'Docker socket', 'fail', 'Docker API недоступен', {'error': str(e)}))
+        return {'ok': False, 'ts': int(time.time()), 'summary': {'ok': 0, 'warn': 0, 'fail': 1}, 'checks': checks}
+
+    try:
+        panel = docker_client.containers.get(PANEL_CONTAINER)
+        status = getattr(panel, 'status', 'unknown') or 'unknown'
+        checks.append(api_diag_item('Panel', PANEL_CONTAINER, 'ok' if status == 'running' else 'fail', f'Container status: {status}'))
+    except Exception as e:
+        checks.append(api_diag_item('Panel', PANEL_CONTAINER, 'fail', 'Контейнер панели не найден', {'error': str(e)}))
+
+    for path, label in ((DATA_DIR, 'Data directory'), (CLIENTS_DIR, 'Clients directory'), (BACKUPS_DIR, 'Backups directory')):
+        writable = path.exists() and os.access(path, os.W_OK)
+        checks.append(api_diag_item('Storage', label, 'ok' if writable else 'fail', str(path), {'exists': path.exists(), 'writable': writable}))
+
+    try:
+        ips = sorted({item[4][0] for item in socket.getaddrinfo(ENDPOINT_HOST, None)})
+        checks.append(api_diag_item('Network', 'Endpoint DNS', 'ok', f'{ENDPOINT_HOST} resolves', {'ips': ips}))
+    except Exception as e:
+        checks.append(api_diag_item('Network', 'Endpoint DNS', 'fail', f'{ENDPOINT_HOST} не резолвится', {'error': str(e)}))
+
+    caddy_found = False
+    try:
+        for container in docker_client.containers.list(all=True):
+            name = (container.name or '').lower()
+            if 'caddy' in name:
+                caddy_found = True
+                status = getattr(container, 'status', 'unknown') or 'unknown'
+                checks.append(api_diag_item('Reverse proxy', container.name, 'ok' if status == 'running' else 'warn', f'Container status: {status}'))
+        if not caddy_found:
+            checks.append(api_diag_item('Reverse proxy', 'Caddy', 'warn', 'Caddy container не найден. Если reverse proxy стоит на host/systemd, это нормально.'))
+    except Exception as e:
+        checks.append(api_diag_item('Reverse proxy', 'Caddy', 'warn', 'Не удалось проверить Caddy', {'error': str(e)}))
+
+    for protocol, p in PROTOCOLS.items():
+        title = p['title']
+        container = None
+        try:
+            container = docker_client.containers.get(p['container'])
+            status = getattr(container, 'status', 'unknown') or 'unknown'
+            checks.append(api_diag_item(title, 'Container', 'ok' if status == 'running' else 'fail', f"{p['container']}: {status}"))
+        except Exception as e:
+            checks.append(api_diag_item(title, 'Container', 'fail', f"Контейнер {p['container']} не найден", {'error': str(e)}))
+            continue
+
+        try:
+            config_test = exec_c(p['container'], ['sh', '-lc', f"test -f {shlex.quote(p['config_path'])} && echo ok || echo missing"], check=False)
+            checks.append(api_diag_item(title, 'Config path', 'ok' if config_test.strip() == 'ok' else 'fail', p['config_path']))
+        except Exception as e:
+            checks.append(api_diag_item(title, 'Config path', 'fail', 'Не удалось проверить config path', {'error': str(e)}))
+
+        try:
+            raw = exec_c(p['container'], [p['tool'], 'show', p['interface']], check=True)
+            checks.append(api_diag_item(title, f"{p['tool']} show", 'ok', f"Interface {p['interface']} отвечает", {'output_head': raw[:400]}))
+        except Exception as e:
+            checks.append(api_diag_item(title, f"{p['tool']} show", 'fail', f"Interface {p['interface']} не отвечает", {'error': str(e)}))
+
+        try:
+            listen_port = interface_listen_port(protocol)
+            published_port = docker_published_udp_port(protocol)
+            ports = (container.attrs.get('NetworkSettings') or {}).get('Ports') or {}
+            bindings = {k: v for k, v in ports.items() if str(k).endswith('/udp')}
+            status = 'ok' if str(published_port).strip() else 'warn'
+            checks.append(api_diag_item(title, 'UDP endpoint', status, f"{ENDPOINT_HOST}:{published_port}", {'listen_port': listen_port, 'configured_port': p['port'], 'bindings': bindings}))
+        except Exception as e:
+            checks.append(api_diag_item(title, 'UDP endpoint', 'warn', 'Не удалось определить published UDP port', {'error': str(e)}))
+
+    summary = {
+        'ok': sum(1 for item in checks if item['status'] == 'ok'),
+        'warn': sum(1 for item in checks if item['status'] == 'warn'),
+        'fail': sum(1 for item in checks if item['status'] == 'fail'),
+    }
+    return {'ok': summary['fail'] == 0, 'ts': int(time.time()), 'summary': summary, 'checks': checks}
+
+
 def api_user_where(user: dict, alias: str = 'c') -> tuple[str, list]:
     if user.get('is_admin'):
         return '', []
@@ -616,6 +708,11 @@ def api_node_status(user=Depends(api_require_auth)):
         'protocols': {protocol: api_protocol_state(protocol, include_raw=True) for protocol in PROTOCOLS},
         'errors': errors,
     }
+
+
+@app.get('/api/node/diagnostics')
+def api_node_diagnostics(user=Depends(api_require_admin)):
+    return api_node_diagnostics_payload()
 
 
 @app.get('/api/peers')
