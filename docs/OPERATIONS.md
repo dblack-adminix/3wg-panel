@@ -126,6 +126,43 @@ Updater делает backup, проверяет локальные измене�
 
 Если нужно заново пройти вопросы установки и перегенерировать `.env`, используйте `scripts/install.sh`.
 
+## Update Center из web UI
+
+Страница `/updates` не запускает shell-команды внутри Docker-контейнера панели. Для этого используется отдельный host-side systemd runner:
+
+```bash
+cd /opt/3wg-panel
+sudo BASE=/opt/3wg-panel bash scripts/install_update_runner.sh
+```
+
+Runner слушает Unix socket:
+
+```text
+/opt/3wg-panel/run/update-runner.sock
+```
+
+Контейнер панели получает этот socket как `/app/run/update-runner.sock`. Поэтому в `.env` достаточно оставить:
+
+```env
+UPDATE_RUNNER_ENABLED=1
+UPDATE_RUNNER_SOCKET=/app/run/update-runner.sock
+```
+
+Проверка:
+
+```bash
+systemctl status 3wg-panel-update-runner --no-pager
+ls -l /opt/3wg-panel/run/update-runner.sock
+docker exec 3wg-panel ls -l /app/run/update-runner.sock
+```
+
+Удалить runner:
+
+```bash
+cd /opt/3wg-panel
+sudo BASE=/opt/3wg-panel bash scripts/uninstall_update_runner.sh
+```
+
 ## Upgrade до v1.3.0
 
 Версия `v1.3.0` добавляет основу мониторинга под Prometheus/Grafana:

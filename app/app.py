@@ -13,7 +13,6 @@ import sqlite3
 import socket
 import struct
 import shutil
-import subprocess
 import tarfile
 import tempfile
 import threading
@@ -59,9 +58,8 @@ METRICS_TOKEN = os.getenv("METRICS_TOKEN", "")
 TELEGRAM_ENABLED = os.getenv("TELEGRAM_ENABLED", "0") == "1"
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
-UPDATE_RUNNER_ENABLED = os.getenv("UPDATE_RUNNER_ENABLED", "0") == "1"
-UPDATE_RUNNER_PATH = os.getenv("UPDATE_RUNNER_PATH", "/host/3wg-panel/scripts/update.sh")
-UPDATE_JOB = {"running": False, "started_at": None, "finished_at": None, "exit_code": None, "log": []}
+UPDATE_RUNNER_ENABLED = os.getenv("UPDATE_RUNNER_ENABLED", "1") == "1"
+UPDATE_RUNNER_SOCKET = os.getenv("UPDATE_RUNNER_SOCKET", "/app/run/update-runner.sock")
 PANEL_CONTAINER = os.getenv("PANEL_CONTAINER", "3wg-panel")
 
 PROTOCOLS = {
@@ -274,21 +272,69 @@ def github_web_repository_url(repo: str | None = None) -> str:
     return f"https://github.com/{value.lstrip('/')}"
 
 
+def update_runner_request(command: str, **extra) -> dict:
+    payload = {"command": command, **extra}
+    sock_path = Path(UPDATE_RUNNER_SOCKET)
+    if not UPDATE_RUNNER_ENABLED:
+        raise RuntimeError("UI update runner disabled")
+    if not sock_path.exists():
+        raise RuntimeError(f"Update runner socket not found: {UPDATE_RUNNER_SOCKET}")
+    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    client.settimeout(5)
+    try:
+        client.connect(str(sock_path))
+        client.sendall((json.dumps(payload, ensure_ascii=False) + "\n").encode("utf-8"))
+        data = b""
+        while not data.endswith(b"\n"):
+            chunk = client.recv(65536)
+            if not chunk:
+                break
+            data += chunk
+    finally:
+        client.close()
+    if not data:
+        raise RuntimeError("Update runner returned empty response")
+    response = json.loads(data.decode("utf-8"))
+    if not response.get("ok"):
+        raise RuntimeError(str(response.get("error") or "Update runner error"))
+    return response
+
+
+def update_runner_status() -> dict | None:
+    try:
+        return update_runner_request("status")
+    except (OSError, RuntimeError, ValueError, json.JSONDecodeError):
+        return None
+
+
+def empty_update_job() -> dict:
+    return {"running": False, "started_at": None, "finished_at": None, "exit_code": None, "log": []}
+
+
 def update_runner_payload() -> dict:
-    path = Path(UPDATE_RUNNER_PATH)
-    exists = path.exists()
-    can_run = bool(UPDATE_RUNNER_ENABLED and exists and path.is_file())
+    sock_path = Path(UPDATE_RUNNER_SOCKET)
+    exists = sock_path.exists()
+    status = update_runner_status() if UPDATE_RUNNER_ENABLED and exists else None
+    runner = status.get("runner") if status else {}
+    script_exists = bool(runner.get("script_exists")) if runner else False
+    can_run = bool(UPDATE_RUNNER_ENABLED and exists and script_exists)
     if not UPDATE_RUNNER_ENABLED:
         reason = "UI update runner disabled"
     elif not exists:
-        reason = f"Runner script not found: {UPDATE_RUNNER_PATH}"
-    elif not path.is_file():
-        reason = f"Runner path is not a file: {UPDATE_RUNNER_PATH}"
+        reason = f"Runner socket not found: {UPDATE_RUNNER_SOCKET}"
+    elif not status:
+        reason = "Runner socket is not responding"
+    elif not script_exists:
+        reason = f"Update script not found: {runner.get('update_script') or 'unknown'}"
     else:
         reason = "ready"
     return {
         "enabled": UPDATE_RUNNER_ENABLED,
-        "path": UPDATE_RUNNER_PATH,
+        "path": runner.get("update_script") or UPDATE_RUNNER_SOCKET,
+        "socket": UPDATE_RUNNER_SOCKET,
+        "base": runner.get("base"),
+        "log_path": runner.get("log_path"),
+        "pid": runner.get("pid"),
         "exists": exists,
         "can_run": can_run,
         "reason": reason,
@@ -297,13 +343,17 @@ def update_runner_payload() -> dict:
 
 
 def update_job_payload() -> dict:
-    return {
-        "running": bool(UPDATE_JOB.get("running")),
-        "started_at": UPDATE_JOB.get("started_at"),
-        "finished_at": UPDATE_JOB.get("finished_at"),
-        "exit_code": UPDATE_JOB.get("exit_code"),
-        "log": list(UPDATE_JOB.get("log") or [])[-240:],
-    }
+    status = update_runner_status()
+    if status and isinstance(status.get("job"), dict):
+        job = status["job"]
+        return {
+            "running": bool(job.get("running")),
+            "started_at": job.get("started_at"),
+            "finished_at": job.get("finished_at"),
+            "exit_code": job.get("exit_code"),
+            "log": list(job.get("log") or [])[-240:],
+        }
+    return empty_update_job()
 
 
 def update_status_payload() -> dict:
@@ -323,41 +373,6 @@ def update_status_payload() -> dict:
             "changelog": f"{repo}/releases/tag/{latest}" if latest else None,
         },
     }
-
-
-def update_log(line: str) -> None:
-    UPDATE_JOB.setdefault("log", []).append(str(line).rstrip())
-    UPDATE_JOB["log"] = UPDATE_JOB["log"][-500:]
-
-
-def run_update_job(actor: dict, backup_name: str) -> None:
-    UPDATE_JOB.update({"running": True, "started_at": int(time.time()), "finished_at": None, "exit_code": None, "log": []})
-    update_log(f"Pre-update backup: {backup_name}")
-    update_log(f"Running: bash {UPDATE_RUNNER_PATH}")
-    try:
-        proc = subprocess.Popen(
-            ["bash", UPDATE_RUNNER_PATH],
-            cwd=str(Path(UPDATE_RUNNER_PATH).resolve().parent.parent),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-        )
-        assert proc.stdout is not None
-        for line in proc.stdout:
-            update_log(line)
-        code = int(proc.wait())
-        UPDATE_JOB["exit_code"] = code
-        update_log(f"Exit code: {code}")
-        api_audit_log(None, actor, 'update.finish', 'update', 'runner', 'host', {'exit_code': code})
-        telegram_notify("UI update завершён", [f"Exit code: {code}", f"Кто: {actor.get('username')}"])
-    except Exception as e:
-        UPDATE_JOB["exit_code"] = -1
-        update_log(f"ERROR: {e}")
-        api_audit_log(None, actor, 'update.error', 'update', 'runner', 'host', {'error': str(e)})
-    finally:
-        UPDATE_JOB["finished_at"] = int(time.time())
-        UPDATE_JOB["running"] = False
 
 
 def auth(request: Request, credentials: HTTPBasicCredentials = Depends(security)):
@@ -6767,14 +6782,18 @@ async def api_update_run(request: Request, user=Depends(api_require_admin)):
     runner = update_runner_payload()
     if not runner['can_run']:
         return api_error(runner['reason'], status_code=409, runner=runner)
-    if UPDATE_JOB.get("running"):
+    job = update_job_payload()
+    if job.get("running"):
         return api_error('Update уже выполняется', status_code=409, job=update_job_payload())
     if str(data.get('confirm', '')).strip() != runner['confirm_text']:
         return api_error(f"Для запуска нужно подтверждение {runner['confirm_text']}", status_code=400)
     backup = api_create_backup_archive('pre-ui-update')
-    actor = dict(user)
     api_audit_log(request, user, 'update.start', 'update', 'runner', 'host', {'backup': backup.name, 'runner': runner})
-    threading.Thread(target=run_update_job, args=(actor, backup.name), daemon=True).start()
+    try:
+        update_runner_request('run', actor=user.get('username'), backup=backup.name)
+    except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as e:
+        api_audit_log(request, user, 'update.error', 'update', 'runner', 'host', {'error': str(e), 'backup': backup.name})
+        return api_error(f'Не удалось запустить updater: {e}', status_code=502, runner=runner)
     return update_status_payload()
 
 

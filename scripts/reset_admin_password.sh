@@ -142,6 +142,7 @@ if [ "$RESTART_CONTAINER" = "1" ]; then
   need_cmd docker
   if docker ps -a --format '{{.Names}}' | grep -Fxq "$CONTAINER"; then
     image="$(docker inspect "$CONTAINER" --format '{{.Config.Image}}')"
+    mkdir -p "$INSTALL_DIR/run"
     docker rm -f "$CONTAINER" >/dev/null
     docker run -d \
       --name "$CONTAINER" \
@@ -152,6 +153,7 @@ if [ "$RESTART_CONTAINER" = "1" ]; then
       -v "$INSTALL_DIR/data:/app/data" \
       -v "$INSTALL_DIR/clients:/app/clients" \
       -v "$INSTALL_DIR/backups:/app/backups" \
+      -v "$INSTALL_DIR/run:/app/run" \
       "$image" >/dev/null
   else
     printf 'Container %s not found, .env updated without container recreate.\n' "$CONTAINER" >&2

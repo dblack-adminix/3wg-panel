@@ -60,7 +60,7 @@ install_frontend_deps() {
   fi
 }
 check_python_sources() {
-  python3 -m py_compile app/app.py app/api_keys_store.py scripts/apply_api_patch.py scripts/apply_dashboard_model_patch.py
+  python3 -m py_compile app/app.py app/api_keys_store.py scripts/apply_api_patch.py scripts/apply_dashboard_model_patch.py scripts/update_runner.py
 }
 prepare_existing_worktree() {
   local app_status tracked_status app_backup
@@ -407,7 +407,15 @@ cd "$INSTALL_DIR"
 say "Building Docker image"
 docker build -f app/Dockerfile -t "$IMAGE" .
 
+say "Installing update runner"
+if command -v systemctl >/dev/null 2>&1; then
+  BASE="$INSTALL_DIR" bash scripts/install_update_runner.sh
+else
+  warn "systemctl не найден, update runner не установлен"
+fi
+
 say "Recreating container"
+mkdir -p "$INSTALL_DIR/run"
 docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
 docker run -d \
   --name "$CONTAINER" \
@@ -418,6 +426,7 @@ docker run -d \
   -v "$INSTALL_DIR/data:/app/data" \
   -v "$INSTALL_DIR/clients:/app/clients" \
   -v "$INSTALL_DIR/backups:/app/backups" \
+  -v "$INSTALL_DIR/run:/app/run" \
   "$IMAGE" >/dev/null
 
 say "Health check"

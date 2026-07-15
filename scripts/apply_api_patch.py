@@ -1099,14 +1099,18 @@ async def api_update_run(request: Request, user=Depends(api_require_admin)):
     runner = update_runner_payload()
     if not runner['can_run']:
         return api_error(runner['reason'], status_code=409, runner=runner)
-    if UPDATE_JOB.get("running"):
+    job = update_job_payload()
+    if job.get("running"):
         return api_error('Update уже выполняется', status_code=409, job=update_job_payload())
     if str(data.get('confirm', '')).strip() != runner['confirm_text']:
         return api_error(f"Для запуска нужно подтверждение {runner['confirm_text']}", status_code=400)
     backup = api_create_backup_archive('pre-ui-update')
-    actor = dict(user)
     api_audit_log(request, user, 'update.start', 'update', 'runner', 'host', {'backup': backup.name, 'runner': runner})
-    threading.Thread(target=run_update_job, args=(actor, backup.name), daemon=True).start()
+    try:
+        update_runner_request('run', actor=user.get('username'), backup=backup.name)
+    except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as e:
+        api_audit_log(request, user, 'update.error', 'update', 'runner', 'host', {'error': str(e), 'backup': backup.name})
+        return api_error(f'Не удалось запустить updater: {e}', status_code=502, runner=runner)
     return update_status_payload()
 
 

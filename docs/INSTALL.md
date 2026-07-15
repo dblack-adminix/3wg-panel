@@ -200,8 +200,9 @@ npm ci
 npm run build
 cd ..
 docker build -f app/Dockerfile -t 3wg-panel:local .
+sudo BASE=/opt/3wg-panel bash scripts/install_update_runner.sh
 docker rm -f 3wg-panel 2>/dev/null || true
-docker run -d   --name 3wg-panel   --restart unless-stopped   --env-file /opt/3wg-panel/.env   -p 127.0.0.1:18080:18080   -v /var/run/docker.sock:/var/run/docker.sock   -v /opt/3wg-panel/data:/app/data   -v /opt/3wg-panel/clients:/app/clients   -v /opt/3wg-panel/backups:/app/backups   3wg-panel:local
+docker run -d   --name 3wg-panel   --restart unless-stopped   --env-file /opt/3wg-panel/.env   -p 127.0.0.1:18080:18080   -v /var/run/docker.sock:/var/run/docker.sock   -v /opt/3wg-panel/data:/app/data   -v /opt/3wg-panel/clients:/app/clients   -v /opt/3wg-panel/backups:/app/backups   -v /opt/3wg-panel/run:/app/run   3wg-panel:local
 curl -fsS http://127.0.0.1:18080/health
 ```
 

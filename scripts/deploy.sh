@@ -47,7 +47,7 @@ install_frontend_deps() {
   fi
 }
 check_python_sources() {
-  python3 -m py_compile "$APP" "$BASE/app/api_keys_store.py" "$BASE/scripts/apply_api_patch.py" "$BASE/scripts/apply_dashboard_model_patch.py"
+  python3 -m py_compile "$APP" "$BASE/app/api_keys_store.py" "$BASE/scripts/apply_api_patch.py" "$BASE/scripts/apply_dashboard_model_patch.py" "$BASE/scripts/update_runner.py"
 }
 
 printf '\n======================================================\n'
@@ -74,10 +74,18 @@ printf '\n===== Backup current source =====\n'
 mkdir -p "$BASE/backups/source"
 tar --exclude=frontend/node_modules -czf "$BASE/backups/source/3wg-panel-app.$(date +%F_%H-%M-%S).tgz" -C "$BASE" app scripts frontend docs monitoring docker-compose.yml VERSION
 
+printf '\n===== Update runner =====\n'
+if command -v systemctl >/dev/null 2>&1; then
+  BASE="$BASE" bash "$BASE/scripts/install_update_runner.sh"
+else
+  printf 'systemctl not found, skipping update runner service\n'
+fi
+
 printf '\n===== Build Docker image =====\n'
 docker build -f "$BASE/app/Dockerfile" -t "$IMAGE" "$BASE"
 
 printf '\n===== Recreate 3WG Panel container =====\n'
+mkdir -p "$BASE/run"
 docker rm -f "$CONTAINER" 2>/dev/null || true
 docker run -d \
   --name "$CONTAINER" \
@@ -88,6 +96,7 @@ docker run -d \
   -v "$BASE/data:/app/data" \
   -v "$BASE/clients:/app/clients" \
   -v "$BASE/backups:/app/backups" \
+  -v "$BASE/run:/app/run" \
   "$IMAGE"
 
 printf '\n===== Health check =====\n'

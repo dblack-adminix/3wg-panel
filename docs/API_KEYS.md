@@ -249,7 +249,7 @@ POST   /api/update/run
 
 Telegram notifications настраиваются через `/monitoring` или API `/api/telegram`. В ответах bot token не раскрывается, показывается только suffix. Уведомления уходят при создании, включении, отключении и удалении peer'ов, создании backup, истечении срока peer и превышении traffic limit.
 
-Update Center доступен через `/updates`. `POST /api/update/run` запускает updater только если на хосте явно включён `UPDATE_RUNNER_ENABLED=1` и runner script доступен контейнеру. Перед запуском создаётся backup `pre-ui-update`.
+Update Center доступен через `/updates`. `POST /api/update/run` запускает updater только через host-side Unix socket runner. Контейнер панели подключается к `/app/run/update-runner.sock`, а сам runner на хосте выполняет `scripts/update.sh`. Перед запуском создаётся backup `pre-ui-update`.
 
 Только через web session администратора:
 
