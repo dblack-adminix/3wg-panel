@@ -215,6 +215,14 @@ html[data-theme="light"] .sidebar-backdrop { background: rgba(15, 23, 42, .42); 
 .user-create-card form { display: grid; gap: 10px; }
 .users-list-card { min-width: 0; }
 .users-table { min-width: 860px; }
+.audit-filter-card { margin-bottom: 12px; }
+.audit-filters { display: grid; grid-template-columns: 120px repeat(3, minmax(160px, 1fr)) auto; gap: 10px; align-items: end; }
+.audit-filters label { display: grid; gap: 7px; }
+.audit-filters label span { color: #8a8a8a; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
+.audit-table { width: 1180px; min-width: 1180px; }
+.audit-action { display: inline-flex; align-items: center; min-height: 24px; padding: 3px 8px; border: 1px solid rgba(200, 255, 0, .42); border-radius: 5px; background: rgba(200, 255, 0, .08); color: var(--green); font-weight: 800; }
+.audit-details-row td { padding: 0 8px 10px !important; background: #080808; white-space: normal; }
+.audit-details-row pre { margin: 0; max-height: 260px; overflow: auto; border: 1px solid #262626; border-radius: 8px; background: #050505; color: #d7d7d7; padding: 12px; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .inline-number { width: 82px; height: 30px; border: 1px solid #333333; border-radius: 6px; background: #0d0d0d; color: #ffffff; padding: 0 8px; }
 .inline-password { width: 140px; height: 30px; border: 1px solid #333333; border-radius: 6px; background: #0d0d0d; color: #ffffff; padding: 0 8px; }
 .user-actions { display: flex; align-items: center; gap: 5px; }
@@ -603,6 +611,7 @@ html[data-theme="light"] .sidebar-backdrop { background: rgba(15, 23, 42, .42); 
 @media (max-width: 720px) {
   .tools-kpi-grid,
   .tool-service-grid { grid-template-columns: 1fr; }
+  .audit-filters { grid-template-columns: 1fr; }
   .system-facts { grid-template-columns: 1fr; }
   .container-list div { grid-template-columns: 12px 1fr; }
   .container-list small, .container-list em { grid-column: 2; }
@@ -935,4 +944,20 @@ html[data-theme="light"] .tool-result-hero.bad strong,
 html[data-theme="light"] .tool-result-hero.bad b,
 html[data-theme="light"] .danger-text {
   color: #c2410c;
+}
+html[data-theme="light"] .audit-filters label span {
+  color: #64748b;
+}
+html[data-theme="light"] .audit-action {
+  background: #f3f8e8;
+  border-color: #c5d99a;
+  color: #5f7f00;
+}
+html[data-theme="light"] .audit-details-row td {
+  background: #f8fafc;
+}
+html[data-theme="light"] .audit-details-row pre {
+  background: #0f172a;
+  border-color: #1e293b;
+  color: #e2e8f0;
 }

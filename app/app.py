@@ -627,6 +627,25 @@ def init_db():
                 updated_at INTEGER NOT NULL
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS audit_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts INTEGER NOT NULL,
+                actor_id INTEGER,
+                actor_username TEXT NOT NULL,
+                actor_role TEXT NOT NULL,
+                action TEXT NOT NULL,
+                object_type TEXT NOT NULL,
+                object_id TEXT,
+                object_label TEXT,
+                ip TEXT,
+                user_agent TEXT,
+                context TEXT NOT NULL DEFAULT '{}'
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_events_ts ON audit_events(ts)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_events_actor ON audit_events(actor_username, ts)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_events_object ON audit_events(object_type, object_id, ts)")
         conn.commit()
 
 
@@ -5550,6 +5569,101 @@ def api_require_admin(user=Depends(api_require_auth)):
     raise HTTPException(status_code=403, detail='Admin only')
 
 
+def api_actor_payload(user: dict | None) -> dict:
+    user = user or {}
+    username = str(user.get('username') or PANEL_USER)
+    role = 'admin' if user.get('is_admin') else str(user.get('role') or 'user')
+    actor_id = user.get('id')
+    try:
+        actor_id = int(actor_id) if actor_id is not None else None
+    except (TypeError, ValueError):
+        actor_id = None
+    return {'id': actor_id, 'username': username, 'role': role}
+
+
+def api_json_safe(value):
+    if isinstance(value, dict):
+        return {str(k): api_json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [api_json_safe(v) for v in value]
+    if isinstance(value, sqlite3.Row):
+        return {k: api_json_safe(value[k]) for k in value.keys()}
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return str(value)
+
+
+def api_audit_log(
+    request: Request | None,
+    user: dict | None,
+    action: str,
+    object_type: str,
+    object_id=None,
+    object_label: str | None = None,
+    context: dict | None = None,
+) -> None:
+    actor = api_actor_payload(user)
+    ip = None
+    user_agent = None
+    if request is not None:
+        forwarded = request.headers.get('x-forwarded-for', '')
+        ip = (forwarded.split(',')[0].strip() if forwarded else '') or (request.client.host if request.client else None)
+        user_agent = request.headers.get('user-agent', '')[:300]
+    try:
+        payload = json.dumps(api_json_safe(context or {}), ensure_ascii=False, sort_keys=True)
+    except Exception:
+        payload = '{}'
+    with db() as conn:
+        conn.execute(
+            """
+            INSERT INTO audit_events(
+                ts, actor_id, actor_username, actor_role, action, object_type,
+                object_id, object_label, ip, user_agent, context
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                int(time.time()),
+                actor['id'],
+                actor['username'],
+                actor['role'],
+                str(action),
+                str(object_type),
+                None if object_id is None else str(object_id),
+                None if object_label is None else str(object_label)[:200],
+                ip,
+                user_agent,
+                payload,
+            ),
+        )
+        conn.commit()
+
+
+def api_audit_event_payload(row) -> dict:
+    try:
+        context = json.loads(row['context'] or '{}')
+    except Exception:
+        context = {}
+    return {
+        'id': row['id'],
+        'ts': row['ts'],
+        'actor': {
+            'id': row['actor_id'],
+            'username': row['actor_username'],
+            'role': row['actor_role'],
+        },
+        'action': row['action'],
+        'object_type': row['object_type'],
+        'object_id': row['object_id'],
+        'object_label': row['object_label'],
+        'ip': row['ip'],
+        'user_agent': row['user_agent'],
+        'context': context,
+    }
+
+
 def api_user_where(user: dict, alias: str = 'c') -> tuple[str, list]:
     if user.get('is_admin'):
         return '', []
@@ -5970,6 +6084,42 @@ def api_users(user=Depends(api_require_admin)):
     return {'ok': True, 'users': api_panel_users_payload()}
 
 
+@app.get('/api/audit')
+def api_audit_events(
+    request: Request,
+    limit: int = 100,
+    action: str | None = None,
+    actor: str | None = None,
+    object_type: str | None = None,
+    user=Depends(api_require_admin),
+):
+    limit = max(1, min(int(limit or 100), 500))
+    clauses = []
+    values = []
+    if action:
+        clauses.append('action = ?')
+        values.append(action.strip())
+    if actor:
+        clauses.append('actor_username = ?')
+        values.append(actor.strip())
+    if object_type:
+        clauses.append('object_type = ?')
+        values.append(object_type.strip())
+    where = ('WHERE ' + ' AND '.join(clauses)) if clauses else ''
+    with db() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT *
+            FROM audit_events
+            {where}
+            ORDER BY ts DESC, id DESC
+            LIMIT ?
+            """,
+            [*values, limit],
+        ).fetchall()
+    return {'ok': True, 'events': [api_audit_event_payload(r) for r in rows]}
+
+
 @app.post('/api/users')
 async def api_user_create(request: Request, user=Depends(api_require_admin)):
     data = await api_read_payload(request)
@@ -5995,8 +6145,18 @@ async def api_user_create(request: Request, user=Depends(api_require_admin)):
                 (username, password_hash(password), role, peer_limit, int(time.time())),
             )
             conn.commit()
+            created_id = int(conn.execute('SELECT last_insert_rowid() AS id').fetchone()['id'])
     except sqlite3.IntegrityError:
         return api_error('Такой пользователь уже есть', status_code=409)
+    api_audit_log(
+        request,
+        user,
+        'user.create',
+        'panel_user',
+        created_id,
+        username,
+        {'role': role, 'peer_limit': peer_limit},
+    )
     return {'ok': True, 'users': api_panel_users_payload()}
 
 
@@ -6028,24 +6188,39 @@ async def api_user_update(user_id: int, request: Request, user=Depends(api_requi
         values.append(password_hash(password))
     if not fields:
         return {'ok': True, 'users': api_panel_users_payload()}
+    with db() as conn:
+        before = conn.execute('SELECT id, username, role, peer_limit, enabled FROM panel_users WHERE id = ?', (user_id,)).fetchone()
+    if not before:
+        return api_error('Пользователь не найден', status_code=404)
     values.append(user_id)
     with db() as conn:
         cur = conn.execute(f"UPDATE panel_users SET {', '.join(fields)} WHERE id = ?", values)
         if cur.rowcount == 0:
             return api_error('Пользователь не найден', status_code=404)
         conn.commit()
+    changed = [f.split(' = ', 1)[0] for f in fields]
+    api_audit_log(
+        request,
+        user,
+        'user.update',
+        'panel_user',
+        user_id,
+        before['username'],
+        {'changed': changed, 'before': dict(before)},
+    )
     return {'ok': True, 'users': api_panel_users_payload()}
 
 
 @app.delete('/api/users/{user_id}')
-def api_user_delete(user_id: int, user=Depends(api_require_admin)):
+def api_user_delete(user_id: int, request: Request, user=Depends(api_require_admin)):
     with db() as conn:
-        row = conn.execute('SELECT id FROM panel_users WHERE id = ?', (user_id,)).fetchone()
+        row = conn.execute('SELECT id, username, role, peer_limit, enabled FROM panel_users WHERE id = ?', (user_id,)).fetchone()
         if not row:
             return api_error('Пользователь не найден', status_code=404)
         conn.execute('UPDATE clients SET owner_id = NULL WHERE owner_id = ?', (user_id,))
         conn.execute('DELETE FROM panel_users WHERE id = ?', (user_id,))
         conn.commit()
+    api_audit_log(request, user, 'user.delete', 'panel_user', user_id, row['username'], {'deleted': dict(row)})
     return {'ok': True, 'users': api_panel_users_payload()}
 
 
@@ -6065,6 +6240,7 @@ async def api_category_create(request: Request, user=Depends(api_require_admin))
             category_id = int(cur.lastrowid)
     except sqlite3.IntegrityError:
         return api_error('Такая категория уже есть', status_code=409)
+    api_audit_log(request, user, 'category.create', 'category', category_id, name)
     return {'ok': True, 'category': next((c for c in api_categories_payload() if c['id'] == category_id), None)}
 
 
@@ -6074,6 +6250,10 @@ async def api_category_update(category_id: int, request: Request, user=Depends(a
     name = api_clean_category_name(data.get('name', ''))
     if not name:
         return api_error('Пустое имя категории', status_code=400)
+    with db() as conn:
+        before = conn.execute('SELECT id, name FROM categories WHERE id = ?', (category_id,)).fetchone()
+    if not before:
+        return api_error('Категория не найдена', status_code=404)
     try:
         with db() as conn:
             cur = conn.execute('UPDATE categories SET name = ? WHERE id = ?', (name, category_id))
@@ -6082,18 +6262,21 @@ async def api_category_update(category_id: int, request: Request, user=Depends(a
             conn.commit()
     except sqlite3.IntegrityError:
         return api_error('Такая категория уже есть', status_code=409)
+    api_audit_log(request, user, 'category.update', 'category', category_id, name, {'before': dict(before), 'name': name})
     return {'ok': True, 'categories': api_categories_payload()}
 
 
 @app.delete('/api/categories/{category_id}')
-def api_category_delete(category_id: int, user=Depends(api_require_admin)):
+def api_category_delete(category_id: int, request: Request, user=Depends(api_require_admin)):
     with db() as conn:
-        row = conn.execute('SELECT id FROM categories WHERE id = ?', (category_id,)).fetchone()
+        row = conn.execute('SELECT id, name FROM categories WHERE id = ?', (category_id,)).fetchone()
         if not row:
             return api_error('Категория не найдена', status_code=404)
+        affected = conn.execute('SELECT COUNT(*) AS n FROM clients WHERE category_id = ?', (category_id,)).fetchone()['n']
         conn.execute('UPDATE clients SET category_id = NULL WHERE category_id = ?', (category_id,))
         conn.execute('DELETE FROM categories WHERE id = ?', (category_id,))
         conn.commit()
+    api_audit_log(request, user, 'category.delete', 'category', category_id, row['name'], {'affected_peers': affected})
     return {'ok': True, 'categories': api_categories_payload()}
 
 
@@ -6132,6 +6315,17 @@ async def api_create_peers(request: Request, user=Depends(api_require_auth)):
     except Exception as e:
         return api_error(str(e), status_code=500, created_ids=created_ids)
 
+    for created_id in created_ids:
+        api_audit_log(
+            request,
+            user,
+            'peer.create',
+            'peer',
+            created_id,
+            name,
+            {'protocols': protocols, 'category_id': category_id},
+        )
+
     live, _ = api_live_maps()
     with db() as conn:
         qmarks = ','.join('?' for _ in created_ids)
@@ -6156,6 +6350,12 @@ async def api_peer_update(client_id: int, request: Request, user=Depends(api_req
     except HTTPException as e:
         return api_error(str(e.detail), status_code=e.status_code)
     with db() as conn:
+        before = conn.execute(
+            'SELECT id, name, protocol, category_id FROM clients WHERE id = ? AND COALESCE(deleted_at, 0) = 0',
+            (client_id,),
+        ).fetchone()
+        if not before:
+            return api_error('Клиент не найден', status_code=404)
         cur = conn.execute(
             'UPDATE clients SET category_id = ? WHERE id = ? AND COALESCE(deleted_at, 0) = 0',
             (category_id, client_id),
@@ -6163,6 +6363,15 @@ async def api_peer_update(client_id: int, request: Request, user=Depends(api_req
         if cur.rowcount == 0:
             return api_error('Клиент не найден', status_code=404)
         conn.commit()
+    api_audit_log(
+        request,
+        user,
+        'peer.update',
+        'peer',
+        client_id,
+        before['name'],
+        {'protocol': before['protocol'], 'before_category_id': before['category_id'], 'category_id': category_id},
+    )
     live, _ = api_live_maps()
     with db() as conn:
         c = conn.execute("""
@@ -6193,7 +6402,7 @@ def api_peer_config(client_id: int, user=Depends(api_require_auth)):
 
 
 @app.post('/api/peers/{client_id}/enable')
-def api_peer_enable(client_id: int, user=Depends(api_require_auth)):
+def api_peer_enable(client_id: int, request: Request, user=Depends(api_require_auth)):
     c = load_client(client_id)
     if not user.get('is_admin') and c['owner_id'] != user.get('id'):
         raise HTTPException(status_code=404, detail='Client not found')
@@ -6201,13 +6410,14 @@ def api_peer_enable(client_id: int, user=Depends(api_require_auth)):
         enable_peer(c)
     except Exception as e:
         return api_error(str(e), status_code=500)
+    api_audit_log(request, user, 'peer.enable', 'peer', client_id, c['name'], {'protocol': c['protocol'], 'ip_cidr': c['ip_cidr']})
     live, _ = api_live_maps()
     c = load_client(client_id)
     return {'ok': True, 'peer': api_peer_payload(c, live=live)}
 
 
 @app.post('/api/peers/{client_id}/disable')
-def api_peer_disable(client_id: int, user=Depends(api_require_auth)):
+def api_peer_disable(client_id: int, request: Request, user=Depends(api_require_auth)):
     c = load_client(client_id)
     if not user.get('is_admin') and c['owner_id'] != user.get('id'):
         raise HTTPException(status_code=404, detail='Client not found')
@@ -6215,13 +6425,14 @@ def api_peer_disable(client_id: int, user=Depends(api_require_auth)):
         disable_peer(c)
     except Exception as e:
         return api_error(str(e), status_code=500)
+    api_audit_log(request, user, 'peer.disable', 'peer', client_id, c['name'], {'protocol': c['protocol'], 'ip_cidr': c['ip_cidr']})
     live, _ = api_live_maps()
     c = load_client(client_id)
     return {'ok': True, 'peer': api_peer_payload(c, live=live)}
 
 
 @app.delete('/api/peers/{client_id}')
-def api_peer_delete(client_id: int, user=Depends(api_require_auth)):
+def api_peer_delete(client_id: int, request: Request, user=Depends(api_require_auth)):
     c = load_client(client_id)
     if not user.get('is_admin') and c['owner_id'] != user.get('id'):
         raise HTTPException(status_code=404, detail='Client not found')
@@ -6235,6 +6446,7 @@ def api_peer_delete(client_id: int, user=Depends(api_require_auth)):
             conf_path.rename(conf_path.with_suffix(conf_path.suffix + f'.deleted.{int(time.time())}'))
     except Exception as e:
         return api_error(str(e), status_code=500)
+    api_audit_log(request, user, 'peer.delete', 'peer', client_id, c['name'], {'protocol': c['protocol'], 'ip_cidr': c['ip_cidr']})
     return {'ok': True, 'deleted_id': client_id}
 # === 3WG REACT API END ===
 
@@ -6499,14 +6711,27 @@ def api_apikeys_list(user=Depends(_apikey_session_only)):
 @app.post('/api/apikeys')
 async def api_apikeys_create(request: Request, user=Depends(_apikey_session_only)):
     data = await api_read_payload(request)
-    created = create_api_key(DB_PATH, data.get('name', ''))
+    name = data.get('name', '')
+    created = create_api_key(DB_PATH, name)
+    token = str(created.get('token') or '')
+    api_audit_log(
+        request,
+        user,
+        'apikey.create',
+        'api_key',
+        created.get('id'),
+        created.get('name') or name,
+        {'token_masked': f"{token[:6]}...{token[-4:]}" if token else ''},
+    )
     return {'ok': True, **created}
 
 
 @app.delete('/api/apikeys/{key_id}')
-def api_apikeys_delete(key_id: int, user=Depends(_apikey_session_only)):
+def api_apikeys_delete(key_id: int, request: Request, user=Depends(_apikey_session_only)):
+    before = next((k for k in list_api_keys(DB_PATH) if int(k.get('id') or 0) == int(key_id)), None)
     if not delete_api_key(DB_PATH, key_id):
         return api_error('Ключ не найден', status_code=404)
+    api_audit_log(request, user, 'apikey.delete', 'api_key', key_id, before.get('name') if before else None, {'key': before or {}})
     return {'ok': True, 'deleted_id': key_id}
 
 
@@ -6555,26 +6780,32 @@ def api_monitoring_get(user=Depends(api_require_admin)):
 @app.patch('/api/monitoring')
 async def api_monitoring_update(request: Request, user=Depends(api_require_admin)):
     data = await api_read_payload(request)
+    before = monitoring_status_payload()
     if "enabled" in data:
         panel_setting_set("metrics_enabled", "1" if bool(data.get("enabled")) else "0")
-    return monitoring_status_payload()
+    after = monitoring_status_payload()
+    if before != after:
+        api_audit_log(request, user, 'monitoring.update', 'monitoring', 'settings', 'metrics', {'before': before, 'after': after})
+    return after
 
 
 @app.post('/api/monitoring/token')
-def api_monitoring_token_create(user=Depends(api_require_admin)):
+def api_monitoring_token_create(request: Request, user=Depends(api_require_admin)):
     token = secrets.token_urlsafe(32)
     panel_setting_set("metrics_token_hash", password_hash(token))
     panel_setting_set("metrics_token_suffix", token[-6:])
     panel_setting_set("metrics_enabled", "1")
     payload = monitoring_status_payload()
     payload["token"] = token
+    api_audit_log(request, user, 'monitoring.token.create', 'monitoring', 'token', 'metrics', {'suffix': token[-6:]})
     return payload
 
 
 @app.delete('/api/monitoring/token')
-def api_monitoring_token_delete(user=Depends(api_require_admin)):
+def api_monitoring_token_delete(request: Request, user=Depends(api_require_admin)):
     panel_setting_set("metrics_token_hash", "")
     panel_setting_set("metrics_token_suffix", "")
+    api_audit_log(request, user, 'monitoring.token.delete', 'monitoring', 'token', 'metrics')
     return monitoring_status_payload()
 # === 3WG MONITORING SETTINGS API END ===
 

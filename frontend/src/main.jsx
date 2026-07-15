@@ -174,6 +174,7 @@ function Sidebar({ onLogout, protocols: initialProtocols = null, user, mobileOpe
       {isAdmin && <a className={`nav ${path === '/users' ? 'active' : ''}`} href="/users" onClick={onClose}><Users size={14} /> <span>Пользователи</span></a>}
       {isAdmin && <a className={`nav ${path === '/apikeys' ? 'active' : ''}`} href="/apikeys" onClick={onClose}><Key size={14} /> <span>API-ключи</span></a>}
       {isAdmin && <a className={`nav ${path === '/monitoring' ? 'active' : ''}`} href="/monitoring" onClick={onClose}><Activity size={14} /> <span>Мониторинг</span></a>}
+      {isAdmin && <a className={`nav ${path === '/audit' ? 'active' : ''}`} href="/audit" onClick={onClose}><Terminal size={14} /> <span>Audit log</span></a>}
       {isAdmin && <div className="nav-title">ИНСТРУМЕНТЫ</div>}
       {isAdmin && <a className={`nav ${path === '/tools/system' ? 'active' : ''}`} href="/tools/system" onClick={onClose}><Activity size={14} /> <span>System Status</span></a>}
       {isAdmin && <a className={`nav ${path === '/tools/ping' ? 'active' : ''}`} href="/tools/ping" onClick={onClose}><Network size={14} /> <span>Ping</span></a>}
@@ -1420,6 +1421,100 @@ function UserRow({ item, busy, onPatch, onDelete }) {
   );
 }
 
+function formatAuditTime(ts) {
+  return ts ? new Date(ts * 1000).toLocaleString('ru-RU') : '-';
+}
+
+function AuditPage({ onLogout, user }) {
+  const [events, setEvents] = useState([]);
+  const [filters, setFilters] = useState({ limit: 100, action: '', actor: '', object_type: '' });
+  const [expanded, setExpanded] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      params.set('limit', String(filters.limit || 100));
+      if (filters.action.trim()) params.set('action', filters.action.trim());
+      if (filters.actor.trim()) params.set('actor', filters.actor.trim());
+      if (filters.object_type.trim()) params.set('object_type', filters.object_type.trim());
+      const data = await api(`/api/audit?${params.toString()}`);
+      setEvents(data.events || []);
+      setError('');
+    } catch (err) {
+      setError(err.message || 'Ошибка audit log');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const actions = [...new Set(events.map((e) => e.action).filter(Boolean))].sort();
+  const objectTypes = [...new Set(events.map((e) => e.object_type).filter(Boolean))].sort();
+
+  return (
+    <Shell title="Audit log" subtitle="История действий администраторов, пользователей и интеграций" onLogout={onLogout} user={user}>
+      <section className="card audit-filter-card">
+        <div className="section-head">
+          <h2>Фильтры</h2>
+          <button className="copy-button" type="button" onClick={load} disabled={loading}><RefreshCw size={14} /> Обновить</button>
+        </div>
+        <div className="audit-filters">
+          <label><span>Limit</span><input className="name-input" type="number" min="1" max="500" value={filters.limit} onChange={(e) => setFilters({ ...filters, limit: Number(e.target.value) })} /></label>
+          <label><span>Action</span><input className="name-input" list="audit-actions" value={filters.action} onChange={(e) => setFilters({ ...filters, action: e.target.value })} placeholder="peer.create" /></label>
+          <label><span>Actor</span><input className="name-input" value={filters.actor} onChange={(e) => setFilters({ ...filters, actor: e.target.value })} placeholder="admin" /></label>
+          <label><span>Object</span><input className="name-input" list="audit-objects" value={filters.object_type} onChange={(e) => setFilters({ ...filters, object_type: e.target.value })} placeholder="peer" /></label>
+          <button className="orange-btn" type="button" onClick={load} disabled={loading}><Terminal size={15} /> Показать</button>
+        </div>
+        <datalist id="audit-actions">{actions.map((a) => <option key={a} value={a} />)}</datalist>
+        <datalist id="audit-objects">{objectTypes.map((t) => <option key={t} value={t} />)}</datalist>
+        {error && <div className="warning">{error}</div>}
+      </section>
+
+      <section className="card">
+        <div className="section-head">
+          <h2>События</h2>
+          <span className="muted">{events.length} записей</span>
+        </div>
+        <div className="table-wrap">
+          <table className="clients-table audit-table">
+            <thead><tr><th>Время</th><th>Кто</th><th>Action</th><th>Object</th><th>IP</th><th>Context</th></tr></thead>
+            <tbody>
+              {events.length === 0 && <tr><td className="empty-table" colSpan={6}>{loading ? 'Загрузка...' : 'Событий пока нет'}</td></tr>}
+              {events.map((event) => (
+                <React.Fragment key={event.id}>
+                  <tr>
+                    <td>{formatAuditTime(event.ts)}</td>
+                    <td><b>{event.actor?.username || '-'}</b><small>{event.actor?.role || '-'}</small></td>
+                    <td><span className="audit-action">{event.action}</span></td>
+                    <td><b>{event.object_label || event.object_id || '-'}</b><small>{event.object_type}{event.object_id ? ` #${event.object_id}` : ''}</small></td>
+                    <td>{event.ip || '-'}</td>
+                    <td>
+                      <button className="copy-button" type="button" onClick={() => setExpanded(expanded === event.id ? null : event.id)}>
+                        {expanded === event.id ? <ChevronLeft size={14} /> : <Terminal size={14} />} Details
+                      </button>
+                    </td>
+                  </tr>
+                  {expanded === event.id && (
+                    <tr className="audit-details-row">
+                      <td colSpan={6}>
+                        <pre>{JSON.stringify({ context: event.context, user_agent: event.user_agent }, null, 2)}</pre>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </Shell>
+  );
+}
+
 function ApiKeysPage({ onLogout, user }) {
   const [keys, setKeys] = useState([]);
   const [name, setName] = useState('');
@@ -2063,6 +2158,7 @@ function App() {
   if (isAdmin && window.location.pathname === '/apikeys') return <ApiKeysPage onLogout={logout} user={auth.user} />;
   if (isAdmin && window.location.pathname === '/users') return <UsersPage onLogout={logout} user={auth.user} />;
   if (isAdmin && window.location.pathname === '/monitoring') return <MonitoringPage onLogout={logout} user={auth.user} />;
+  if (isAdmin && window.location.pathname === '/audit') return <AuditPage onLogout={logout} user={auth.user} />;
   if (isAdmin && window.location.pathname === '/tools/system') return <SystemStatusPage onLogout={logout} user={auth.user} />;
   if (isAdmin && window.location.pathname === '/tools/ping') return <NetworkToolPage kind="ping" onLogout={logout} user={auth.user} />;
   if (isAdmin && window.location.pathname === '/tools/traceroute') return <NetworkToolPage kind="traceroute" onLogout={logout} user={auth.user} />;
