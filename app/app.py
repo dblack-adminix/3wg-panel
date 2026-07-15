@@ -6732,6 +6732,88 @@ def api_peer_payload(c, live: dict | None = None, include_config: bool = False, 
     return payload
 
 
+def api_check_payload(status: str, name: str, message: str, details: dict | None = None) -> dict:
+    return {'status': status, 'name': name, 'message': message, 'details': details or {}}
+
+
+def api_peer_diagnostics_payload(c) -> dict:
+    live, errors = api_live_maps()
+    counters = api_record_peer_traffic_counters(live)
+    peer = api_peer_payload(c, live=live, include_config=False, counters=counters)
+    protocol = c['protocol']
+    p = PROTOCOLS[protocol]
+    lp = (live.get(protocol) or {}).get(c['public_key'])
+    active, handshake_age = api_recent_handshake(lp)
+    checks = []
+
+    protocol_state = api_protocol_state(protocol)
+    if protocol_state.get('available'):
+        checks.append(api_check_payload('ok', 'Protocol interface', f"{p['title']} доступен: {p['container']} / {p['interface']}", protocol_state))
+    else:
+        checks.append(api_check_payload('fail', 'Protocol interface', protocol_state.get('reason') or 'protocol unavailable', protocol_state))
+
+    try:
+        container = dc().containers.get(p['container'])
+        status = getattr(container, 'status', 'unknown') or 'unknown'
+        checks.append(api_check_payload('ok' if status == 'running' else 'fail', 'Docker container', f"{p['container']} status: {status}", {'container': p['container'], 'status': status}))
+    except Exception as exc:
+        checks.append(api_check_payload('fail', 'Docker container', str(exc), {'container': p['container']}))
+
+    config_path = Path(c['config_path'])
+    if config_path.exists():
+        checks.append(api_check_payload('ok', 'Client config file', str(config_path), {'path': str(config_path), 'size': config_path.stat().st_size}))
+    else:
+        checks.append(api_check_payload('fail', 'Client config file', f"Файл не найден: {config_path}", {'path': str(config_path)}))
+
+    if lp:
+        checks.append(api_check_payload('ok', 'Peer in live interface', 'Peer найден в live выводе контейнера', {'public_key': short_key(c['public_key']), 'endpoint': lp.get('endpoint')}))
+    elif peer.get('enabled'):
+        checks.append(api_check_payload('fail', 'Peer in live interface', 'Peer включён в панели, но не найден в live-интерфейсе', {'public_key': short_key(c['public_key'])}))
+    else:
+        checks.append(api_check_payload('warn', 'Peer in live interface', 'Peer отключён, поэтому в live-интерфейсе может отсутствовать', {'public_key': short_key(c['public_key'])}))
+
+    if not peer.get('enabled'):
+        checks.append(api_check_payload('warn', 'Access state', 'Peer отключён администратором', {'enabled': False}))
+    elif peer.get('expiration', {}).get('expired'):
+        checks.append(api_check_payload('fail', 'Access state', 'Срок действия peer истёк', peer.get('expiration')))
+    elif peer.get('traffic_limit', {}).get('exceeded'):
+        checks.append(api_check_payload('fail', 'Access state', 'Лимит трафика peer исчерпан', peer.get('traffic_limit')))
+    else:
+        checks.append(api_check_payload('ok', 'Access state', 'Peer разрешён к подключению', {'status': peer.get('status')}))
+
+    endpoint = (lp or {}).get('endpoint')
+    if endpoint and endpoint != '(none)':
+        checks.append(api_check_payload('ok', 'Client endpoint', endpoint, {'endpoint': endpoint}))
+    elif active:
+        checks.append(api_check_payload('warn', 'Client endpoint', 'Handshake есть, endpoint не определён', {'endpoint': endpoint or '(none)'}))
+    else:
+        checks.append(api_check_payload('warn', 'Client endpoint', 'Клиент ещё не подключался или endpoint пустой', {'endpoint': endpoint or '(none)'}))
+
+    if active:
+        checks.append(api_check_payload('ok', 'Handshake freshness', f"Последний handshake {handshake_age} сек. назад", {'age_seconds': handshake_age, 'window_seconds': ONLINE_HANDSHAKE_WINDOW_SECONDS}))
+    elif handshake_age is not None:
+        checks.append(api_check_payload('warn', 'Handshake freshness', f"Handshake был {handshake_age} сек. назад, сейчас не считаем online", {'age_seconds': handshake_age, 'window_seconds': ONLINE_HANDSHAKE_WINDOW_SECONDS}))
+    else:
+        checks.append(api_check_payload('warn', 'Handshake freshness', 'Handshake ещё не зафиксирован', {'age_seconds': None}))
+
+    rx = int((lp or {}).get('rx') or 0)
+    tx = int((lp or {}).get('tx') or 0)
+    if rx or tx:
+        checks.append(api_check_payload('ok', 'Traffic counters', f"RX {human_bytes(rx)} / TX {human_bytes(tx)}", {'rx': rx, 'tx': tx}))
+    else:
+        checks.append(api_check_payload('warn', 'Traffic counters', 'Трафика пока нет', {'rx': rx, 'tx': tx}))
+
+    if errors:
+        checks.append(api_check_payload('warn', 'Live map errors', '; '.join(errors[:3]), {'errors': errors}))
+
+    summary = {
+        'ok': sum(1 for item in checks if item['status'] == 'ok'),
+        'warn': sum(1 for item in checks if item['status'] == 'warn'),
+        'fail': sum(1 for item in checks if item['status'] == 'fail'),
+    }
+    return {'ok': True, 'peer': peer, 'summary': summary, 'checks': checks, 'checked_at': int(time.time())}
+
+
 @app.post('/api/auth/login')
 async def api_auth_login(request: Request):
     data = await api_read_payload(request)
@@ -7295,6 +7377,15 @@ def api_peer_get(client_id: int, user=Depends(api_require_auth)):
     if not user.get('is_admin') and c['owner_id'] != user.get('id'):
         raise HTTPException(status_code=404, detail='Client not found')
     return {'ok': True, 'peer': api_peer_payload(c, live=live, include_config=True, counters=counters)}
+
+
+@app.get('/api/peers/{client_id}/diagnostics')
+def api_peer_diagnostics(client_id: int, user=Depends(api_require_auth)):
+    api_disable_expired_peers()
+    c = load_client(client_id)
+    if not user.get('is_admin') and c['owner_id'] != user.get('id'):
+        raise HTTPException(status_code=404, detail='Client not found')
+    return api_peer_diagnostics_payload(c)
 
 
 @app.get('/api/peers/{client_id}/config')

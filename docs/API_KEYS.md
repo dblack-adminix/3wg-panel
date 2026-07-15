@@ -216,6 +216,7 @@ POST   /api/peers
 GET    /api/peers/{client_id}
 PATCH  /api/peers/{client_id}
 GET    /api/peers/{client_id}/config
+GET    /api/peers/{client_id}/diagnostics
 POST   /api/peers/{client_id}/enable
 POST   /api/peers/{client_id}/disable
 DELETE /api/peers/{client_id}

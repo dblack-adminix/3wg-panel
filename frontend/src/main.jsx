@@ -773,6 +773,32 @@ function QrModal({ peer, onClose }) {
 }
 
 
+function PeerDiagnosticsResult({ data }) {
+  const summary = data?.summary || {};
+  const checks = data?.checks || [];
+  return (
+    <div className="peer-diag">
+      <div className="peer-diag-summary">
+        <div className="ok"><span>OK</span><b>{summary.ok || 0}</b></div>
+        <div className="warn"><span>WARN</span><b>{summary.warn || 0}</b></div>
+        <div className="fail"><span>FAIL</span><b>{summary.fail || 0}</b></div>
+      </div>
+      <div className="peer-diag-list">
+        {checks.map((item, idx) => (
+          <div className={`peer-diag-check ${item.status}`} key={`${item.name}-${idx}`}>
+            <span>{item.status?.toUpperCase() || 'WARN'}</span>
+            <div>
+              <b>{item.name}</b>
+              <small>{item.message}</small>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+
 function ClientPage({ clientId, onLogout, user }) {
   const [state, setState] = useState({ loading: true, peer: null, error: '' });
   const [diag, setDiag] = useState({ loading: false, result: null, error: '' });
@@ -796,14 +822,11 @@ function ClientPage({ clientId, onLogout, user }) {
   const peerIp = peer?.ip_cidr ? peer.ip_cidr.split('/')[0] : '';
   const isOnline = peer?.status === 'active';
 
-  const runPeerPing = async () => {
-    if (!peerIp || !peer?.protocol) return;
+  const runPeerDiagnostics = async () => {
+    if (!peer?.id) return;
     setDiag({ loading: true, result: null, error: '' });
     try {
-      const result = await api('/api/tools/ping', {
-        method: 'POST',
-        body: JSON.stringify({ target: peerIp, count: 4, protocol: peer.protocol }),
-      });
+      const result = await api(`/api/peers/${peer.id}/diagnostics`);
       setDiag({ loading: false, result, error: '' });
     } catch (err) {
       setDiag({ loading: false, result: null, error: err.message || 'Ошибка диагностики peer' });
@@ -832,7 +855,7 @@ function ClientPage({ clientId, onLogout, user }) {
               <a className="back-link" href="/"><ChevronLeft size={16} /> Назад</a>
               <div className="peer-hero-actions">
                 <button className="copy-button" type="button" onClick={load}><RefreshCw size={14} /> Обновить</button>
-                {user?.is_admin && <button className="orange-btn small" type="button" onClick={runPeerPing} disabled={diag.loading}><Activity size={14} /> Диагностика</button>}
+                {user?.is_admin && <button className="orange-btn small" type="button" onClick={runPeerDiagnostics} disabled={diag.loading}><Activity size={14} /> Диагностика</button>}
                 {user?.is_admin && <button className="blue-btn small" type="button" onClick={resetPeerTraffic}><RotateCcw size={14} /> Сброс трафика</button>}
                 <span className={isOnline ? 'status-pill online' : peer.enabled ? 'status-pill offline' : 'status-pill disabled'}>{isOnline ? 'ONLINE' : peer.enabled ? 'OFFLINE' : 'DISABLED'}</span>
               </div>
@@ -869,11 +892,11 @@ function ClientPage({ clientId, onLogout, user }) {
             <section className="card peer-diagnostics-card">
               <div className="section-head">
                 <h2>Диагностика peer</h2>
-                <span className={diag.result?.ok ? 'status-pill online' : diag.loading ? 'status-pill offline' : 'status-pill disabled'}>{diag.loading ? 'RUNNING' : diag.result?.ok ? 'OK' : 'CHECK'}</span>
+                <span className={diag.result?.summary?.fail ? 'status-pill offline' : diag.loading ? 'status-pill disabled' : 'status-pill online'}>{diag.loading ? 'RUNNING' : diag.result?.summary?.fail ? 'ISSUES' : 'OK'}</span>
               </div>
               {diag.loading && <div className="tool-placeholder"><Terminal size={28} /><span>Проверяю {peerIp} из контейнера {peer.protocol_title}...</span></div>}
               {diag.error && <div className="warning">{diag.error}</div>}
-              {diag.result && <NetworkToolResult kind="ping" result={diag.result} peer={peer} />}
+              {diag.result && <PeerDiagnosticsResult data={diag.result} />}
             </section>
           )}
 
