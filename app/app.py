@@ -7459,12 +7459,87 @@ def _read_proc_net_dev() -> list[dict]:
     return interfaces
 
 
+def _read_disk_mounts() -> list[dict]:
+    mounts = []
+    seen = set()
+    allowed = {'ext2', 'ext3', 'ext4', 'xfs', 'btrfs', 'zfs', 'overlay'}
+    try:
+        with open('/proc/mounts') as f:
+            rows = f.read().splitlines()
+        for row in rows:
+            parts = row.split()
+            if len(parts) < 3:
+                continue
+            device, mountpoint, fstype = parts[:3]
+            if fstype not in allowed or mountpoint in seen:
+                continue
+            if mountpoint.startswith(('/proc', '/sys', '/dev', '/run')):
+                continue
+            seen.add(mountpoint)
+            try:
+                usage = _shutil.disk_usage(mountpoint)
+            except OSError:
+                continue
+            total = int(usage.total)
+            used = int(usage.used)
+            mounts.append({
+                'device': device,
+                'mountpoint': mountpoint,
+                'fstype': fstype,
+                'total': total,
+                'used': used,
+                'free': int(usage.free),
+                'percent': round(used / total * 100, 1) if total else 0.0,
+            })
+    except Exception:
+        pass
+    mounts.sort(key=lambda item: (item['mountpoint'] != '/', item['mountpoint']))
+    return mounts[:8]
+
+
+def _read_top_processes(limit: int = 8) -> list[dict]:
+    processes = []
+    page_size = os.sysconf('SC_PAGE_SIZE') if hasattr(os, 'sysconf') else 4096
+    for entry in Path('/proc').iterdir():
+        if not entry.name.isdigit():
+            continue
+        pid = int(entry.name)
+        try:
+            statm = (entry / 'statm').read_text(encoding='utf-8').split()
+            rss = int(statm[1]) * page_size if len(statm) > 1 else 0
+            cmdline = (entry / 'cmdline').read_bytes().replace(b'\x00', b' ').decode('utf-8', errors='replace').strip()
+            name = cmdline or (entry / 'comm').read_text(encoding='utf-8', errors='replace').strip()
+            if not name:
+                continue
+            processes.append({'pid': pid, 'name': name[:140], 'rss': int(rss)})
+        except (OSError, ValueError):
+            continue
+    processes.sort(key=lambda item: item['rss'], reverse=True)
+    return processes[:limit]
+
+
 def _container_system_metric(name: str) -> dict:
-    payload = {'name': name, 'running': False, 'status': 'missing', 'cpu_percent': 0.0, 'memory': {'usage': 0, 'limit': 0, 'percent': 0.0}}
+    payload = {
+        'name': name,
+        'running': False,
+        'status': 'missing',
+        'image': '',
+        'restart_count': 0,
+        'ports': [],
+        'cpu_percent': 0.0,
+        'memory': {'usage': 0, 'limit': 0, 'percent': 0.0},
+    }
     try:
         c = dc().containers.get(name)
         payload['status'] = c.status
         payload['running'] = c.status == 'running'
+        payload['image'] = c.image.tags[0] if c.image.tags else c.image.short_id
+        payload['restart_count'] = int(c.attrs.get('RestartCount') or 0)
+        ports = c.attrs.get('NetworkSettings', {}).get('Ports') or {}
+        payload['ports'] = [
+            {'container': key, 'host': ', '.join(f"{p.get('HostIp', '')}:{p.get('HostPort', '')}".strip(':') for p in (value or []))}
+            for key, value in sorted(ports.items())
+        ]
         if c.status == 'running':
             stats = c.stats(stream=False)
             cpu = stats.get('cpu_stats', {})
@@ -7481,6 +7556,37 @@ def _container_system_metric(name: str) -> dict:
     except Exception as exc:
         payload['status'] = f'error: {exc}'
     return payload
+
+
+def _system_alerts(payload: dict, protocols: dict) -> list[dict]:
+    alerts = []
+    cpu = float(payload.get('cpu_percent') or 0)
+    memory = float(payload.get('memory', {}).get('percent') or 0)
+    disk = float(payload.get('disk', {}).get('percent') or 0)
+    swap = float(payload.get('swap', {}).get('percent') or 0)
+    if cpu >= 90:
+        alerts.append({'level': 'fail', 'title': 'Высокая загрузка CPU', 'message': f'CPU сейчас {cpu}%'})
+    elif cpu >= 75:
+        alerts.append({'level': 'warn', 'title': 'CPU под нагрузкой', 'message': f'CPU сейчас {cpu}%'})
+    if memory >= 90:
+        alerts.append({'level': 'fail', 'title': 'Почти закончилась RAM', 'message': f'Используется {memory}%'})
+    elif memory >= 80:
+        alerts.append({'level': 'warn', 'title': 'Высокое использование RAM', 'message': f'Используется {memory}%'})
+    if disk >= 90:
+        alerts.append({'level': 'fail', 'title': 'Почти закончился диск', 'message': f'Занято {disk}%'})
+    elif disk >= 80:
+        alerts.append({'level': 'warn', 'title': 'Диск быстро заполняется', 'message': f'Занято {disk}%'})
+    if swap >= 25:
+        alerts.append({'level': 'warn', 'title': 'Используется swap', 'message': f'Swap занят на {swap}%'})
+    for item in payload.get('containers') or []:
+        if not item.get('running'):
+            alerts.append({'level': 'fail', 'title': 'Контейнер не работает', 'message': f"{item.get('name')} status: {item.get('status')}"})
+    for key, protocol in protocols.items():
+        if not protocol.get('available'):
+            alerts.append({'level': 'warn', 'title': 'VPN протокол недоступен', 'message': f"{protocol.get('title') or key}: {protocol.get('container')} / {protocol.get('interface')}"})
+    if not alerts:
+        alerts.append({'level': 'ok', 'title': 'Система в норме', 'message': 'Критичных предупреждений сейчас нет'})
+    return alerts
 
 
 def _system_network_totals(interfaces: list[dict]) -> dict:
@@ -7590,6 +7696,7 @@ def api_node_system(user=Depends(api_require_auth)):
 
     # Диск: корень контейнера (overlay поверх корня хоста)
     du = _shutil.disk_usage('/')
+    mounts = _read_disk_mounts()
     disk_percent = round(du.used / du.total * 100, 1) if du.total else 0.0
     load = os.getloadavg()
     uptime_seconds = 0
@@ -7602,6 +7709,7 @@ def api_node_system(user=Depends(api_require_auth)):
     containers = [_container_system_metric(PANEL_CONTAINER)]
     for p in PROTOCOLS.values():
         containers.append(_container_system_metric(p['container']))
+    protocols = {protocol: api_protocol_state(protocol) for protocol in PROTOCOLS}
 
     payload = {
         'ok': True,
@@ -7613,10 +7721,12 @@ def api_node_system(user=Depends(api_require_auth)):
         'cpu_percent': cpu_percent,
         'memory': {'total': mem_total, 'available': mem_available, 'used': mem_used, 'percent': mem_percent},
         'swap': {'total': swap_total, 'used': swap_used, 'free': swap_free, 'percent': swap_percent},
-        'disk': {'total': du.total, 'used': du.used, 'free': du.free, 'percent': disk_percent},
+        'disk': {'total': du.total, 'used': du.used, 'free': du.free, 'percent': disk_percent, 'mounts': mounts},
         'network': {'interfaces': _read_proc_net_dev()},
         'containers': containers,
+        'processes': _read_top_processes(),
     }
+    payload['alerts'] = _system_alerts(payload, protocols)
     _record_system_snapshot(payload)
     return payload
 

@@ -2290,9 +2290,12 @@ function SystemStatusPage({ onLogout, user }) {
   const memory = system.memory || {};
   const swap = system.swap || {};
   const disk = system.disk || {};
+  const diskMounts = disk.mounts || [];
   const loadAvg = system.load_average || {};
   const network = system.network?.interfaces || [];
   const containers = system.containers || [];
+  const alerts = system.alerts || [];
+  const processes = system.processes || [];
   const protocols = state.status?.protocols || {};
   const traffic = state.dashboard?.traffic?.protocols || {};
   const stats = state.dashboard?.stats || {};
@@ -2348,6 +2351,18 @@ function SystemStatusPage({ onLogout, user }) {
               <div className="tool-progress"><i style={percentStyle(protocolRows.filter((p) => p.available).length / protocolRows.length * 100)} /></div>
             </section>
           </div>
+
+          <section className="system-alerts">
+            {alerts.map((item, idx) => (
+              <div className={`system-alert ${item.level || 'warn'}`} key={`${item.title}-${idx}`}>
+                <span>{(item.level || 'warn').toUpperCase()}</span>
+                <div>
+                  <b>{item.title}</b>
+                  <small>{item.message}</small>
+                </div>
+              </div>
+            ))}
+          </section>
 
           <div className="system-dashboard-grid">
             <section className="card system-chart-card">
@@ -2405,7 +2420,8 @@ function SystemStatusPage({ onLogout, user }) {
                     <span className={item.running ? 'status-orb live' : 'status-orb idle'} />
                     <b>{item.name}</b>
                     <small>{item.status}</small>
-                    <em>CPU {item.cpu_percent}% · RAM {formatBytes(item.memory?.usage)}</em>
+                    <em>CPU {item.cpu_percent}% · RAM {formatBytes(item.memory?.usage)} · restarts {item.restart_count || 0}</em>
+                    <small className="container-image">{item.image || '-'}</small>
                   </div>
                 ))}
               </div>
@@ -2449,6 +2465,37 @@ function SystemStatusPage({ onLogout, user }) {
               ))}
             </div>
           </section>
+
+          <div className="system-detail-grid">
+            <section className="card system-panel">
+              <div className="section-head"><h2>Disk mounts</h2><span className="muted">{diskMounts.length} mounts</span></div>
+              <div className="system-table-list">
+                {diskMounts.map((item) => (
+                  <div key={`${item.device}-${item.mountpoint}`}>
+                    <div>
+                      <b>{item.mountpoint}</b>
+                      <small>{item.device} · {item.fstype}</small>
+                    </div>
+                    <span>{formatBytes(item.used)} / {formatBytes(item.total)}</span>
+                    <em>{item.percent}%</em>
+                    <div className="tool-progress"><i style={percentStyle(item.percent)} /></div>
+                  </div>
+                ))}
+              </div>
+            </section>
+            <section className="card system-panel">
+              <div className="section-head"><h2>Top processes</h2><span className="muted">by RSS memory</span></div>
+              <div className="process-list">
+                {processes.map((item) => (
+                  <div key={item.pid}>
+                    <span>{item.pid}</span>
+                    <b>{item.name}</b>
+                    <em>{formatBytes(item.rss)}</em>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
         </>
       )}
     </Shell>
