@@ -91,6 +91,8 @@ Installer спросит:
 
 - Обновление через `scripts/update.sh`, backup, restore, logs, health-check: [docs/OPERATIONS.md](docs/OPERATIONS.md)
 - Мониторинг через Prometheus/Grafana: [docs/MONITORING.md](docs/MONITORING.md)
+- API-ключи и примеры интеграции: [docs/API_KEYS.md](docs/API_KEYS.md)
+- Roadmap развития: [docs/ROADMAP.md](docs/ROADMAP.md)
 - Безопасность и reverse proxy: [docs/SECURITY.md](docs/SECURITY.md)
 - Решение проблем: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
 
@@ -123,7 +125,7 @@ docs/                документация
 
 ## Версия
 
-Текущая версия продукта: `v1.3.11`
+Текущая версия продукта: `v1.3.12`
 
 ## Copyright
 
