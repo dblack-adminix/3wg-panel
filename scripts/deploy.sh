@@ -46,6 +46,16 @@ install_frontend_deps() {
     npm install
   fi
 }
+verify_frontend_deps() {
+  local i
+  for i in 1 2 3 4 5; do
+    if node -e "require.resolve('react'); require.resolve('react-dom/client'); require.resolve('vite')" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+  done
+  fail "Frontend dependencies are not ready after npm install"
+}
 check_python_sources() {
   python3 -m py_compile "$APP" "$BASE/app/api_keys_store.py" "$BASE/scripts/apply_api_patch.py" "$BASE/scripts/apply_dashboard_model_patch.py" "$BASE/scripts/update_runner.py"
 }
@@ -67,6 +77,7 @@ check_python_sources
 printf '\n===== Frontend build =====\n'
 cd "$FRONT"
 install_frontend_deps
+verify_frontend_deps
 npm run build
 cd "$BASE"
 
