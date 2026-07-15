@@ -1681,6 +1681,16 @@ function UsersPage({ onLogout, user }) {
           <div className="section-head"><h2>Аккаунты</h2><button className="copy-button" type="button" onClick={load}><RefreshCw size={14} /> Обновить</button></div>
           <div className="table-wrap">
             <table className="clients-table users-table">
+              <colgroup>
+                <col style={{ width: 42 }} />
+                <col style={{ width: 130 }} />
+                <col style={{ width: 110 }} />
+                <col style={{ width: 64 }} />
+                <col style={{ width: 78 }} />
+                <col style={{ width: 150 }} />
+                <col style={{ width: 70 }} />
+                <col style={{ width: 170 }} />
+              </colgroup>
               <thead><tr><th>ID</th><th>Логин</th><th>Роль</th><th>Peer'ы</th><th>Лимит</th><th>Трафик</th><th>Статус</th><th>Действия</th></tr></thead>
               <tbody>
                 {users.map((item) => (
@@ -1727,11 +1737,15 @@ function UserRow({ item, busy, onPatch, onDelete }) {
       <td><span className={item.enabled ? 'status-ok' : 'status-bad'}>{item.enabled ? 'ON' : 'OFF'}</span></td>
       <td className="actions-cell">
         <div className="user-actions">
-          <button className="icon-button download" title="Сохранить лимиты" disabled={busy} onClick={() => onPatch(item.id, { peer_limit: limit, traffic_limit_bytes: trafficLimit ? gibToBytes(Number(trafficLimit)) : 0 })}><Check size={14} /></button>
-          <button className="icon-button block" title={item.enabled ? 'Отключить' : 'Включить'} disabled={busy} onClick={() => onPatch(item.id, { enabled: !item.enabled })}><Power size={14} /></button>
-          <input className="inline-password" placeholder="новый пароль" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
-          <button className="icon-button qr" title="Сменить пароль" disabled={busy || password.length < 6} onClick={async () => { await onPatch(item.id, { password }); setPassword(''); }}><Key size={14} /></button>
-          <button className="icon-button danger" title="Удалить" disabled={busy} onClick={() => onDelete(item)}><Trash2 size={14} /></button>
+          <div className="user-action-buttons">
+            <button className="icon-button download" title="Сохранить лимиты" disabled={busy} onClick={() => onPatch(item.id, { peer_limit: limit, traffic_limit_bytes: trafficLimit ? gibToBytes(Number(trafficLimit)) : 0 })}><Check size={14} /></button>
+            <button className="icon-button block" title={item.enabled ? 'Отключить' : 'Включить'} disabled={busy} onClick={() => onPatch(item.id, { enabled: !item.enabled })}><Power size={14} /></button>
+            <button className="icon-button danger" title="Удалить" disabled={busy} onClick={() => onDelete(item)}><Trash2 size={14} /></button>
+          </div>
+          <div className="user-password-row">
+            <input className="inline-password" placeholder="новый пароль" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+            <button className="icon-button qr" title="Сменить пароль" disabled={busy || password.length < 6} onClick={async () => { await onPatch(item.id, { password }); setPassword(''); }}><Key size={14} /></button>
+          </div>
         </div>
       </td>
     </tr>

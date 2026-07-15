@@ -232,7 +232,13 @@ html[data-theme="light"] .sidebar-backdrop { background: rgba(15, 23, 42, .42); 
 .user-admin-grid { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 12px; align-items: start; }
 .user-create-card form { display: grid; gap: 10px; }
 .users-list-card { min-width: 0; }
-.users-table { min-width: 1120px; }
+.users-table { min-width: 814px; }
+.users-table th,
+.users-table td { padding: 8px 5px; }
+.users-table .inline-number { width: 58px; height: 28px; }
+.users-table .user-traffic-limit-cell { min-width: 0; }
+.users-table .traffic-limit-cell { gap: 3px; }
+.users-table td.actions-cell { width: 170px; min-width: 170px; }
 .audit-filter-card { margin-bottom: 12px; }
 .audit-filters { display: grid; grid-template-columns: 120px repeat(3, minmax(160px, 1fr)) auto; gap: 10px; align-items: end; }
 .audit-filters label { display: grid; gap: 7px; }
@@ -250,8 +256,11 @@ html[data-theme="light"] .sidebar-backdrop { background: rgba(15, 23, 42, .42); 
 .backup-restore-controls { display: grid; grid-template-columns: 150px 34px; gap: 6px; align-items: center; }
 .backup-restore-controls .name-input { height: 32px; }
 .inline-number { width: 82px; height: 30px; border: 1px solid #333333; border-radius: 6px; background: #0d0d0d; color: #ffffff; padding: 0 8px; }
-.inline-password { width: 140px; height: 30px; border: 1px solid #333333; border-radius: 6px; background: #0d0d0d; color: #ffffff; padding: 0 8px; }
-.user-actions { display: flex; align-items: center; gap: 5px; }
+.inline-password { width: 120px; height: 28px; border: 1px solid #333333; border-radius: 6px; background: #0d0d0d; color: #ffffff; padding: 0 8px; }
+.user-actions { display: grid; gap: 5px; align-items: start; }
+.user-action-buttons,
+.user-password-row { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.user-password-row .inline-password { min-width: 0; flex: 1 1 auto; }
 .owner-badge { display: inline-flex; align-items: center; max-width: 100%; height: 23px; padding: 0 7px; border: 1px solid #333333; border-radius: 6px; background: #101010; color: #dddddd; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .traffic-rates { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 16px; }
 .traffic-rates div { display: grid; gap: 4px; }
