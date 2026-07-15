@@ -267,6 +267,13 @@ def cached_version_status() -> dict:
     return payload
 
 
+def github_web_repository_url(repo: str | None = None) -> str:
+    value = str(repo or VERSION_REPOSITORY or "").strip().rstrip("/")
+    if value.startswith("http://") or value.startswith("https://"):
+        return value
+    return f"https://github.com/{value.lstrip('/')}"
+
+
 def update_runner_payload() -> dict:
     path = Path(UPDATE_RUNNER_PATH)
     exists = path.exists()
@@ -303,7 +310,7 @@ def update_status_payload() -> dict:
     version = cached_version_status()
     latest = version.get("latest")
     current = version.get("current") or APP_VERSION
-    repo = version.get("repository") or VERSION_REPOSITORY
+    repo = github_web_repository_url(version.get("repository") or VERSION_REPOSITORY)
     return {
         "ok": True,
         "version": version,
