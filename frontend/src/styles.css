@@ -164,6 +164,17 @@ html[data-theme="light"] .update-log-card pre {
   border-color: var(--line);
   color: #111827;
 }
+html[data-theme="light"] .peer-note-input {
+  background: #ffffff;
+  border-color: var(--line);
+  color: #111827;
+}
+html[data-theme="light"] .peer-note-view {
+  color: #111827;
+}
+html[data-theme="light"] .peer-note-meta {
+  color: #64748b;
+}
 html[data-theme="light"] .clients-table th,
 html[data-theme="light"] .traffic-data-table th,
 html[data-theme="light"] .status-table th { color: #64748b; }
@@ -488,6 +499,11 @@ html[data-theme="light"] .sidebar-backdrop { background: rgba(15, 23, 42, .42); 
 .peer-detail-grid { grid-template-columns: repeat(3, minmax(190px, 1fr)); }
 .peer-diagnostics-card { margin-top: 12px; }
 .qr-grid { display: grid; grid-template-columns: repeat(2, minmax(280px, 390px)); gap: 12px; align-items: start; margin-bottom: 12px; }
+.peer-note-card { margin-bottom: 12px; }
+.peer-note-input { width: 100%; min-height: 92px; resize: vertical; border: 1px solid #262626; border-radius: 8px; background: #070707; color: #ffffff; padding: 12px; font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.peer-note-input:focus { outline: none; border-color: #5a7300; box-shadow: 0 0 0 3px rgba(200, 255, 0, .08); }
+.peer-note-view { margin: 0; min-height: 52px; color: #d7d7d7; white-space: pre-wrap; line-height: 1.5; }
+.peer-note-meta { margin-top: 8px; color: #8a8a8a; font-size: 12px; text-align: right; }
 .qr-card { min-height: 0; }
 .qr-card h2 { margin-bottom: 8px; font-size: 17px; }
 .qr-card p { min-height: 36px; margin: 0 0 12px; color: #8a8a8a; font-size: 12px; line-height: 1.45; }

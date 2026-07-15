@@ -712,6 +712,8 @@ def init_db():
             conn.execute("ALTER TABLE clients ADD COLUMN expires_at INTEGER")
         if "traffic_limit_bytes" not in cols:
             conn.execute("ALTER TABLE clients ADD COLUMN traffic_limit_bytes INTEGER NOT NULL DEFAULT 0")
+        if "note" not in cols:
+            conn.execute("ALTER TABLE clients ADD COLUMN note TEXT NOT NULL DEFAULT ''")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS categories (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -6698,6 +6700,7 @@ def api_peer_payload(c, live: dict | None = None, include_config: bool = False, 
         'owner_id': int(c['owner_id']) if 'owner_id' in c.keys() and c['owner_id'] is not None else None,
         'owner_username': owner_username,
         'created_by_label': owner_username,
+        'note': c['note'] if 'note' in c.keys() and c['note'] else '',
         'ip_cidr': c['ip_cidr'],
         'public_key': c['public_key'],
         'enabled': enabled,
@@ -7307,11 +7310,12 @@ async def api_peer_update(client_id: int, request: Request, user=Depends(api_req
         traffic_limit_bytes = api_parse_traffic_limit(data.get('traffic_limit_bytes')) if 'traffic_limit_bytes' in data else None
     except HTTPException as e:
         return api_error(str(e.detail), status_code=e.status_code)
-    if 'category_id' not in data and 'expires_at' not in data and 'traffic_limit_bytes' not in data:
+    note = str(data.get('note', '')).replace('\x00', '').strip()[:500] if 'note' in data else None
+    if 'category_id' not in data and 'expires_at' not in data and 'traffic_limit_bytes' not in data and 'note' not in data:
         return api_error('Нет изменений', status_code=400)
     with db() as conn:
         before = conn.execute(
-            'SELECT id, name, protocol, category_id, expires_at, traffic_limit_bytes FROM clients WHERE id = ? AND COALESCE(deleted_at, 0) = 0',
+            'SELECT id, name, protocol, category_id, expires_at, traffic_limit_bytes, note FROM clients WHERE id = ? AND COALESCE(deleted_at, 0) = 0',
             (client_id,),
         ).fetchone()
         if not before:
@@ -7327,6 +7331,9 @@ async def api_peer_update(client_id: int, request: Request, user=Depends(api_req
         if 'traffic_limit_bytes' in data:
             fields.append('traffic_limit_bytes = ?')
             values.append(traffic_limit_bytes)
+        if 'note' in data:
+            fields.append('note = ?')
+            values.append(note)
         values.append(client_id)
         cur = conn.execute(
             f"UPDATE clients SET {', '.join(fields)} WHERE id = ? AND COALESCE(deleted_at, 0) = 0",
@@ -7350,6 +7357,8 @@ async def api_peer_update(client_id: int, request: Request, user=Depends(api_req
             'expires_at': expires_at if 'expires_at' in data else before['expires_at'],
             'before_traffic_limit_bytes': before['traffic_limit_bytes'],
             'traffic_limit_bytes': traffic_limit_bytes if 'traffic_limit_bytes' in data else before['traffic_limit_bytes'],
+            'before_note': before['note'],
+            'note': note if 'note' in data else before['note'],
         },
     )
     live, _ = api_live_maps()

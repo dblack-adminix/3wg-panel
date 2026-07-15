@@ -802,6 +802,8 @@ function PeerDiagnosticsResult({ data }) {
 function ClientPage({ clientId, onLogout, user }) {
   const [state, setState] = useState({ loading: true, peer: null, error: '' });
   const [diag, setDiag] = useState({ loading: false, result: null, error: '' });
+  const [noteDraft, setNoteDraft] = useState('');
+  const [noteSaving, setNoteSaving] = useState(false);
 
   const load = async () => {
     try {
@@ -813,6 +815,7 @@ function ClientPage({ clientId, onLogout, user }) {
   };
 
   useEffect(() => { load(); }, [clientId]);
+  useEffect(() => { setNoteDraft(state.peer?.note || ''); }, [state.peer?.id, state.peer?.note]);
 
   const peer = state.peer;
   const title = peer ? `${peer.name} ${peer.protocol_title || peer.protocol}` : 'Клиент';
@@ -841,6 +844,22 @@ function ClientPage({ clientId, onLogout, user }) {
       await load();
     } catch (err) {
       window.alert(err.message || 'Ошибка сброса счётчика');
+    }
+  };
+
+  const savePeerNote = async () => {
+    if (!peer || !user?.is_admin) return;
+    setNoteSaving(true);
+    try {
+      const data = await api(`/api/peers/${peer.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ note: noteDraft }),
+      });
+      setState({ loading: false, peer: data.peer, error: '' });
+    } catch (err) {
+      setState((s) => ({ ...s, error: err.message || 'Ошибка сохранения заметки' }));
+    } finally {
+      setNoteSaving(false);
     }
   };
 
@@ -886,6 +905,25 @@ function ClientPage({ clientId, onLogout, user }) {
               <div><span>Public key</span><code title={peer.public_key}>{shortKey(peer.public_key)}</code></div>
               <div><span>RX / TX</span><b>{formatBytes(live.rx)} / {formatBytes(live.tx)}</b></div>
             </div>
+          </section>
+
+          <section className="card peer-note-card">
+            <div className="section-head">
+              <h2>Заметка</h2>
+              {user?.is_admin && <button className="copy-button" type="button" onClick={savePeerNote} disabled={noteSaving || noteDraft === (peer.note || '')}>{noteSaving ? 'Сохраняю...' : 'Сохранить'}</button>}
+            </div>
+            {user?.is_admin ? (
+              <textarea
+                className="peer-note-input"
+                value={noteDraft}
+                onChange={(e) => setNoteDraft(e.target.value)}
+                maxLength={500}
+                placeholder="Например: телефон клиента, офис, ответственный, дата выдачи..."
+              />
+            ) : (
+              <p className="peer-note-view">{peer.note || 'Заметки нет'}</p>
+            )}
+            <div className="peer-note-meta">{noteDraft.length}/500</div>
           </section>
 
           {(diag.result || diag.error || diag.loading) && (

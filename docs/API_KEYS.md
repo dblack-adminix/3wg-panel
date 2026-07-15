@@ -248,6 +248,8 @@ POST   /api/update/run
 
 Для пользователей поле `traffic_limit_bytes` задаёт общий лимит трафика в байтах по всем peer'ам этого аккаунта. Если значение `0`, лимит отключён. В ответе `/api/users` поле `traffic_limit` показывает использовано, осталось, процент заполнения и флаг `exceeded`.
 
+Для peer'ов `PATCH /api/peers/{client_id}` поддерживает поля `category_id`, `expires_at`, `traffic_limit_bytes` и `note`. `note` хранит короткую административную заметку до 500 символов.
+
 Telegram notifications настраиваются через `/monitoring` или API `/api/telegram`. В ответах bot token не раскрывается, показывается только suffix. Уведомления уходят при создании, включении, отключении и удалении peer'ов, создании backup, истечении срока peer и превышении traffic limit.
 
 Update Center доступен через `/updates`. `POST /api/update/run` запускает updater только через host-side Unix socket runner. Контейнер панели подключается к `/app/run/update-runner.sock`, а сам runner на хосте выполняет `scripts/update.sh`. Перед запуском создаётся backup `pre-ui-update`.
