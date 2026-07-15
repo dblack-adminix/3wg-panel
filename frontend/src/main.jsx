@@ -2170,9 +2170,16 @@ function UpdateCenterPage({ onLogout, user }) {
   const job = data.job || {};
   const links = data.links || {};
   const stateLabel = version.state === 'latest' ? 'последняя' : version.state === 'outdated' ? 'доступно обновление' : version.state === 'ahead' ? 'dev/ahead' : 'unknown';
+  const runnerLabel = runner.can_run ? 'Готов к запуску' : 'Запуск выключен';
+  const runnerReason = runner.reason === 'UI update runner disabled'
+    ? 'Обновление из панели выключено'
+    : runner.reason === 'ready'
+      ? 'Runner готов'
+      : runner.reason || '-';
+  const jobLabel = job.running ? 'выполняется' : job.exit_code === null || job.exit_code === undefined ? 'ожидает запуска' : `код ${job.exit_code}`;
 
   return (
-    <Shell title="Обновления" subtitle="Версия, changelog и безопасный запуск updater" onLogout={onLogout} user={user}>
+    <Shell title="Обновления" subtitle="Версия, история изменений и безопасный запуск обновления" onLogout={onLogout} user={user}>
       {state.error && <div className="warning">{state.error}</div>}
       {state.loading && <section className="card">Загрузка...</section>}
       {!state.loading && (
@@ -2189,30 +2196,30 @@ function UpdateCenterPage({ onLogout, user }) {
             </div>
             <div className="update-actions">
               <button className="copy-button" type="button" onClick={load}><RefreshCw size={14} /> Обновить статус</button>
-              {links.tags && <a className="blue-btn" href={links.tags} target="_blank" rel="noreferrer"><ArrowUpRight size={14} /> Tags</a>}
-              {links.compare && <a className="blue-btn" href={links.compare} target="_blank" rel="noreferrer"><ArrowUpRight size={14} /> Compare</a>}
+              {links.tags && <a className="update-link-btn" href={links.tags} target="_blank" rel="noreferrer"><ArrowUpRight size={14} /> Все версии</a>}
+              {links.compare && <a className="update-link-btn" href={links.compare} target="_blank" rel="noreferrer"><ArrowUpRight size={14} /> Что изменилось</a>}
             </div>
           </section>
 
           <section className="card update-runner-card">
             <div className="section-head">
-              <h2>Host update runner</h2>
-              <span className={runner.can_run ? 'active-text' : 'blocked-text'}>{runner.can_run ? 'READY' : 'DISABLED'}</span>
+              <h2>Запуск обновления</h2>
+              <span className={`runner-pill ${runner.can_run ? 'ready' : 'disabled'}`}>{runnerLabel}</span>
             </div>
             <div className="monitoring-status compact">
-              <div><span>Path</span><code>{runner.path || '-'}</code></div>
-              <div><span>Status</span><b>{runner.reason || '-'}</b></div>
-              <div><span>Script</span><b>{runner.exists ? 'найден' : 'не найден'}</b></div>
-              <div><span>Job</span><b>{job.running ? 'running' : job.exit_code === null || job.exit_code === undefined ? 'idle' : `exit ${job.exit_code}`}</b></div>
+              <div><span>Скрипт</span><code>{runner.path || '-'}</code></div>
+              <div><span>Состояние</span><b>{runnerReason}</b></div>
+              <div><span>Файл</span><b>{runner.exists ? 'найден' : 'не найден'}</b></div>
+              <div><span>Задача</span><b>{jobLabel}</b></div>
             </div>
-            {!runner.can_run && <div className="warning">Запуск updater из UI выключен. Это правильно для текущего контейнера: updater должен выполняться на хосте через отдельный runner, а не внутри web-контейнера.</div>}
+            {!runner.can_run && <div className="warning">Обновление из панели пока выключено. Для безопасного запуска нужен отдельный host runner, потому что web-контейнер не должен сам менять исходники на сервере.</div>}
             <div className="update-actions">
-              <button className="orange-btn" type="button" disabled={!runner.can_run || job.running || busy} onClick={runUpdate}><RefreshCw size={15} /> Запустить update</button>
+              <button className="orange-btn" type="button" disabled={!runner.can_run || job.running || busy} onClick={runUpdate}><RefreshCw size={15} /> Запустить обновление</button>
             </div>
           </section>
 
           <section className="card update-log-card">
-            <div className="section-head"><h2>Live output</h2><button className="copy-button" type="button" onClick={load}><RefreshCw size={14} /></button></div>
+            <div className="section-head"><h2>Лог обновления</h2><button className="copy-button" type="button" onClick={load}><RefreshCw size={14} /></button></div>
             {job.log?.length ? <pre>{job.log.join('\n')}</pre> : <div className="empty-state"><Terminal size={28} /><span>Update ещё не запускался.</span></div>}
           </section>
         </div>
