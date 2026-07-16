@@ -2586,20 +2586,57 @@ function formatUptime(seconds) {
   return `${mins}м`;
 }
 
+function buildSmoothPath(coords) {
+  if (!coords.length) return '';
+  if (coords.length === 1) return `M ${coords[0].x.toFixed(1)} ${coords[0].y.toFixed(1)}`;
+  return coords.reduce((path, point, index) => {
+    if (index === 0) return `M ${point.x.toFixed(1)} ${point.y.toFixed(1)}`;
+    const prev = coords[index - 1];
+    const midX = (prev.x + point.x) / 2;
+    return `${path} C ${midX.toFixed(1)} ${prev.y.toFixed(1)}, ${midX.toFixed(1)} ${point.y.toFixed(1)}, ${point.x.toFixed(1)} ${point.y.toFixed(1)}`;
+  }, '');
+}
+
 function MiniLineChart({ points, keys = ['value'], colors = ['#c8ff00'], height = 86, maxValue }) {
   const data = points.length ? points : [{ value: 0 }];
   const max = maxValue || Math.max(1, ...data.flatMap((p) => keys.map((k) => Number(p[k] || 0))));
-  const width = 320;
-  const step = data.length > 1 ? width / (data.length - 1) : width;
-  const pathFor = (key) => data.map((p, i) => {
-    const x = i * step;
-    const y = height - (Number(p[key] || 0) / max) * (height - 8) - 4;
-    return `${i ? 'L' : 'M'} ${x.toFixed(1)} ${y.toFixed(1)}`;
-  }).join(' ');
+  const width = 520;
+  const pad = { top: 12, right: 8, bottom: 18, left: 8 };
+  const plotWidth = width - pad.left - pad.right;
+  const plotHeight = height - pad.top - pad.bottom;
+  const step = data.length > 1 ? plotWidth / (data.length - 1) : plotWidth;
+  const coordsFor = (key) => data.map((p, i) => {
+    const x = pad.left + i * step;
+    const y = pad.top + plotHeight - (Number(p[key] || 0) / max) * plotHeight;
+    return { x, y };
+  });
+  const pathFor = (key) => buildSmoothPath(coordsFor(key));
+  const areaFor = (key) => {
+    const coords = coordsFor(key);
+    if (!coords.length) return '';
+    const base = pad.top + plotHeight;
+    return `${buildSmoothPath(coords)} L ${coords[coords.length - 1].x.toFixed(1)} ${base.toFixed(1)} L ${coords[0].x.toFixed(1)} ${base.toFixed(1)} Z`;
+  };
   return (
     <svg className="mini-line-chart" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true">
-      <line x1="0" y1={height - 4} x2={width} y2={height - 4} />
-      {keys.map((key, idx) => <path key={key} d={pathFor(key)} style={{ stroke: colors[idx] || colors[0] }} />)}
+      {[0, .25, .5, .75, 1].map((tick) => {
+        const y = pad.top + plotHeight * tick;
+        return <line className="mini-chart-grid" key={tick} x1={pad.left} y1={y} x2={width - pad.right} y2={y} />;
+      })}
+      <line className="mini-chart-axis" x1={pad.left} y1={pad.top + plotHeight} x2={width - pad.right} y2={pad.top + plotHeight} />
+      {keys.map((key, idx) => (
+        <path key={`${key}-area`} className="mini-chart-area" d={areaFor(key)} style={{ fill: colors[idx] || colors[0] }} />
+      ))}
+      {keys.map((key, idx) => {
+        const coords = coordsFor(key);
+        const last = coords[coords.length - 1] || { x: 0, y: height };
+        return (
+          <g key={key}>
+            <path className="mini-chart-line" d={pathFor(key)} style={{ stroke: colors[idx] || colors[0] }} />
+            <circle className="mini-chart-dot" cx={last.x} cy={last.y} r="3.2" style={{ fill: colors[idx] || colors[0] }} />
+          </g>
+        );
+      })}
     </svg>
   );
 }
