@@ -162,6 +162,8 @@ def verify_user_session(token: str) -> dict | None:
             "SELECT * FROM panel_users WHERE username = ? AND enabled = 1",
             (username,),
         ).fetchone()
+    if row and row["expires_at"] and int(row["expires_at"]) <= int(time.time()):
+        return None
     return user_payload(row) if row else None
 
 
@@ -171,6 +173,8 @@ def admin_user() -> dict:
         "username": PANEL_USER,
         "role": "admin",
         "peer_limit": None,
+        "expires_at": None,
+        "expiration": api_expiration_payload(None, True),
         "enabled": True,
         "is_admin": True,
         "is_env_admin": True,
@@ -179,11 +183,14 @@ def admin_user() -> dict:
 
 def user_payload(row) -> dict:
     traffic_limit_bytes = int(row["traffic_limit_bytes"]) if "traffic_limit_bytes" in row.keys() and row["traffic_limit_bytes"] else 0
+    expires_at = int(row["expires_at"]) if "expires_at" in row.keys() and row["expires_at"] else None
     return {
         "id": int(row["id"]),
         "username": row["username"],
         "role": row["role"],
         "peer_limit": int(row["peer_limit"]),
+        "expires_at": expires_at,
+        "expiration": api_expiration_payload(expires_at, bool(row["enabled"])),
         "traffic_limit_bytes": traffic_limit_bytes,
         "traffic_limit": api_user_traffic_limit_payload(int(row["id"]), traffic_limit_bytes),
         "enabled": bool(row["enabled"]),
@@ -201,6 +208,8 @@ def authenticate_user(username: str, password: str) -> dict | None:
             "SELECT * FROM panel_users WHERE username = ? AND enabled = 1",
             (username,),
         ).fetchone()
+    if row and row["expires_at"] and int(row["expires_at"]) <= int(time.time()):
+        return None
     if row and password_verify(password, row["password_hash"]):
         return user_payload(row)
     return None
@@ -745,6 +754,7 @@ def init_db():
                 role TEXT NOT NULL DEFAULT 'user',
                 peer_limit INTEGER NOT NULL DEFAULT 1,
                 traffic_limit_bytes INTEGER NOT NULL DEFAULT 0,
+                expires_at INTEGER,
                 enabled INTEGER NOT NULL DEFAULT 1,
                 created_at INTEGER NOT NULL
             )
@@ -752,8 +762,11 @@ def init_db():
         user_cols = [r["name"] for r in conn.execute("PRAGMA table_info(panel_users)").fetchall()]
         if "traffic_limit_bytes" not in user_cols:
             conn.execute("ALTER TABLE panel_users ADD COLUMN traffic_limit_bytes INTEGER NOT NULL DEFAULT 0")
+        if "expires_at" not in user_cols:
+            conn.execute("ALTER TABLE panel_users ADD COLUMN expires_at INTEGER")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_panel_users_role ON panel_users(role)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_panel_users_traffic_limit_bytes ON panel_users(traffic_limit_bytes)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_panel_users_expires_at ON panel_users(expires_at)")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS traffic_snapshots (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -6167,6 +6180,15 @@ def api_parse_expires_at(value) -> int | None:
     return ts
 
 
+def api_parse_user_expires_at(value) -> int | None:
+    ts = api_parse_expires_at(value)
+    if not ts:
+        return None
+    if ts > int(time.time()) + 366 * 86400:
+        raise HTTPException(status_code=400, detail='Срок пользователя не может быть больше 1 года')
+    return ts
+
+
 def api_parse_traffic_limit(value) -> int:
     if value in (None, '', False):
         return 0
@@ -6775,6 +6797,7 @@ def api_panel_user_payload(row) -> dict:
         ).fetchone()['n']
     traffic_limit_bytes = int(row['traffic_limit_bytes']) if 'traffic_limit_bytes' in row.keys() and row['traffic_limit_bytes'] else 0
     traffic_limit = api_user_traffic_limit_payload(int(row['id']), traffic_limit_bytes)
+    expires_at = int(row['expires_at']) if 'expires_at' in row.keys() and row['expires_at'] else None
     return {
         'id': int(row['id']),
         'username': row['username'],
@@ -6783,6 +6806,8 @@ def api_panel_user_payload(row) -> dict:
         'peers_used': int(count),
         'traffic_limit_bytes': traffic_limit_bytes,
         'traffic_limit': traffic_limit,
+        'expires_at': expires_at,
+        'expiration': api_expiration_payload(expires_at, bool(row['enabled'])),
         'enabled': bool(row['enabled']),
         'created_at': int(row['created_at']),
     }
@@ -7237,6 +7262,7 @@ async def api_user_create(request: Request, user=Depends(api_require_admin)):
         return api_error('Некорректный лимит peerов', status_code=400)
     try:
         traffic_limit_bytes = api_parse_traffic_limit(data.get('traffic_limit_bytes'))
+        expires_at = api_parse_user_expires_at(data.get('expires_at'))
     except HTTPException as e:
         return api_error(str(e.detail), status_code=e.status_code)
     if not username:
@@ -7248,8 +7274,8 @@ async def api_user_create(request: Request, user=Depends(api_require_admin)):
     try:
         with db() as conn:
             conn.execute(
-                'INSERT INTO panel_users(username, password_hash, role, peer_limit, traffic_limit_bytes, enabled, created_at) VALUES (?, ?, ?, ?, ?, 1, ?)',
-                (username, password_hash(password), role, peer_limit, traffic_limit_bytes, int(time.time())),
+                'INSERT INTO panel_users(username, password_hash, role, peer_limit, traffic_limit_bytes, expires_at, enabled, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?)',
+                (username, password_hash(password), role, peer_limit, traffic_limit_bytes, expires_at, int(time.time())),
             )
             conn.commit()
             created_id = int(conn.execute('SELECT last_insert_rowid() AS id').fetchone()['id'])
@@ -7262,7 +7288,7 @@ async def api_user_create(request: Request, user=Depends(api_require_admin)):
         'panel_user',
         created_id,
         username,
-        {'role': role, 'peer_limit': peer_limit, 'traffic_limit_bytes': traffic_limit_bytes},
+        {'role': role, 'peer_limit': peer_limit, 'traffic_limit_bytes': traffic_limit_bytes, 'expires_at': expires_at},
     )
     return {'ok': True, 'users': api_panel_users_payload()}
 
@@ -7284,6 +7310,12 @@ async def api_user_update(user_id: int, request: Request, user=Depends(api_requi
             values.append(api_parse_traffic_limit(data.get('traffic_limit_bytes')))
         except HTTPException as e:
             return api_error(str(e.detail), status_code=e.status_code)
+    if 'expires_at' in data:
+        try:
+            fields.append('expires_at = ?')
+            values.append(api_parse_user_expires_at(data.get('expires_at')))
+        except HTTPException as e:
+            return api_error(str(e.detail), status_code=e.status_code)
     if 'enabled' in data:
         fields.append('enabled = ?')
         values.append(1 if bool(data.get('enabled')) else 0)
@@ -7302,7 +7334,7 @@ async def api_user_update(user_id: int, request: Request, user=Depends(api_requi
     if not fields:
         return {'ok': True, 'users': api_panel_users_payload()}
     with db() as conn:
-        before = conn.execute('SELECT id, username, role, peer_limit, traffic_limit_bytes, enabled FROM panel_users WHERE id = ?', (user_id,)).fetchone()
+        before = conn.execute('SELECT id, username, role, peer_limit, traffic_limit_bytes, expires_at, enabled FROM panel_users WHERE id = ?', (user_id,)).fetchone()
     if not before:
         return api_error('Пользователь не найден', status_code=404)
     values.append(user_id)

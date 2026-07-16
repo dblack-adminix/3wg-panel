@@ -339,11 +339,14 @@ html[data-theme="light"] .sidebar-backdrop { background: rgba(15, 23, 42, .42); 
 .users-table th:nth-child(3), .users-table td:nth-child(3) { width: 112px; }
 .users-table th:nth-child(4), .users-table td:nth-child(4) { width: 64px; }
 .users-table th:nth-child(5), .users-table td:nth-child(5) { width: 78px; }
-.users-table th:nth-child(6), .users-table td:nth-child(6) { width: 205px; }
-.users-table th:nth-child(7), .users-table td:nth-child(7) { width: 70px; }
+.users-table th:nth-child(6), .users-table td:nth-child(6) { width: 185px; }
+.users-table th:nth-child(7), .users-table td:nth-child(7) { width: 130px; }
+.users-table th:nth-child(8), .users-table td:nth-child(8) { width: 70px; }
 .users-table .inline-number { width: 58px; height: 28px; }
 .users-table .user-traffic-limit-cell { min-width: 0; }
 .users-table .traffic-limit-cell { gap: 3px; }
+.users-table .user-expiration-cell { display: grid; gap: 3px; min-width: 0; }
+.users-table .user-expiration-cell .table-expiration-select { width: 116px; }
 .users-table td.actions-cell { width: 172px; min-width: 172px; overflow: visible; }
 .users-table .user-password-row { display: grid; grid-template-columns: 126px 22px; width: 153px; gap: 5px; }
 .users-table .inline-password { width: 126px; min-width: 0; flex: 0 0 126px; box-sizing: border-box; }
@@ -888,11 +891,13 @@ html[data-theme="light"] .sidebar-backdrop { background: rgba(15, 23, 42, .42); 
   .users-table td:nth-child(4)::before { content: "Peer'ы"; }
   .users-table td:nth-child(5)::before { content: "Лимит"; }
   .users-table td:nth-child(6)::before { content: "Трафик"; }
-  .users-table td:nth-child(7)::before { content: "Статус"; }
-  .users-table td:nth-child(8)::before { content: "Действия"; }
+  .users-table td:nth-child(7)::before { content: "Срок"; }
+  .users-table td:nth-child(8)::before { content: "Статус"; }
+  .users-table td:nth-child(9)::before { content: "Действия"; }
   .users-table td.actions-cell { width: 100%; min-width: 0; }
   .users-table .inline-number { width: 92px; }
   .users-table .traffic-limit-cell { max-width: 260px; }
+  .users-table .user-expiration-cell { max-width: 180px; }
   .users-table .user-actions { gap: 8px; }
   .users-table .user-action-buttons,
   .users-table .user-password-row { flex-wrap: wrap; }

@@ -1186,6 +1186,17 @@ function userTrafficLimitPresetValue(user) {
   return '500';
 }
 
+function userExpirationPresetValue(user) {
+  const secondsLeft = Number(user?.expiration?.seconds_left || 0);
+  if (!user?.expiration?.enabled || secondsLeft <= 0) return '';
+  const days = Math.max(1, Math.round(secondsLeft / 86400));
+  if (days <= 7) return '7';
+  if (days <= 30) return '30';
+  if (days <= 90) return '90';
+  if (days <= 180) return '180';
+  return '365';
+}
+
 function formatDuration(seconds) {
   const n = Math.max(0, Number(seconds || 0));
   if (n < 60) return `${Math.round(n)} сек`;
@@ -1815,7 +1826,7 @@ function UsersPage({ onLogout, user }) {
   const toast = useToast();
   const confirm = useConfirm();
   const [users, setUsers] = useState([]);
-  const [form, setForm] = useState({ username: '', password: '', peer_limit: 1, role: 'user', traffic_limit_bytes: 0 });
+  const [form, setForm] = useState({ username: '', password: '', peer_limit: 1, role: 'user', traffic_limit_bytes: 0, expires_days: '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -1835,9 +1846,11 @@ function UsersPage({ onLogout, user }) {
     e.preventDefault();
     setBusy(true);
     try {
-      const data = await api('/api/users', { method: 'POST', body: JSON.stringify(form) });
+      const { expires_days, ...payload } = form;
+      payload.expires_at = expires_days ? futureExpiresAt(Number(expires_days)) : null;
+      const data = await api('/api/users', { method: 'POST', body: JSON.stringify(payload) });
       setUsers(data.users || []);
-      setForm({ username: '', password: '', peer_limit: 1, role: 'user', traffic_limit_bytes: 0 });
+      setForm({ username: '', password: '', peer_limit: 1, role: 'user', traffic_limit_bytes: 0, expires_days: '' });
       setError('');
     } catch (err) {
       setError(err.message || 'Ошибка создания пользователя');
@@ -1910,6 +1923,17 @@ function UsersPage({ onLogout, user }) {
               </select>
             </label>
             <label className="user-create-field">
+              <span>Срок доступа</span>
+              <select className="category-select" value={form.expires_days} onChange={(e) => setForm({ ...form, expires_days: e.target.value })}>
+                <option value="">Без срока</option>
+                <option value="7">7 дней</option>
+                <option value="30">30 дней</option>
+                <option value="90">90 дней</option>
+                <option value="180">180 дней</option>
+                <option value="365">1 год</option>
+              </select>
+            </label>
+            <label className="user-create-field">
               <span>Роль</span>
               <select className="category-select" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
                 <option value="user">Пользователь</option>
@@ -1924,12 +1948,12 @@ function UsersPage({ onLogout, user }) {
           <div className="section-head"><h2>Аккаунты</h2><button className="copy-button" type="button" onClick={load}><RefreshCw size={14} /> Обновить</button></div>
           <div className="table-wrap">
             <table className="clients-table users-table">
-              <thead><tr><th>ID</th><th>Логин</th><th>Роль</th><th>Peer'ы</th><th>Лимит</th><th>Трафик</th><th>Статус</th><th>Действия</th></tr></thead>
+              <thead><tr><th>ID</th><th>Логин</th><th>Роль</th><th>Peer'ы</th><th>Лимит</th><th>Трафик</th><th>Срок</th><th>Статус</th><th>Действия</th></tr></thead>
               <tbody>
                 {users.map((item) => (
                   <UserRow key={item.id} item={item} busy={busy === item.id} onPatch={patchUser} onDelete={deleteUser} />
                 ))}
-                {users.length === 0 && <tr><td className="empty-table" colSpan={8}>Дополнительных пользователей пока нет</td></tr>}
+                {users.length === 0 && <tr><td className="empty-table" colSpan={9}>Дополнительных пользователей пока нет</td></tr>}
               </tbody>
             </table>
           </div>
@@ -1942,10 +1966,18 @@ function UsersPage({ onLogout, user }) {
 function UserRow({ item, busy, onPatch, onDelete }) {
   const [limit, setLimit] = useState(item.peer_limit);
   const [trafficLimit, setTrafficLimit] = useState(userTrafficLimitPresetValue(item));
+  const [expiresPreset, setExpiresPreset] = useState(userExpirationPresetValue(item));
   const [password, setPassword] = useState('');
   useEffect(() => { setLimit(item.peer_limit); }, [item.peer_limit]);
   useEffect(() => { setTrafficLimit(userTrafficLimitPresetValue(item)); }, [item.traffic_limit_bytes]);
+  useEffect(() => { setExpiresPreset(userExpirationPresetValue(item)); }, [item.expires_at]);
   const traffic = item.traffic_limit || {};
+  const expiration = item.expiration || {};
+  const savePayload = {
+    peer_limit: limit,
+    traffic_limit_bytes: trafficLimit ? gibToBytes(Number(trafficLimit)) : 0,
+    expires_at: expiresPreset ? futureExpiresAt(Number(expiresPreset)) : null,
+  };
   return (
     <tr>
       <td>{item.id}</td>
@@ -1967,11 +1999,24 @@ function UserRow({ item, busy, onPatch, onDelete }) {
           <span className={`limit-bar ${traffic.exceeded ? 'exceeded' : ''}`}><i style={{ width: `${Math.max(2, Number(traffic.percent || 0))}%` }} /></span>
         </div>
       </td>
+      <td>
+        <div className="user-expiration-cell">
+          <select className="category-select table-expiration-select" value={expiresPreset} disabled={busy} onChange={(e) => setExpiresPreset(e.target.value)}>
+            <option value="">без срока</option>
+            <option value="7">7 дней</option>
+            <option value="30">30 дней</option>
+            <option value="90">90 дней</option>
+            <option value="180">180 дней</option>
+            <option value="365">1 год</option>
+          </select>
+          <small className={expiration.expired ? 'expiration-bad' : expiration.enabled ? 'expiration-soon' : ''}>{expiration.label || 'без срока'}</small>
+        </div>
+      </td>
       <td><span className={item.enabled ? 'status-ok' : 'status-bad'}>{item.enabled ? 'ON' : 'OFF'}</span></td>
       <td className="actions-cell">
         <div className="user-actions">
           <div className="user-action-buttons">
-            <button className="icon-button download" title="Сохранить лимиты" disabled={busy} onClick={() => onPatch(item.id, { peer_limit: limit, traffic_limit_bytes: trafficLimit ? gibToBytes(Number(trafficLimit)) : 0 })}><Check size={14} /></button>
+            <button className="icon-button download" title="Сохранить лимиты" disabled={busy} onClick={() => onPatch(item.id, savePayload)}><Check size={14} /></button>
             <button className="icon-button block" title={item.enabled ? 'Отключить' : 'Включить'} disabled={busy} onClick={() => onPatch(item.id, { enabled: !item.enabled })}><Power size={14} /></button>
             <button className="icon-button danger" title="Удалить" disabled={busy} onClick={() => onDelete(item)}><Trash2 size={14} /></button>
           </div>
