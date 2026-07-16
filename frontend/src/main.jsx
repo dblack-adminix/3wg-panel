@@ -615,6 +615,72 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
           </tbody>
         </table>
       </div>
+      <div className="mobile-peer-list">
+        {filteredPeers.map((p) => (
+          <article className="mobile-peer-card" key={p.id}>
+            <div className="mobile-peer-head">
+              <div>
+                <b>{p.name}</b>
+                <small>#{p.id}{isAdmin ? ` · ${p.created_by_label || p.owner_username || 'admin'}` : ''}</small>
+              </div>
+              <span className={`proto ${p.protocol === 'wireguard' ? 'proto-wireguard' : ''}`}>{p.protocol_title || p.protocol}</span>
+            </div>
+            <div className="mobile-peer-meta">
+              <div><span>IP</span><code>{p.ip_cidr}</code></div>
+              <div><span>Статус</span><PeerStatus peer={p} /></div>
+              <div><span>RX</span><b>{formatBytes(p.live?.rx)}</b></div>
+              <div><span>TX</span><b>{formatBytes(p.live?.tx)}</b></div>
+            </div>
+            <div className="mobile-peer-network">
+              <span>Endpoint</span>
+              <b>{p.live?.endpoint || '(none)'}</b>
+              <small>{p.live?.latest_handshake && p.live.latest_handshake !== '0' ? new Date(Number(p.live.latest_handshake) * 1000).toLocaleString('ru-RU') : 'последнего подключения нет'}</small>
+            </div>
+            {isAdmin && (
+              <div className="mobile-peer-admin">
+                <select className="category-select" value={p.category_id || ''} disabled={busyId === p.id} onChange={(e) => changePeerCategory(p, e.target.value)}>
+                  <option value="">Без категории</option>
+                  {(categories || []).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                </select>
+                <div className="policy-selects">
+                  <select className="category-select table-expiration-select" value={expirationPresetValue(p)} disabled={busyId === p.id} onChange={(e) => changePeerExpiration(p, e.target.value)}>
+                    <option value="">Без срока</option>
+                    <option value="1">1 день</option>
+                    <option value="7">7 дней</option>
+                    <option value="30">30 дней</option>
+                    <option value="90">90 дней</option>
+                  </select>
+                  <select className="category-select table-limit-select" value={trafficLimitPresetValue(p)} disabled={busyId === p.id} onChange={(e) => changePeerTrafficLimit(p, e.target.value)}>
+                    <option value="">Без лимита</option>
+                    <option value="1">1 GiB</option>
+                    <option value="5">5 GiB</option>
+                    <option value="10">10 GiB</option>
+                    <option value="50">50 GiB</option>
+                    <option value="100">100 GiB</option>
+                  </select>
+                </div>
+                <small>
+                  <span className={p.expiration?.expired ? 'expiration-bad' : p.expiration?.enabled ? 'expiration-soon' : ''}>{p.expiration?.label || 'без срока'}</span>
+                  <span className={p.traffic_limit?.exceeded ? 'expiration-bad' : p.traffic_limit?.enabled ? 'expiration-soon' : ''}>{p.traffic_limit?.label || 'без лимита'}</span>
+                </small>
+              </div>
+            )}
+            <div className="mobile-peer-actions">
+              <IconButton href={p.links?.html || '#'} title="Открыть клиента" tone="open"><ArrowUpRight size={14} /></IconButton>
+              <IconButton href={p.links?.download || '#'} title="Скачать config" tone="download"><Download size={14} /></IconButton>
+              <IconButton onClick={() => setQrPeer(p)} title="Показать QR" tone="qr"><QrCode size={14} /></IconButton>
+              {p.enabled ? (
+                <IconButton onClick={() => askPeerAction(p, 'disable')} title="Отключить peer" tone="block" disabled={busyId === p.id}><Power size={14} /></IconButton>
+              ) : (
+                <IconButton onClick={() => askPeerAction(p, 'enable')} title="Включить peer" tone="enable" disabled={busyId === p.id}><Power size={14} /></IconButton>
+              )}
+              {isAdmin && <IconButton onClick={() => askPeerAction(p, 'traffic_reset')} title="Сбросить счётчик трафика" tone="reset" disabled={busyId === p.id}><RotateCcw size={14} /></IconButton>}
+              <IconButton onClick={() => askPeerAction(p, 'delete')} title="Удалить peer" tone="danger" disabled={busyId === p.id}><Trash2 size={14} /></IconButton>
+            </div>
+          </article>
+        ))}
+        {filteredPeers.length === 0 && <div className="mobile-empty">В этой категории пока нет peer'ов</div>}
+      </div>
       {qrPeer && <QrModal peer={qrPeer} onClose={() => setQrPeer(null)} />}
       {categoryToDelete && (
         <ConfirmModal
