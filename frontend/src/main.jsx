@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   Activity,
@@ -330,6 +330,7 @@ function CreateClient({ protocols, categories, quota, isAdmin, onCreated }) {
 }
 
 function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
+  const toast = useToast();
   const [qrPeer, setQrPeer] = useState(null);
   const [pendingAction, setPendingAction] = useState(null);
   const [busyId, setBusyId] = useState(null);
@@ -365,7 +366,7 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
       if (data.category?.id) setActiveCategory(String(data.category.id));
       await onRefresh();
     } catch (err) {
-      window.alert(err.message || 'Ошибка создания категории');
+      toast.error(err.message || 'Ошибка создания категории');
     } finally {
       setCategoryBusy(false);
     }
@@ -382,7 +383,7 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
       setEditingCategory(null);
       await onRefresh();
     } catch (err) {
-      window.alert(err.message || 'Ошибка изменения категории');
+      toast.error(err.message || 'Ошибка изменения категории');
     } finally {
       setCategoryBusy(false);
     }
@@ -396,7 +397,7 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
       setCategoryToDelete(null);
       await onRefresh();
     } catch (err) {
-      window.alert(err.message || 'Ошибка удаления категории');
+      toast.error(err.message || 'Ошибка удаления категории');
     } finally {
       setCategoryBusy(false);
     }
@@ -408,7 +409,7 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
       await api(`/api/peers/${peer.id}`, { method: 'PATCH', body: JSON.stringify({ category_id: categoryId || null }) });
       await onRefresh();
     } catch (err) {
-      window.alert(err.message || 'Ошибка изменения категории');
+      toast.error(err.message || 'Ошибка изменения категории');
     } finally {
       setBusyId(null);
     }
@@ -421,7 +422,7 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
       await api(`/api/peers/${peer.id}`, { method: 'PATCH', body: JSON.stringify({ expires_at: expiresAt }) });
       await onRefresh();
     } catch (err) {
-      window.alert(err.message || 'Ошибка изменения срока');
+      toast.error(err.message || 'Ошибка изменения срока');
     } finally {
       setBusyId(null);
     }
@@ -434,7 +435,7 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
       await api(`/api/peers/${peer.id}`, { method: 'PATCH', body: JSON.stringify({ traffic_limit_bytes: limitBytes }) });
       await onRefresh();
     } catch (err) {
-      window.alert(err.message || 'Ошибка изменения лимита');
+      toast.error(err.message || 'Ошибка изменения лимита');
     } finally {
       setBusyId(null);
     }
@@ -452,7 +453,7 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
       }
       await onRefresh();
     } catch (err) {
-      window.alert(err.message || 'Ошибка операции');
+      toast.error(err.message || 'Ошибка операции');
     } finally {
       setBusyId(null);
     }
@@ -774,6 +775,74 @@ function ConfirmModal({ title, message, details, tone = 'default', confirmLabel,
   );
 }
 
+const ToastContext = createContext({ show: () => {}, success: () => {}, error: () => {}, info: () => {} });
+const ConfirmContext = createContext(async () => false);
+
+function ToastProvider({ children }) {
+  const [items, setItems] = useState([]);
+  const show = useCallback((tone, message, title) => {
+    const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    setItems((list) => [...list, { id, tone, title, message }].slice(-4));
+    window.setTimeout(() => setItems((list) => list.filter((item) => item.id !== id)), 4200);
+  }, []);
+  const apiValue = useMemo(() => ({
+    show,
+    success: (message, title = 'Готово') => show('success', message, title),
+    error: (message, title = 'Ошибка') => show('error', message, title),
+    info: (message, title = 'Информация') => show('info', message, title),
+  }), [show]);
+  return (
+    <ToastContext.Provider value={apiValue}>
+      {children}
+      <div className="toast-stack" aria-live="polite">
+        {items.map((item) => (
+          <div className={`toast-item ${item.tone}`} key={item.id}>
+            <b>{item.title}</b>
+            <span>{item.message}</span>
+            <button type="button" onClick={() => setItems((list) => list.filter((current) => current.id !== item.id))}><X size={13} /></button>
+          </div>
+        ))}
+      </div>
+    </ToastContext.Provider>
+  );
+}
+
+function ConfirmProvider({ children }) {
+  const [pending, setPending] = useState(null);
+  const confirm = useCallback((options) => new Promise((resolve) => {
+    setPending({ ...options, resolve });
+  }), []);
+  const close = (result) => {
+    const resolve = pending?.resolve;
+    setPending(null);
+    if (resolve) resolve(result);
+  };
+  return (
+    <ConfirmContext.Provider value={confirm}>
+      {children}
+      {pending && (
+        <ConfirmModal
+          title={pending.title || 'Подтвердите действие'}
+          message={pending.message || 'Продолжить?'}
+          details={pending.details || ''}
+          tone={pending.tone || 'default'}
+          confirmLabel={pending.confirmLabel || 'Продолжить'}
+          onCancel={() => close(false)}
+          onConfirm={() => close(true)}
+        />
+      )}
+    </ConfirmContext.Provider>
+  );
+}
+
+function useToast() {
+  return useContext(ToastContext);
+}
+
+function useConfirm() {
+  return useContext(ConfirmContext);
+}
+
 function PeerStatus({ peer }) {
   if (peer.traffic_limit?.exceeded || peer.status === 'limited') {
     return <span className="blocked-text">LIMIT</span>;
@@ -866,6 +935,8 @@ function PeerDiagnosticsResult({ data }) {
 
 
 function ClientPage({ clientId, onLogout, user }) {
+  const toast = useToast();
+  const confirm = useConfirm();
   const [state, setState] = useState({ loading: true, peer: null, error: '' });
   const [diag, setDiag] = useState({ loading: false, result: null, error: '' });
   const [noteDraft, setNoteDraft] = useState('');
@@ -904,12 +975,20 @@ function ClientPage({ clientId, onLogout, user }) {
 
   const resetPeerTraffic = async () => {
     if (!peer || !user?.is_admin) return;
-    if (!window.confirm(`Сбросить накопленный трафик для "${peer.name}"?`)) return;
+    const ok = await confirm({
+      title: 'Сбросить трафик',
+      message: `Сбросить накопленный трафик для "${peer.name}"?`,
+      details: 'Счётчик RX/TX будет обнулён в панели. Конфиг peer не изменится.',
+      tone: 'block',
+      confirmLabel: 'Сбросить',
+    });
+    if (!ok) return;
     try {
       await api(peer.links?.traffic_reset || `/api/peers/${peer.id}/traffic-reset`, { method: 'POST' });
       await load();
+      toast.success('Счётчик трафика сброшен');
     } catch (err) {
-      window.alert(err.message || 'Ошибка сброса счётчика');
+      toast.error(err.message || 'Ошибка сброса счётчика');
     }
   };
 
@@ -1727,6 +1806,8 @@ function Dashboard({ onLogout, user }) {
 }
 
 function UsersPage({ onLogout, user }) {
+  const toast = useToast();
+  const confirm = useConfirm();
   const [users, setUsers] = useState([]);
   const [form, setForm] = useState({ username: '', password: '', peer_limit: 1, role: 'user', traffic_limit_bytes: 0 });
   const [busy, setBusy] = useState(false);
@@ -1764,21 +1845,30 @@ function UsersPage({ onLogout, user }) {
     try {
       const data = await api(`/api/users/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
       setUsers(data.users || []);
+      toast.success('Пользователь обновлён');
     } catch (err) {
-      window.alert(err.message || 'Ошибка изменения пользователя');
+      toast.error(err.message || 'Ошибка изменения пользователя');
     } finally {
       setBusy(false);
     }
   };
 
   const deleteUser = async (item) => {
-    if (!window.confirm(`Удалить пользователя "${item.username}"? Его peer'ы перейдут администратору.`)) return;
+    const ok = await confirm({
+      title: 'Удалить пользователя',
+      message: `Удалить пользователя "${item.username}"?`,
+      details: "Его peer'ы не удалятся, они перейдут администратору.",
+      tone: 'danger',
+      confirmLabel: 'Удалить',
+    });
+    if (!ok) return;
     setBusy(item.id);
     try {
       const data = await api(`/api/users/${item.id}`, { method: 'DELETE' });
       setUsers(data.users || []);
+      toast.success('Пользователь удалён');
     } catch (err) {
-      window.alert(err.message || 'Ошибка удаления пользователя');
+      toast.error(err.message || 'Ошибка удаления пользователя');
     } finally {
       setBusy(false);
     }
@@ -1983,6 +2073,8 @@ function formatBackupTime(ts) {
 }
 
 function BackupsPage({ onLogout, user }) {
+  const toast = useToast();
+  const confirm = useConfirm();
   const [backups, setBackups] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -2020,10 +2112,17 @@ function BackupsPage({ onLogout, user }) {
 
   const restore = async (backup, confirmText) => {
     if (confirmText !== 'RESTORE') {
-      window.alert('Введите RESTORE для подтверждения.');
+      toast.error('Введите RESTORE для подтверждения.');
       return;
     }
-    if (!window.confirm(`Восстановить состояние панели из ${backup.name}? Перед restore будет создан pre-restore backup.`)) return;
+    const ok = await confirm({
+      title: 'Восстановить backup',
+      message: `Восстановить состояние панели из ${backup.name}?`,
+      details: 'Перед restore будет создан pre-restore backup.',
+      tone: 'danger',
+      confirmLabel: 'Восстановить',
+    });
+    if (!ok) return;
     setBusy(backup.name);
     setNotice('');
     try {
@@ -2034,6 +2133,7 @@ function BackupsPage({ onLogout, user }) {
       setBackups(data.backups || []);
       setNotice(`Restore выполнен. Pre-restore backup: ${data.pre_restore_backup?.name || '-'}`);
       setError('');
+      toast.success('Restore выполнен');
     } catch (err) {
       setError(err.message || 'Ошибка restore');
     } finally {
@@ -2098,6 +2198,8 @@ function BackupRow({ backup, busy, onRestore }) {
 }
 
 function ApiKeysPage({ onLogout, user }) {
+  const toast = useToast();
+  const confirm = useConfirm();
   const [keys, setKeys] = useState([]);
   const [name, setName] = useState('');
   const [newToken, setNewToken] = useState(null);
@@ -2120,9 +2222,16 @@ function ApiKeysPage({ onLogout, user }) {
     finally { setBusy(false); }
   };
   const remove = async (id) => {
-    if (!window.confirm('Удалить ключ? Интеграции, использующие его, перестанут работать.')) return;
-    try { await api(`/api/apikeys/${id}`, { method: 'DELETE' }); await load(); }
-    catch (e) { setError(String(e.message || e)); }
+    const ok = await confirm({
+      title: 'Удалить API-ключ',
+      message: 'Удалить ключ?',
+      details: 'Интеграции, использующие его, перестанут работать.',
+      tone: 'danger',
+      confirmLabel: 'Удалить',
+    });
+    if (!ok) return;
+    try { await api(`/api/apikeys/${id}`, { method: 'DELETE' }); await load(); toast.success('API-ключ удалён'); }
+    catch (e) { const message = String(e.message || e); setError(message); toast.error(message); }
   };
   const fmt = (ts) => (ts ? new Date(ts * 1000).toLocaleString('ru-RU') : '—');
   return (
@@ -2170,6 +2279,8 @@ function ApiKeysPage({ onLogout, user }) {
 }
 
 function MonitoringPage({ onLogout, user }) {
+  const toast = useToast();
+  const confirm = useConfirm();
   const [state, setState] = useState({ loading: true, data: null, error: '' });
   const [telegram, setTelegram] = useState({ loading: true, data: null, error: '' });
   const [telegramForm, setTelegramForm] = useState({ enabled: false, bot_token: '', chat_id: '' });
@@ -2205,14 +2316,25 @@ function MonitoringPage({ onLogout, user }) {
   };
 
   const generateToken = async () => {
-    if (state.data?.token_configured && !window.confirm('Создать новый token? Старый token перестанет работать.')) return;
+    if (state.data?.token_configured) {
+      const ok = await confirm({
+        title: 'Перевыпустить token',
+        message: 'Создать новый token?',
+        details: 'Старый token перестанет работать сразу после выпуска нового.',
+        tone: 'block',
+        confirmLabel: 'Перевыпустить',
+      });
+      if (!ok) return;
+    }
     setBusy(true);
     try {
       const data = await api('/api/monitoring/token', { method: 'POST' });
       setNewToken(data.token || '');
       setState({ loading: false, data, error: '' });
+      toast.success('Token создан. Скопируйте его сейчас.');
     } catch (err) {
       setState((s) => ({ ...s, error: err.message || 'Ошибка генерации token' }));
+      toast.error(err.message || 'Ошибка генерации token');
     } finally {
       setBusy(false);
     }
@@ -2337,6 +2459,8 @@ function MonitoringPage({ onLogout, user }) {
 }
 
 function UpdateCenterPage({ onLogout, user }) {
+  const toast = useToast();
+  const confirm = useConfirm();
   const [state, setState] = useState({ loading: true, data: null, error: '' });
   const [busy, setBusy] = useState(false);
 
@@ -2357,14 +2481,21 @@ function UpdateCenterPage({ onLogout, user }) {
 
   const runUpdate = async () => {
     const confirmText = state.data?.runner?.confirm_text || 'UPDATE';
-    const typed = window.prompt(`Для запуска обновления введите ${confirmText}`);
-    if (typed !== confirmText) return;
+    const ok = await confirm({
+      title: 'Запустить обновление',
+      message: 'Запустить update.sh на сервере?',
+      details: `Будет отправлено подтверждение ${confirmText}. Процесс пойдёт через update runner.`,
+      tone: 'block',
+      confirmLabel: 'Запустить',
+    });
+    if (!ok) return;
     setBusy(true);
     try {
-      const data = await api('/api/update/run', { method: 'POST', body: JSON.stringify({ confirm: typed }) });
+      const data = await api('/api/update/run', { method: 'POST', body: JSON.stringify({ confirm: confirmText }) });
       setState({ loading: false, data, error: '' });
+      toast.success('Обновление запущено');
     } catch (err) {
-      window.alert(err.message || 'Не удалось запустить обновление');
+      toast.error(err.message || 'Не удалось запустить обновление');
       await load();
     } finally {
       setBusy(false);
@@ -3050,4 +3181,10 @@ function App() {
   return <Dashboard onLogout={logout} user={auth.user} />;
 }
 
-createRoot(document.getElementById('root')).render(<App />);
+createRoot(document.getElementById('root')).render(
+  <ToastProvider>
+    <ConfirmProvider>
+      <App />
+    </ConfirmProvider>
+  </ToastProvider>
+);

@@ -652,6 +652,18 @@ html[data-theme="light"] .sidebar-backdrop { background: rgba(15, 23, 42, .42); 
 .confirm-submit.enable { background: var(--green); border-color: #5a7300; }
 .confirm-submit.danger { background: #ff8c00; border-color: #b86a00; }
 .confirm-actions button:disabled { cursor: wait; opacity: .62; }
+.toast-stack { position: fixed; top: 16px; right: 16px; z-index: 140; display: grid; gap: 8px; width: min(360px, calc(100vw - 32px)); pointer-events: none; }
+.toast-item { position: relative; min-width: 0; border: 1px solid #333333; border-radius: 8px; background: #101010; color: #ffffff; padding: 12px 38px 12px 12px; box-shadow: 0 18px 50px rgba(0,0,0,.35); pointer-events: auto; animation: toast-in .16s ease-out; }
+.toast-item b { display: block; margin-bottom: 4px; font-size: 13px; }
+.toast-item span { display: block; color: #cfcfcf; font-size: 12px; line-height: 1.35; }
+.toast-item button { position: absolute; top: 9px; right: 9px; width: 22px; height: 22px; border: 1px solid #333333; border-radius: 5px; background: #0a0a0a; color: #d7d7d7; display: grid; place-items: center; cursor: pointer; }
+.toast-item.success { border-color: rgba(200, 255, 0, .42); box-shadow: 0 18px 50px rgba(0,0,0,.35), inset 3px 0 0 var(--green); }
+.toast-item.error { border-color: rgba(255, 91, 123, .50); box-shadow: 0 18px 50px rgba(0,0,0,.35), inset 3px 0 0 #ff5b7b; }
+.toast-item.info { border-color: rgba(255, 140, 0, .45); box-shadow: 0 18px 50px rgba(0,0,0,.35), inset 3px 0 0 var(--orange); }
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 
 .modal-qr-grid { display: grid; grid-template-columns: repeat(2, minmax(260px, 1fr)); gap: 12px; }
 .modal-qr-panel { border: 1px solid #262626; border-radius: 8px; background: #0d0d0d; padding: 12px; }
@@ -1089,6 +1101,20 @@ html[data-theme="light"] .modal-card {
   border-color: #d8e1ec;
   color: #111827;
   box-shadow: 0 24px 70px rgba(15, 23, 42, .24);
+}
+html[data-theme="light"] .toast-item {
+  background: #ffffff;
+  border-color: #d8e1ec;
+  color: #111827;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, .16);
+}
+html[data-theme="light"] .toast-item span {
+  color: #64748b;
+}
+html[data-theme="light"] .toast-item button {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #334155;
 }
 html[data-theme="light"] .modal-head h2,
 html[data-theme="light"] .modal-qr-panel h3 {
