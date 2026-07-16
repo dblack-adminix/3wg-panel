@@ -462,6 +462,14 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
   const askPeerAction = (peer, action) => setPendingAction({ peer, action });
 
   const confirmMeta = pendingAction ? getPeerConfirmMeta(pendingAction.peer, pendingAction.action) : null;
+  const isInteractiveTarget = (target) => Boolean(target?.closest?.('a,button,input,select,textarea,label,[role="button"]'));
+  const openPeer = (peer) => {
+    if (peer?.links?.html) window.location.href = peer.links.html;
+  };
+  const openPeerFromEvent = (event, peer) => {
+    if (isInteractiveTarget(event.target)) return;
+    openPeer(peer);
+  };
 
   return (
     <section className="card clients-card">
@@ -516,7 +524,7 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
             {isAdmin && <col style={{ width: 210 }} />}
             <col style={{ width: 180 }} />
             <col style={{ width: 100 }} />
-            <col style={{ width: isAdmin ? 132 : 118 }} />
+            <col style={{ width: isAdmin ? 110 : 96 }} />
           </colgroup>
           <thead>
             <tr>
@@ -535,7 +543,7 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
           </thead>
           <tbody>
             {filteredPeers.map((p) => (
-              <tr key={p.id}>
+              <tr className="clickable-row" key={p.id} tabIndex={0} onClick={(e) => openPeerFromEvent(e, p)} onKeyDown={(e) => { if (e.key === 'Enter') openPeer(p); }}>
                 <td>{p.id}</td>
                 <td><b>{p.name}</b>{!isAdmin && <small>создал: {p.created_by_label || p.owner_username || 'admin'}</small>}</td>
                 {isAdmin && <td><span className="owner-badge">{p.created_by_label || p.owner_username || 'admin'}</span></td>}
@@ -594,7 +602,6 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
                 </td>
                 <td className="actions-cell">
                   <div className="actions">
-                    <IconButton href={p.links?.html || '#'} title="Открыть клиента" tone="open"><ArrowUpRight size={14} /></IconButton>
                     <IconButton href={p.links?.download || '#'} title="Скачать config" tone="download"><Download size={14} /></IconButton>
                     <IconButton onClick={() => setQrPeer(p)} title="Показать QR" tone="qr"><QrCode size={14} /></IconButton>
                     {p.enabled ? (
@@ -618,7 +625,7 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
       </div>
       <div className="mobile-peer-list">
         {filteredPeers.map((p) => (
-          <article className="mobile-peer-card" key={p.id}>
+          <article className="mobile-peer-card clickable-card" key={p.id} tabIndex={0} onClick={(e) => openPeerFromEvent(e, p)} onKeyDown={(e) => { if (e.key === 'Enter') openPeer(p); }}>
             <div className="mobile-peer-head">
               <div>
                 <b>{p.name}</b>
@@ -667,7 +674,6 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
               </div>
             )}
             <div className="mobile-peer-actions">
-              <IconButton href={p.links?.html || '#'} title="Открыть клиента" tone="open"><ArrowUpRight size={14} /></IconButton>
               <IconButton href={p.links?.download || '#'} title="Скачать config" tone="download"><Download size={14} /></IconButton>
               <IconButton onClick={() => setQrPeer(p)} title="Показать QR" tone="qr"><QrCode size={14} /></IconButton>
               {p.enabled ? (
