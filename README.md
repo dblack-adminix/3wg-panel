@@ -29,7 +29,7 @@
 - `/apikeys` — API-ключи для интеграций через `X-API-Key`
 - `/monitoring` — Prometheus metrics, Prometheus token и Telegram notifications
 - `/updates` — проверка версии и статус host update runner
-- `/backups` — ручные backup'ы и restore состояния панели
+- `/backups` — ручные и автоматические backup'ы, restore и удаление старых архивов
 - `/tools/health` — диагностика Docker, протоколов, endpoint'ов и reverse proxy
 - `/health` — health-check
 - `/metrics` — Prometheus metrics endpoint, если включён в `.env`
@@ -131,7 +131,7 @@ docs/                документация
 
 ## Версия
 
-Текущая версия продукта: `v1.3.56`
+Текущая версия продукта: `v1.3.57`
 
 ## Copyright
 

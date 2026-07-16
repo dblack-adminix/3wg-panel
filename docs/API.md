@@ -460,6 +460,28 @@ curl -fsS \
   "$BASE_URL/api/backups"
 ```
 
+Настроить auto backup:
+
+```bash
+curl -fsS \
+  -X POST \
+  -H "X-API-Key: $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"enabled":true,"interval_hours":24,"keep_last":7}' \
+  "$BASE_URL/api/backups/auto"
+```
+
+Создать auto backup сразу и сохранить настройки:
+
+```bash
+curl -fsS \
+  -X POST \
+  -H "X-API-Key: $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"enabled":true,"interval_hours":24,"keep_last":7,"run_now":true}' \
+  "$BASE_URL/api/backups/auto"
+```
+
 Скачать:
 
 ```bash
@@ -467,6 +489,15 @@ curl -fL \
   -H "X-API-Key: $API_KEY" \
   "$BASE_URL/api/backups/backup-name.tgz/download" \
   -o backup-name.tgz
+```
+
+Удалить backup:
+
+```bash
+curl -fsS \
+  -X DELETE \
+  -H "X-API-Key: $API_KEY" \
+  "$BASE_URL/api/backups/backup-name.tgz"
 ```
 
 Restore:

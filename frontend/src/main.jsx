@@ -2078,10 +2078,13 @@ function formatBackupTime(ts) {
   return ts ? new Date(ts * 1000).toLocaleString('ru-RU') : '-';
 }
 
+const DEFAULT_AUTO_BACKUP = { enabled: false, interval_hours: 24, keep_last: 7, last_run_at: 0, next_run_at: 0 };
+
 function BackupsPage({ onLogout, user }) {
   const toast = useToast();
   const confirm = useConfirm();
   const [backups, setBackups] = useState([]);
+  const [autoBackup, setAutoBackup] = useState(DEFAULT_AUTO_BACKUP);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -2091,6 +2094,7 @@ function BackupsPage({ onLogout, user }) {
     try {
       const data = await api('/api/backups');
       setBackups(data.backups || []);
+      setAutoBackup({ ...DEFAULT_AUTO_BACKUP, ...(data.auto || {}) });
       setError('');
     } catch (err) {
       setError(err.message || 'Ошибка загрузки backup');
@@ -2107,6 +2111,7 @@ function BackupsPage({ onLogout, user }) {
     try {
       const data = await api('/api/backups', { method: 'POST' });
       setBackups(data.backups || []);
+      setAutoBackup({ ...DEFAULT_AUTO_BACKUP, ...(data.auto || {}) });
       setNotice(`Backup создан: ${data.backup?.name || ''}`);
       setError('');
     } catch (err) {
@@ -2133,11 +2138,56 @@ function BackupsPage({ onLogout, user }) {
         body: JSON.stringify({ confirm: 'RESTORE' }),
       });
       setBackups(data.backups || []);
+      setAutoBackup({ ...DEFAULT_AUTO_BACKUP, ...(data.auto || {}) });
       setNotice(`Restore выполнен. Pre-restore backup: ${data.pre_restore_backup?.name || '-'}`);
       setError('');
       toast.success('Restore выполнен');
     } catch (err) {
       setError(err.message || 'Ошибка restore');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveAutoBackup = async (runNow = false) => {
+    setBusy('auto');
+    setNotice('');
+    try {
+      const data = await api('/api/backups/auto', {
+        method: 'POST',
+        body: JSON.stringify({ ...autoBackup, run_now: runNow }),
+      });
+      setBackups(data.backups || []);
+      setAutoBackup({ ...DEFAULT_AUTO_BACKUP, ...(data.auto || {}) });
+      setNotice(runNow ? 'Auto backup выполнен и настройки сохранены.' : 'Настройки auto backup сохранены.');
+      setError('');
+    } catch (err) {
+      setError(err.message || 'Ошибка сохранения auto backup');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async (backup) => {
+    const ok = await confirm({
+      title: 'Удалить backup',
+      message: `Удалить архив ${backup.name}?`,
+      details: 'Файл будет удалён с сервера. Восстановиться из него уже не получится.',
+      tone: 'danger',
+      confirmLabel: 'Удалить',
+    });
+    if (!ok) return;
+    setBusy(backup.name);
+    setNotice('');
+    try {
+      const data = await api(`/api/backups/${encodeURIComponent(backup.name)}`, { method: 'DELETE' });
+      setBackups(data.backups || []);
+      setAutoBackup({ ...DEFAULT_AUTO_BACKUP, ...(data.auto || {}) });
+      setNotice(`Backup удалён: ${data.deleted || backup.name}`);
+      setError('');
+      toast.success('Backup удалён');
+    } catch (err) {
+      setError(err.message || 'Ошибка удаления backup');
     } finally {
       setBusy(false);
     }
@@ -2175,14 +2225,70 @@ function BackupsPage({ onLogout, user }) {
         {error && <div className="warning">{error}</div>}
       </section>
 
+      <section className="card backup-auto-card">
+        <div className="section-head">
+          <div>
+            <h2>Auto backup</h2>
+            <p className="muted">Панель сама создаёт архивы data/ и clients/ и чистит старые auto-файлы по лимиту.</p>
+          </div>
+          <span className={`runner-pill ${autoBackup.enabled ? 'ready' : 'disabled'}`}>{autoBackup.enabled ? 'ENABLED' : 'DISABLED'}</span>
+        </div>
+        <div className="backup-auto-grid">
+          <label className="backup-toggle">
+            <span>Расписание</span>
+            <button
+              className={`toggle-button ${autoBackup.enabled ? 'on' : ''}`}
+              type="button"
+              onClick={() => setAutoBackup((v) => ({ ...v, enabled: !v.enabled }))}
+            >
+              {autoBackup.enabled ? 'Включено' : 'Выключено'}
+            </button>
+          </label>
+          <label>
+            <span>Интервал</span>
+            <select
+              className="category-select"
+              value={autoBackup.interval_hours}
+              onChange={(e) => setAutoBackup((v) => ({ ...v, interval_hours: Number(e.target.value) }))}
+            >
+              <option value={1}>каждый час</option>
+              <option value={6}>каждые 6 часов</option>
+              <option value={12}>каждые 12 часов</option>
+              <option value={24}>раз в сутки</option>
+              <option value={48}>раз в 2 дня</option>
+              <option value={168}>раз в неделю</option>
+            </select>
+          </label>
+          <label>
+            <span>Хранить auto backup'ов</span>
+            <input
+              className="inline-number"
+              type="number"
+              min="1"
+              max="100"
+              value={autoBackup.keep_last}
+              onChange={(e) => setAutoBackup((v) => ({ ...v, keep_last: Number(e.target.value) }))}
+            />
+          </label>
+          <div className="backup-auto-meta">
+            <span>Последний запуск</span>
+            <b>{formatBackupTime(autoBackup.last_run_at)}</b>
+          </div>
+          <div className="backup-auto-meta">
+            <span>Следующий запуск</span>
+            <b>{autoBackup.enabled ? formatBackupTime(autoBackup.next_run_at) : '-'}</b>
+          </div>
+          <div className="backup-auto-actions">
+            <button className="copy-button" type="button" disabled={busy === 'auto'} onClick={() => saveAutoBackup(false)}><Check size={14} /> Сохранить</button>
+            <button className="orange-btn" type="button" disabled={busy === 'auto'} onClick={() => saveAutoBackup(true)}><Download size={14} /> Создать сейчас</button>
+          </div>
+        </div>
+      </section>
+
       <section className="card">
         <div className="section-head">
           <h2>Файлы</h2>
           <span className="muted">{backups.length} backup'ов</span>
-        </div>
-        <div className="backup-missing-note">
-          <b>Чего ещё не хватает:</b>
-          <span>автоматического расписания, ротации старых backup'ов, выноса копий на внешний сервер/S3 и отдельной проверки восстановления.</span>
         </div>
         <div className="table-wrap">
           <table className="clients-table backup-table">
@@ -2190,7 +2296,7 @@ function BackupsPage({ onLogout, user }) {
             <tbody>
               {backups.length === 0 && <tr><td className="empty-table" colSpan={4}>{busy ? 'Загрузка...' : 'Backup пока нет'}</td></tr>}
               {backups.map((backup) => (
-                <BackupRow key={backup.name} backup={backup} busy={busy === backup.name} onRestore={restore} />
+                <BackupRow key={backup.name} backup={backup} busy={busy === backup.name} onRestore={restore} onDelete={remove} />
               ))}
             </tbody>
           </table>
@@ -2200,7 +2306,7 @@ function BackupsPage({ onLogout, user }) {
   );
 }
 
-function BackupRow({ backup, busy, onRestore }) {
+function BackupRow({ backup, busy, onRestore, onDelete }) {
   return (
     <tr>
       <td><b className="backup-name" title={backup.name}>{backup.name}</b></td>
@@ -2210,6 +2316,9 @@ function BackupRow({ backup, busy, onRestore }) {
         <a className="copy-button" href={backup.download_url} title="Скачать backup"><Download size={14} /> Скачать</a>
         <button className="copy-button danger-action" type="button" title="Восстановить из backup" disabled={busy} onClick={() => onRestore(backup)}>
           <RefreshCw size={14} /> Восстановить
+        </button>
+        <button className="copy-button delete-action" type="button" title="Удалить backup" disabled={busy} onClick={() => onDelete(backup)}>
+          <Trash2 size={14} /> Удалить
         </button>
       </td>
     </tr>

@@ -203,7 +203,10 @@ sudo bash scripts/install_monitoring_agent.sh
 Страница `/backups` позволяет суперпользователю:
 
 - создать ручной backup состояния панели;
+- включить auto backup по расписанию;
+- задать интервал auto backup и сколько auto-архивов хранить;
 - скачать `.tgz` архив;
+- удалить старый архив с подтверждением;
 - выполнить restore с обязательным подтверждением `RESTORE`.
 
 UI backup сохраняет:
@@ -212,6 +215,8 @@ UI backup сохраняет:
 - `clients/`
 
 Перед restore панель автоматически создаёт pre-restore backup в `/app/backups/manual`.
+
+Auto backup создаёт файлы вида `3wg-panel.auto.<date>.tgz` в `/app/backups/manual`. Ротация удаляет только старые auto backup'ы сверх указанного лимита, ручные и pre-restore архивы не трогает.
 
 Важно: `.env` через web UI не архивируется. Это сделано специально, чтобы web-контейнер не читал production secrets. Для полного серверного backup используйте shell-вариант ниже.
 
