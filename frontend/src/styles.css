@@ -335,13 +335,13 @@ html[data-theme="light"] .sidebar-backdrop { background: rgba(15, 23, 42, .42); 
 .users-table th:nth-child(3), .users-table td:nth-child(3) { width: 112px; }
 .users-table th:nth-child(4), .users-table td:nth-child(4) { width: 64px; }
 .users-table th:nth-child(5), .users-table td:nth-child(5) { width: 78px; }
-.users-table th:nth-child(6), .users-table td:nth-child(6) { width: 220px; }
+.users-table th:nth-child(6), .users-table td:nth-child(6) { width: 205px; }
 .users-table th:nth-child(7), .users-table td:nth-child(7) { width: 70px; }
 .users-table .inline-number { width: 58px; height: 28px; }
 .users-table .user-traffic-limit-cell { min-width: 0; }
 .users-table .traffic-limit-cell { gap: 3px; }
-.users-table td.actions-cell { width: 150px; min-width: 150px; overflow: visible; }
-.users-table .inline-password { width: 104px; }
+.users-table td.actions-cell { width: 172px; min-width: 172px; overflow: visible; }
+.users-table .inline-password { width: 126px; }
 .audit-filter-card { margin-bottom: 12px; }
 .audit-filters { display: grid; grid-template-columns: 120px repeat(3, minmax(160px, 1fr)) auto; gap: 10px; align-items: end; }
 .audit-filters label { display: grid; gap: 7px; }

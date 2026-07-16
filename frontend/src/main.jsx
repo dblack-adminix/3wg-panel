@@ -1909,16 +1909,6 @@ function UsersPage({ onLogout, user }) {
           <div className="section-head"><h2>Аккаунты</h2><button className="copy-button" type="button" onClick={load}><RefreshCw size={14} /> Обновить</button></div>
           <div className="table-wrap">
             <table className="clients-table users-table">
-              <colgroup>
-                <col style={{ width: 42 }} />
-                <col style={{ width: 130 }} />
-                <col style={{ width: 110 }} />
-                <col style={{ width: 64 }} />
-                <col style={{ width: 78 }} />
-                <col style={{ width: 150 }} />
-                <col style={{ width: 70 }} />
-                <col style={{ width: 170 }} />
-              </colgroup>
               <thead><tr><th>ID</th><th>Логин</th><th>Роль</th><th>Peer'ы</th><th>Лимит</th><th>Трафик</th><th>Статус</th><th>Действия</th></tr></thead>
               <tbody>
                 {users.map((item) => (
