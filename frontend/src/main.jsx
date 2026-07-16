@@ -2919,6 +2919,37 @@ function HealthDiagnosticsPage({ onLogout, user }) {
     return acc;
   }, {});
   const summary = data.summary || { ok: 0, warn: 0, fail: 0 };
+  const renderGroup = (group, items, extraClass = '') => (
+    <section className={`card health-group-card ${extraClass}`} key={group}>
+      <div className="section-head">
+        <h2>{group}</h2>
+        <span className="muted">{items.length} checks</span>
+      </div>
+      <div className="health-check-list">
+        {items.map((item, idx) => {
+          const key = `${group}-${idx}-${item.name}`;
+          return (
+            <div className={`health-check ${item.status}`} key={key}>
+              <div className="health-check-main">
+                <span className={`health-pill ${item.status}`}>{healthStatusLabel(item.status)}</span>
+                <div>
+                  <b>{item.name}</b>
+                  <small>{item.message}</small>
+                </div>
+                <button className="copy-button" type="button" onClick={() => setExpanded(expanded === key ? null : key)}>
+                  {expanded === key ? 'Скрыть' : 'Детали'}
+                </button>
+              </div>
+              {expanded === key && <pre>{JSON.stringify(item.details || {}, null, 2)}</pre>}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+  const generalGroups = ['Panel', 'Docker', 'Storage', 'Network', 'Reverse proxy'].filter((group) => groups[group]);
+  const protocolGroups = ['WireGuard', 'AmneziaWG'].filter((group) => groups[group]);
+  const otherGroups = Object.keys(groups).filter((group) => !generalGroups.includes(group) && !protocolGroups.includes(group)).sort();
 
   return (
     <Shell title="Health diagnostics" subtitle="Проверки панели, Docker, протоколов и endpoint'ов" onLogout={onLogout} user={user}>
@@ -2934,36 +2965,19 @@ function HealthDiagnosticsPage({ onLogout, user }) {
             <section className="card health-summary warn"><span>WARN</span><b>{summary.warn || 0}</b></section>
             <section className="card health-summary fail"><span>FAIL</span><b>{summary.fail || 0}</b></section>
           </div>
-          <div className="health-group-grid">
-            {Object.entries(groups).map(([group, items]) => (
-              <section className="card health-group-card" key={group}>
-                <div className="section-head">
-                  <h2>{group}</h2>
-                  <span className="muted">{items.length} checks</span>
-                </div>
-                <div className="health-check-list">
-                  {items.map((item, idx) => {
-                    const key = `${group}-${idx}-${item.name}`;
-                    return (
-                      <div className={`health-check ${item.status}`} key={key}>
-                        <div className="health-check-main">
-                          <span className={`health-pill ${item.status}`}>{healthStatusLabel(item.status)}</span>
-                          <div>
-                            <b>{item.name}</b>
-                            <small>{item.message}</small>
-                          </div>
-                          <button className="copy-button" type="button" onClick={() => setExpanded(expanded === key ? null : key)}>
-                            {expanded === key ? 'Скрыть' : 'Детали'}
-                          </button>
-                        </div>
-                        {expanded === key && <pre>{JSON.stringify(item.details || {}, null, 2)}</pre>}
-                      </div>
-                    );
-                  })}
-                </div>
-              </section>
-            ))}
+          <div className="health-group-grid compact">
+            {generalGroups.map((group) => renderGroup(group, groups[group]))}
           </div>
+          {protocolGroups.length > 0 && (
+            <div className="health-protocol-grid">
+              {protocolGroups.map((group) => renderGroup(group, groups[group], 'protocol'))}
+            </div>
+          )}
+          {otherGroups.length > 0 && (
+            <div className="health-group-grid compact">
+              {otherGroups.map((group) => renderGroup(group, groups[group]))}
+            </div>
+          )}
         </>
       )}
     </Shell>
