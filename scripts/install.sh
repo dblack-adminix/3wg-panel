@@ -82,19 +82,23 @@ build_frontend() {
   fail "Frontend build failed after retries"
 }
 remove_existing_container() {
-  local i old_name
+  local i ids old_name
   docker update --restart=no "$CONTAINER" >/dev/null 2>&1 || true
-  docker stop "$CONTAINER" >/dev/null 2>&1 || true
-  docker rm "$CONTAINER" >/dev/null 2>&1 || true
   for i in 1 2 3 4 5 6 7 8 9 10; do
-    if ! docker ps -a --format '{{.Names}}' | grep -Fxq "$CONTAINER"; then
+    ids="$(docker ps -aq --filter "name=^/${CONTAINER}$")"
+    if [ -z "$ids" ]; then
       return 0
     fi
+    docker update --restart=no $ids >/dev/null 2>&1 || true
+    docker rm -f $ids >/dev/null 2>&1 || true
     sleep 1
   done
-  old_name="${CONTAINER}-old-$(date +%s)"
-  docker rename "$CONTAINER" "$old_name" >/dev/null 2>&1 || true
-  docker rm -f "$old_name" >/dev/null 2>&1 || true
+  ids="$(docker ps -aq --filter "name=^/${CONTAINER}$")"
+  if [ -n "$ids" ]; then
+    old_name="${CONTAINER}-old-$(date +%s)"
+    docker rename "$CONTAINER" "$old_name" >/dev/null 2>&1 || true
+    docker rm -f "$old_name" >/dev/null 2>&1 || true
+  fi
   if docker ps -a --format '{{.Names}}' | grep -Fxq "$CONTAINER"; then
     fail "Container name is still busy: $CONTAINER"
   fi
