@@ -303,9 +303,18 @@ html[data-theme="light"] .sidebar-backdrop { background: rgba(15, 23, 42, .42); 
 .backup-hero-card .success,
 .backup-hero-card .warning { grid-column: 1 / -1; }
 .backup-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
-.backup-table { width: 980px; min-width: 980px; }
-.backup-restore-controls { display: grid; grid-template-columns: 150px 34px; gap: 6px; align-items: center; }
-.backup-restore-controls .name-input { height: 32px; }
+.backup-explain-grid { display: grid; grid-template-columns: repeat(3, minmax(180px, 1fr)); gap: 10px; margin-top: 14px; }
+.backup-explain-grid div,
+.backup-missing-note { border: 1px solid #262626; border-radius: 8px; background: #0d0d0d; padding: 12px; }
+.backup-explain-grid span { display: block; color: #8a8a8a; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 7px; }
+.backup-explain-grid b { display: block; margin-bottom: 6px; }
+.backup-explain-grid small { color: #8a8a8a; line-height: 1.45; }
+.backup-missing-note { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; color: #8a8a8a; }
+.backup-missing-note b { color: #ffffff; }
+.backup-table { width: 1020px; min-width: 1020px; }
+.backup-name { display: block; max-width: 430px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.backup-row-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.copy-button.danger-action { color: #ffb35c; border-color: #7a4d00; background: #2a1d00; }
 .inline-number { width: 82px; height: 30px; border: 1px solid #333333; border-radius: 6px; background: #0d0d0d; color: #ffffff; padding: 0 8px; }
 .inline-password { width: 120px; height: 28px; border: 1px solid #333333; border-radius: 6px; background: #0d0d0d; color: #ffffff; padding: 0 8px; }
 .user-actions { display: grid; gap: 5px; align-items: start; }
@@ -914,6 +923,7 @@ html[data-theme="light"] .sidebar-backdrop { background: rgba(15, 23, 42, .42); 
   .health-check-main { grid-template-columns: 1fr; }
   .audit-filters { grid-template-columns: 1fr; }
   .backup-hero-card { grid-template-columns: 1fr; }
+  .backup-explain-grid { grid-template-columns: 1fr; }
   .backup-actions { justify-content: flex-start; }
   .system-facts { grid-template-columns: 1fr; }
   .system-alert { grid-template-columns: 1fr; }
@@ -1386,8 +1396,16 @@ html[data-theme="light"] .audit-details-row pre {
   border-color: #1e293b;
   color: #e2e8f0;
 }
-html[data-theme="light"] .backup-restore-controls .name-input {
-  background: #ffffff;
-  border-color: #cbd5e1;
+html[data-theme="light"] .backup-explain-grid div,
+html[data-theme="light"] .backup-missing-note {
+  background: #f8fafc;
+  border-color: #d8e1ec;
+}
+html[data-theme="light"] .backup-missing-note b {
   color: #111827;
+}
+html[data-theme="light"] .copy-button.danger-action {
+  background: #fff7ed;
+  border-color: #fdba74;
+  color: #c2410c;
 }

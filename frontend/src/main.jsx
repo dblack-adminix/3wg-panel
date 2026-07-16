@@ -2117,14 +2117,10 @@ function BackupsPage({ onLogout, user }) {
   };
 
   const restore = async (backup, confirmText) => {
-    if (confirmText !== 'RESTORE') {
-      toast.error('Введите RESTORE для подтверждения.');
-      return;
-    }
     const ok = await confirm({
       title: 'Восстановить backup',
       message: `Восстановить состояние панели из ${backup.name}?`,
-      details: 'Перед restore будет создан pre-restore backup.',
+      details: 'Будут заменены data/ и clients/. Перед восстановлением панель автоматически создаст pre-restore backup текущего состояния.',
       tone: 'danger',
       confirmLabel: 'Восстановить',
     });
@@ -2134,7 +2130,7 @@ function BackupsPage({ onLogout, user }) {
     try {
       const data = await api(`/api/backups/${encodeURIComponent(backup.name)}/restore`, {
         method: 'POST',
-        body: JSON.stringify({ confirm: confirmText }),
+        body: JSON.stringify({ confirm: 'RESTORE' }),
       });
       setBackups(data.backups || []);
       setNotice(`Restore выполнен. Pre-restore backup: ${data.pre_restore_backup?.name || '-'}`);
@@ -2148,11 +2144,28 @@ function BackupsPage({ onLogout, user }) {
   };
 
   return (
-    <Shell title="Backups" subtitle="Ручные backup'ы data и clients с безопасным restore" onLogout={onLogout} user={user}>
+    <Shell title="Backups" subtitle="Снимки данных панели и клиентских конфигов" onLogout={onLogout} user={user}>
       <section className="card backup-hero-card">
         <div>
           <h2>Backup / Restore</h2>
-          <p className="muted">Backup из UI сохраняет `data/` и `clients/`. `.env` храните отдельно на сервере, потому что web-контейнер не должен читать production secrets.</p>
+          <p className="muted">Ручной backup нужен перед обновлениями, массовыми правками peer'ов и экспериментами с настройками.</p>
+          <div className="backup-explain-grid">
+            <div>
+              <span>В backup входит</span>
+              <b>data/ и clients/</b>
+              <small>База панели, категории, пользователи, API-ключи, история, клиентские конфиги и QR payload.</small>
+            </div>
+            <div>
+              <span>Не входит</span>
+              <b>.env и Docker</b>
+              <small>Секреты и host-настройки нужно хранить отдельно на сервере или в защищённом vault.</small>
+            </div>
+            <div>
+              <span>Restore</span>
+              <b>Безопасный откат</b>
+              <small>Перед восстановлением автоматически создаётся pre-restore backup текущего состояния.</small>
+            </div>
+          </div>
         </div>
         <div className="backup-actions">
           <button className="orange-btn" type="button" onClick={create} disabled={busy}><Download size={15} /> Создать backup</button>
@@ -2167,11 +2180,15 @@ function BackupsPage({ onLogout, user }) {
           <h2>Файлы</h2>
           <span className="muted">{backups.length} backup'ов</span>
         </div>
+        <div className="backup-missing-note">
+          <b>Чего ещё не хватает:</b>
+          <span>автоматического расписания, ротации старых backup'ов, выноса копий на внешний сервер/S3 и отдельной проверки восстановления.</span>
+        </div>
         <div className="table-wrap">
           <table className="clients-table backup-table">
-            <thead><tr><th>Файл</th><th>Размер</th><th>Создан</th><th>Скачать</th><th>Restore</th></tr></thead>
+            <thead><tr><th>Файл</th><th>Размер</th><th>Создан</th><th>Действия</th></tr></thead>
             <tbody>
-              {backups.length === 0 && <tr><td className="empty-table" colSpan={5}>{busy ? 'Загрузка...' : 'Backup пока нет'}</td></tr>}
+              {backups.length === 0 && <tr><td className="empty-table" colSpan={4}>{busy ? 'Загрузка...' : 'Backup пока нет'}</td></tr>}
               {backups.map((backup) => (
                 <BackupRow key={backup.name} backup={backup} busy={busy === backup.name} onRestore={restore} />
               ))}
@@ -2184,20 +2201,16 @@ function BackupsPage({ onLogout, user }) {
 }
 
 function BackupRow({ backup, busy, onRestore }) {
-  const [confirmText, setConfirmText] = useState('');
   return (
     <tr>
-      <td><b>{backup.name}</b></td>
+      <td><b className="backup-name" title={backup.name}>{backup.name}</b></td>
       <td>{formatBytes(backup.size)}</td>
       <td>{formatBackupTime(backup.created_at)}</td>
-      <td>
+      <td className="backup-row-actions">
         <a className="copy-button" href={backup.download_url} title="Скачать backup"><Download size={14} /> Скачать</a>
-      </td>
-      <td>
-        <div className="backup-restore-controls">
-          <input className="name-input" placeholder="RESTORE" value={confirmText} onChange={(e) => setConfirmText(e.target.value)} />
-          <button className="icon-button danger" type="button" title="Restore" disabled={busy || confirmText !== 'RESTORE'} onClick={() => onRestore(backup, confirmText)}><RefreshCw size={14} /></button>
-        </div>
+        <button className="copy-button danger-action" type="button" title="Восстановить из backup" disabled={busy} onClick={() => onRestore(backup)}>
+          <RefreshCw size={14} /> Восстановить
+        </button>
       </td>
     </tr>
   );
