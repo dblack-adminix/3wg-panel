@@ -2710,7 +2710,7 @@ function SystemStatusPage({ onLogout, user }) {
             <section className="card tool-kpi">
               <span>CPU</span>
               <b>{system.cpu_percent ?? 0}%</b>
-              <small>{system.cpu?.cores || 1} cores · load {loadAvg.one ?? 0}</small>
+              <small>{system.cpu?.cores || 1} cores · current {system.cpu?.current_percent ?? system.cpu_percent ?? 0}% · load {loadAvg.one ?? 0}</small>
               <div className="tool-progress"><i style={percentStyle(system.cpu_percent)} /></div>
             </section>
             <section className="card tool-kpi">

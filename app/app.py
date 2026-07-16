@@ -7686,6 +7686,27 @@ def _system_network_totals(interfaces: list[dict]) -> dict:
     }
 
 
+def _recent_cpu_average(current_cpu: float, minutes: int = 5) -> float:
+    values = [float(current_cpu or 0)]
+    since = int(time.time()) - max(1, int(minutes or 5)) * 60
+    try:
+        with db() as conn:
+            rows = conn.execute(
+                """
+                SELECT cpu_percent
+                FROM system_snapshots
+                WHERE ts >= ?
+                ORDER BY ts DESC
+                LIMIT 8
+                """,
+                (since,),
+            ).fetchall()
+        values.extend(float(row['cpu_percent'] or 0) for row in rows)
+    except Exception:
+        pass
+    return round(sum(values) / len(values), 1) if values else 0.0
+
+
 def _record_system_snapshot(payload: dict, min_interval: int = 60) -> None:
     ts = int(payload.get('ts') or time.time())
     network_totals = _system_network_totals(payload.get('network', {}).get('interfaces') or [])
@@ -7800,6 +7821,7 @@ def api_node_system(user=Depends(api_require_auth)):
     for p in PROTOCOLS.values():
         containers.append(_container_system_metric(p['container']))
     protocols = {protocol: api_protocol_state(protocol) for protocol in PROTOCOLS}
+    cpu_sustained = _recent_cpu_average(cpu_percent)
 
     payload = {
         'ok': True,
@@ -7807,8 +7829,9 @@ def api_node_system(user=Depends(api_require_auth)):
         'hostname': os.uname().nodename,
         'uptime_seconds': uptime_seconds,
         'load_average': {'one': round(load[0], 2), 'five': round(load[1], 2), 'fifteen': round(load[2], 2)},
-        'cpu': {'percent': cpu_percent, 'cores': cpu_count},
-        'cpu_percent': cpu_percent,
+        'cpu': {'percent': cpu_sustained, 'current_percent': cpu_percent, 'cores': cpu_count},
+        'cpu_percent': cpu_sustained,
+        'cpu_percent_current': cpu_percent,
         'memory': {'total': mem_total, 'available': mem_available, 'used': mem_used, 'percent': mem_percent},
         'swap': {'total': swap_total, 'used': swap_used, 'free': swap_free, 'percent': swap_percent},
         'disk': {'total': du.total, 'used': du.used, 'free': du.free, 'percent': disk_percent, 'mounts': mounts},
