@@ -165,6 +165,11 @@ function Sidebar({ onLogout, protocols: initialProtocols = null, user, mobileOpe
 
   const showWireGuardStatus = Boolean(protocols?.wireguard?.available);
   const showAmneziaStatus = protocols?.amneziawg?.available !== false;
+  const closeNavGroups = () => {
+    setManagementOpen(false);
+    setToolsOpen(false);
+    onClose?.();
+  };
 
   return (
     <aside className={`sidebar ${mobileOpen ? 'open' : ''}`}>
@@ -172,9 +177,9 @@ function Sidebar({ onLogout, protocols: initialProtocols = null, user, mobileOpe
         <img src="/logogrin.png" alt="3WG" />
       </div>
       <div className="nav-title">ОБЗОР</div>
-      <a className={`nav ${isHome ? 'active' : ''}`} href="/" onClick={onClose}><Home size={14} /> <span>Главная</span></a>
-      {isAdmin && showWireGuardStatus && <a className={`nav ${path === '/status/wireguard' ? 'active' : ''}`} href="/status/wireguard" onClick={onClose}><Activity size={14} /> <span>WG status</span></a>}
-      {isAdmin && showAmneziaStatus && <a className={`nav ${path === '/status/amneziawg' ? 'active' : ''}`} href="/status/amneziawg" onClick={onClose}><Activity size={14} /> <span>AWG status</span></a>}
+      <a className={`nav ${isHome ? 'active' : ''}`} href="/" onClick={closeNavGroups}><Home size={14} /> <span>Главная</span></a>
+      {isAdmin && showWireGuardStatus && <a className={`nav ${path === '/status/wireguard' ? 'active' : ''}`} href="/status/wireguard" onClick={closeNavGroups}><Activity size={14} /> <span>WG status</span></a>}
+      {isAdmin && showAmneziaStatus && <a className={`nav ${path === '/status/amneziawg' ? 'active' : ''}`} href="/status/amneziawg" onClick={closeNavGroups}><Activity size={14} /> <span>AWG status</span></a>}
       {isAdmin && (
         <button className={`nav-title nav-title-toggle ${managementOpen ? 'open' : ''}`} type="button" aria-expanded={managementOpen} onClick={() => setManagementOpen((v) => !v)}>
           <span>УПРАВЛЕНИЕ</span><ChevronRight size={12} />
@@ -182,12 +187,12 @@ function Sidebar({ onLogout, protocols: initialProtocols = null, user, mobileOpe
       )}
       {isAdmin && managementOpen && (
         <div className="nav-group">
-          <a className={`nav ${path === '/users' ? 'active' : ''}`} href="/users" onClick={onClose}><Users size={14} /> <span>Пользователи</span></a>
-          <a className={`nav ${path === '/apikeys' ? 'active' : ''}`} href="/apikeys" onClick={onClose}><Key size={14} /> <span>API-ключи</span></a>
-          <a className={`nav ${path === '/monitoring' ? 'active' : ''}`} href="/monitoring" onClick={onClose}><Activity size={14} /> <span>Мониторинг</span></a>
-          <a className={`nav ${path === '/updates' ? 'active' : ''}`} href="/updates" onClick={onClose}><RefreshCw size={14} /> <span>Обновления</span></a>
-          <a className={`nav ${path === '/audit' ? 'active' : ''}`} href="/audit" onClick={onClose}><Terminal size={14} /> <span>Audit log</span></a>
-          <a className={`nav ${path === '/backups' ? 'active' : ''}`} href="/backups" onClick={onClose}><Download size={14} /> <span>Backups</span></a>
+          <a className={`nav ${path === '/users' ? 'active' : ''}`} href="/users" onClick={closeNavGroups}><Users size={14} /> <span>Пользователи</span></a>
+          <a className={`nav ${path === '/apikeys' ? 'active' : ''}`} href="/apikeys" onClick={closeNavGroups}><Key size={14} /> <span>API-ключи</span></a>
+          <a className={`nav ${path === '/monitoring' ? 'active' : ''}`} href="/monitoring" onClick={closeNavGroups}><Activity size={14} /> <span>Мониторинг</span></a>
+          <a className={`nav ${path === '/updates' ? 'active' : ''}`} href="/updates" onClick={closeNavGroups}><RefreshCw size={14} /> <span>Обновления</span></a>
+          <a className={`nav ${path === '/audit' ? 'active' : ''}`} href="/audit" onClick={closeNavGroups}><Terminal size={14} /> <span>Audit log</span></a>
+          <a className={`nav ${path === '/backups' ? 'active' : ''}`} href="/backups" onClick={closeNavGroups}><Download size={14} /> <span>Backups</span></a>
         </div>
       )}
       {isAdmin && (
@@ -197,10 +202,10 @@ function Sidebar({ onLogout, protocols: initialProtocols = null, user, mobileOpe
       )}
       {isAdmin && toolsOpen && (
         <div className="nav-group">
-          <a className={`nav ${path === '/tools/system' ? 'active' : ''}`} href="/tools/system" onClick={onClose}><Activity size={14} /> <span>System Status</span></a>
-          <a className={`nav ${path === '/tools/health' ? 'active' : ''}`} href="/tools/health" onClick={onClose}><ShieldCheck size={14} /> <span>Diagnostics</span></a>
-          <a className={`nav ${path === '/tools/ping' ? 'active' : ''}`} href="/tools/ping" onClick={onClose}><Network size={14} /> <span>Ping</span></a>
-          <a className={`nav ${path === '/tools/traceroute' ? 'active' : ''}`} href="/tools/traceroute" onClick={onClose}><ArrowUpRight size={14} /> <span>Traceroute</span></a>
+          <a className={`nav ${path === '/tools/system' ? 'active' : ''}`} href="/tools/system" onClick={closeNavGroups}><Activity size={14} /> <span>System Status</span></a>
+          <a className={`nav ${path === '/tools/health' ? 'active' : ''}`} href="/tools/health" onClick={closeNavGroups}><ShieldCheck size={14} /> <span>Diagnostics</span></a>
+          <a className={`nav ${path === '/tools/ping' ? 'active' : ''}`} href="/tools/ping" onClick={closeNavGroups}><Network size={14} /> <span>Ping</span></a>
+          <a className={`nav ${path === '/tools/traceroute' ? 'active' : ''}`} href="/tools/traceroute" onClick={closeNavGroups}><ArrowUpRight size={14} /> <span>Traceroute</span></a>
         </div>
       )}
       <button className="nav logout" onClick={onLogout}><LogOut size={14} /> <span>Выход</span></button>
