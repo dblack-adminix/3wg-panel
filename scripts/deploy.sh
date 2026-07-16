@@ -69,15 +69,22 @@ build_frontend() {
   fail "Frontend build failed after retries"
 }
 remove_existing_container() {
-  local i
-  docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+  local i old_name
+  docker update --restart=no "$CONTAINER" >/dev/null 2>&1 || true
+  docker stop "$CONTAINER" >/dev/null 2>&1 || true
+  docker rm "$CONTAINER" >/dev/null 2>&1 || true
   for i in 1 2 3 4 5 6 7 8 9 10; do
     if ! docker ps -a --format '{{.Names}}' | grep -Fxq "$CONTAINER"; then
       return 0
     fi
     sleep 1
   done
-  fail "Container name is still busy: $CONTAINER"
+  old_name="${CONTAINER}-old-$(date +%s)"
+  docker rename "$CONTAINER" "$old_name" >/dev/null 2>&1 || true
+  docker rm -f "$old_name" >/dev/null 2>&1 || true
+  if docker ps -a --format '{{.Names}}' | grep -Fxq "$CONTAINER"; then
+    fail "Container name is still busy: $CONTAINER"
+  fi
 }
 check_python_sources() {
   python3 -m py_compile "$APP" "$BASE/app/api_keys_store.py" "$BASE/scripts/apply_api_patch.py" "$BASE/scripts/apply_dashboard_model_patch.py" "$BASE/scripts/update_runner.py"
