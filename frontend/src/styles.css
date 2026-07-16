@@ -469,13 +469,13 @@ html[data-theme="light"] .sidebar-backdrop { background: rgba(15, 23, 42, .42); 
 .expiration-bad { color: #ff5b7b !important; }
 .active-text { color: var(--green); font-weight: 700; }
 .blocked-text { color: var(--danger); font-weight: 700; }
-.clients-table:not(.users-table) td.actions-cell { width: 110px; min-width: 96px; overflow: visible; padding: 5px; }
+.clients-table:not(.users-table) td.actions-cell { width: 126px; min-width: 126px; overflow: visible; padding: 5px; }
 .clickable-row { cursor: pointer; transition: background .15s ease; }
 .clickable-row:hover { background: rgba(255, 255, 255, .025); }
 .clickable-row:focus-visible { outline: 1px solid var(--green); outline-offset: -1px; }
 .table-category-select { width: 100%; padding: 0 7px; }
 .empty-table { text-align: center !important; color: #8a8a8a; padding: 18px 8px !important; }
-.actions { display: flex; gap: 3px; align-items: center; justify-content: flex-start; flex-wrap: wrap; }
+.actions { display: flex; gap: 3px; align-items: center; justify-content: flex-start; flex-wrap: nowrap; }
 .mobile-peer-list { display: none; }
 .mobile-peer-card { border: 1px solid #262626; border-radius: 8px; background: #0d0d0d; padding: 12px; }
 .clickable-card { cursor: pointer; transition: border-color .15s ease, transform .15s ease; }
@@ -501,7 +501,8 @@ html[data-theme="light"] .sidebar-backdrop { background: rgba(15, 23, 42, .42); 
 .mobile-peer-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .mobile-peer-actions .icon-button { width: 30px; height: 30px; }
 .mobile-empty { border: 1px dashed #333333; border-radius: 8px; padding: 18px; color: #8a8a8a; text-align: center; }
-.icon-button { flex: 0 0 auto; display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 5px; border: 1px solid transparent; text-decoration: none; cursor: pointer; }
+.icon-button { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; box-sizing: border-box; line-height: 1; vertical-align: middle; border-radius: 5px; border: 1px solid transparent; text-decoration: none; cursor: pointer; }
+.icon-button svg { display: block; flex: 0 0 auto; width: 14px; height: 14px; stroke-width: 2.25; }
 .icon-button.open { background: #ff8c00; color: #111; }
 .icon-button.download { background: #2a1d00; border-color: #7a4d00; color: #ff8c00; }
 .icon-button.qr { background: #1d2600; border-color: #5a7300; color: var(--green); }
