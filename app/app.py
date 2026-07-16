@@ -7687,8 +7687,9 @@ def _system_network_totals(interfaces: list[dict]) -> dict:
 
 
 def _recent_cpu_average(current_cpu: float, minutes: int = 5) -> float:
-    values = [float(current_cpu or 0)]
+    current = float(current_cpu or 0)
     since = int(time.time()) - max(1, int(minutes or 5)) * 60
+    recent = []
     try:
         with db() as conn:
             rows = conn.execute(
@@ -7701,10 +7702,13 @@ def _recent_cpu_average(current_cpu: float, minutes: int = 5) -> float:
                 """,
                 (since,),
             ).fetchall()
-        values.extend(float(row['cpu_percent'] or 0) for row in rows)
+        recent = [float(row['cpu_percent'] or 0) for row in rows]
     except Exception:
         pass
-    return round(sum(values) / len(values), 1) if values else 0.0
+    if not recent:
+        return round(current, 1)
+    recent_avg = sum(recent) / len(recent)
+    return round(current * 0.7 + recent_avg * 0.3, 1)
 
 
 def _record_system_snapshot(payload: dict, min_interval: int = 60) -> None:
@@ -7785,7 +7789,7 @@ def _system_history_payload(hours: int = 24) -> dict:
 def api_node_system(user=Depends(api_require_auth)):
     # CPU: два замера /proc/stat с паузой
     idle1, total1 = _read_proc_stat()
-    time.sleep(0.2)
+    time.sleep(1.0)
     idle2, total2 = _read_proc_stat()
     dt = total2 - total1
     cpu_percent = round((1 - (idle2 - idle1) / dt) * 100, 1) if dt > 0 else 0.0
