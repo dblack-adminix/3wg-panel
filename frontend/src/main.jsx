@@ -3052,6 +3052,17 @@ function NetworkToolResult({ kind, result, peer }) {
   );
 }
 
+function getNetworkToolBadge(kind, result) {
+  if (!result) return null;
+  if (kind === 'traceroute') {
+    const trace = parseTraceSummary(result.output || '');
+    if (result.ok && trace.timedOut) return { className: 'status-pill warn', label: 'WARN' };
+  }
+  return result.ok
+    ? { className: 'status-pill online', label: 'OK' }
+    : { className: 'status-pill offline', label: `CODE ${result.return_code}` };
+}
+
 function NetworkToolPage({ kind, onLogout, user }) {
   const isTrace = kind === 'traceroute';
   const [peers, setPeers] = useState([]);
@@ -3105,6 +3116,7 @@ function NetworkToolPage({ kind, onLogout, user }) {
 
   const title = isTrace ? 'Traceroute' : 'Ping';
   const subtitle = isTrace ? 'Проверка маршрута от панели до IP или hostname' : 'Проверка доступности IP или hostname от панели';
+  const resultBadge = getNetworkToolBadge(kind, result);
   const selectedPeerData = peers.find((item) => String(item.id) === String(selectedPeer));
 
   return (
@@ -3147,7 +3159,7 @@ function NetworkToolPage({ kind, onLogout, user }) {
         <section className="card network-result-card">
           <div className="section-head">
             <h2>Результат</h2>
-            {result && <span className={result.ok ? 'status-pill online' : 'status-pill offline'}>{result.ok ? 'OK' : `CODE ${result.return_code}`}</span>}
+            {resultBadge && <span className={resultBadge.className}>{resultBadge.label}</span>}
           </div>
           {result ? (
             <>

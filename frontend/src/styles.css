@@ -707,6 +707,7 @@ html[data-theme="light"] .sidebar-backdrop { background: rgba(15, 23, 42, .42); 
 .eyebrow { color: #8a8a8a; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
 .status-pill { height: 30px; display: inline-flex; align-items: center; gap: 6px; border-radius: 7px; padding: 0 10px; font-weight: 700; font-size: 12px; }
 .status-pill.online { border: 1px solid #5a7300; background: #161d00; color: var(--green); }
+.status-pill.warn { border: 1px solid #7a4d00; background: #2a1d00; color: #ff8c00; }
 .status-pill.offline { border: 1px solid #6e2c3f; background: #22101a; color: var(--danger); }
 .status-pill.disabled { border: 1px solid #3a3a3a; background: #151515; color: #8a8a8a; }
 .status-meta-grid { display: grid; grid-template-columns: repeat(2, minmax(180px, 1fr)); gap: 12px; }
@@ -1205,6 +1206,11 @@ html[data-theme="light"] .status-pill.online {
   background: #f3f8e8;
   border-color: #c5d99a;
   color: #5f7f00;
+}
+html[data-theme="light"] .status-pill.warn {
+  background: #fff7ed;
+  border-color: #fdba74;
+  color: #c2410c;
 }
 html[data-theme="light"] .status-pill.offline {
   background: #fff1f2;
