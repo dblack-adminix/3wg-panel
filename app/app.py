@@ -169,11 +169,14 @@ def admin_user() -> dict:
 
 
 def user_payload(row) -> dict:
+    traffic_limit_bytes = int(row["traffic_limit_bytes"]) if "traffic_limit_bytes" in row.keys() and row["traffic_limit_bytes"] else 0
     return {
         "id": int(row["id"]),
         "username": row["username"],
         "role": row["role"],
         "peer_limit": int(row["peer_limit"]),
+        "traffic_limit_bytes": traffic_limit_bytes,
+        "traffic_limit": api_user_traffic_limit_payload(int(row["id"]), traffic_limit_bytes),
         "enabled": bool(row["enabled"]),
         "created_at": int(row["created_at"]),
         "is_admin": row["role"] == "admin",

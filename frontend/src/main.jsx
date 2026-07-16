@@ -1592,6 +1592,66 @@ function TrafficPage({ protocol, onLogout, user }) {
   );
 }
 
+function UserHome({ state, online, available, onRefresh, user }) {
+  const quota = state.quota || {};
+  const traffic = user?.traffic_limit || {};
+  const totals = useMemo(() => state.peers.reduce((acc, peer) => ({
+    rx: acc.rx + Number(peer.live?.rx || 0),
+    tx: acc.tx + Number(peer.live?.tx || 0),
+  }), { rx: 0, tx: 0 }), [state.peers]);
+  const totalTraffic = totals.rx + totals.tx;
+  const quotaPercent = quota?.limited && quota.limit ? Math.min(100, Math.round((Number(quota.used || 0) / Number(quota.limit || 1)) * 100)) : 0;
+  const trafficPercent = traffic?.enabled ? Math.min(100, Math.round(Number(traffic.percent || 0))) : 0;
+
+  return (
+    <>
+      <section className="user-hero-card">
+        <div className="user-hero-copy">
+          <span>Личный кабинет</span>
+          <h2>{user?.username || 'Пользователь'}</h2>
+          <p>Создавайте peer'ы в рамках выданного лимита, скачивайте конфиги и открывайте QR без админских инструментов.</p>
+        </div>
+        <div className="user-hero-stats">
+          <div>
+            <span>Peer'ы</span>
+            <b>{quota?.limited ? `${quota.used} / ${quota.limit}` : state.peers.length}</b>
+            <i><em style={{ width: `${quotaPercent}%` }} /></i>
+            <small>{quota?.limited ? `доступно ${quota.remaining}` : 'без ограничения'}</small>
+          </div>
+          <div>
+            <span>Трафик</span>
+            <b>{traffic?.enabled ? traffic.label : formatBytes(totalTraffic)}</b>
+            <i><em style={{ width: `${trafficPercent}%` }} /></i>
+            <small>{traffic?.enabled ? `осталось ${formatBytes(traffic.remaining_bytes)}` : 'без общего лимита'}</small>
+          </div>
+          <div>
+            <span>Сейчас в сети</span>
+            <b>{online}</b>
+            <small>{available} протокола доступно</small>
+          </div>
+        </div>
+      </section>
+      <div className="user-dashboard-grid">
+        <CreateClient protocols={state.protocols} categories={state.categories} quota={state.quota} isAdmin={false} onCreated={onRefresh} />
+        <section className="card user-peer-summary">
+          <div className="section-head">
+            <h2>Мои peer'ы</h2>
+            <button className="copy-button" type="button" onClick={onRefresh}><RefreshCw size={14} /> Обновить</button>
+          </div>
+          <div className="user-peer-kpis">
+            <div><span>Всего</span><b>{state.peers.length}</b></div>
+            <div><span>Online</span><b>{online}</b></div>
+            <div><span>RX</span><b>{formatBytes(totals.rx)}</b></div>
+            <div><span>TX</span><b>{formatBytes(totals.tx)}</b></div>
+          </div>
+          <p>Ниже только ваши peer'ы. Для каждого доступны QR, скачивание config и быстрые действия.</p>
+        </section>
+      </div>
+      <ClientsTable peers={state.peers} categories={state.categories} isAdmin={false} onRefresh={onRefresh} />
+    </>
+  );
+}
+
 function Dashboard({ onLogout, user }) {
   const [state, setState] = useState({ loading: true, peers: [], categories: [], status: null, protocols: {}, quota: null, error: '' });
   const [trafficHistory, setTrafficHistory] = useState([]);
@@ -1644,6 +1704,10 @@ function Dashboard({ onLogout, user }) {
   return (
     <Shell title="3WG Panel" subtitle={user?.is_admin ? 'WireGuard / AmneziaWG node management' : 'Личный кабинет peer-ов'} onLogout={onLogout} protocols={state.protocols} user={user}>
       {state.error && <div className="warning">{state.error}</div>}
+      {!user?.is_admin ? (
+        <UserHome state={state} online={online} available={available} onRefresh={load} user={user} />
+      ) : (
+        <>
       <div className="stats-grid">
         <StatCard value={state.status?.clients_total ?? state.peers.length} label="клиентов в панели" icon={Users} />
         <StatCard value={state.status?.peers_total ?? 0} label="peer'ов в контейнерах" icon={Network} />
@@ -1656,6 +1720,8 @@ function Dashboard({ onLogout, user }) {
       </div>
       <ClientsTable peers={state.peers} categories={state.categories} isAdmin={Boolean(user?.is_admin)} onRefresh={load} />
       {user?.is_admin && <section className="card status-card" id="status"><h2>Статус</h2><div className="status-grid">{Object.values(state.protocols || {}).map((p) => <div className="status-item" key={p.protocol}><b>{p.title}</b><span className={p.available ? 'status-ok' : 'status-bad'}>{p.available ? <Wifi size={14} /> : <WifiOff size={14} />}{p.available ? 'ONLINE' : 'OFFLINE'}</span><small>{p.container} / {p.interface}</small></div>)}</div></section>}
+        </>
+      )}
     </Shell>
   );
 }
