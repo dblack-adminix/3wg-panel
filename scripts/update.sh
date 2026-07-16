@@ -59,6 +59,18 @@ verify_frontend_deps() {
   done
   fail "Frontend dependencies are not ready after npm install"
 }
+build_frontend() {
+  local i
+  for i in 1 2 3; do
+    if npm run build; then
+      return 0
+    fi
+    printf 'Frontend build failed, retrying (%s/3)...\n' "$i" >&2
+    verify_frontend_deps
+    sleep 2
+  done
+  fail "Frontend build failed after retries"
+}
 check_python_sources() {
   python3 -m py_compile app/app.py app/api_keys_store.py scripts/apply_api_patch.py scripts/apply_dashboard_model_patch.py scripts/update_runner.py
 }
@@ -124,7 +136,7 @@ say "Building React frontend"
 cd frontend
 install_frontend_deps
 verify_frontend_deps
-npm run build
+build_frontend
 cd "$INSTALL_DIR"
 
 say "Building Docker image"

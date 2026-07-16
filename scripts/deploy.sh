@@ -56,6 +56,18 @@ verify_frontend_deps() {
   done
   fail "Frontend dependencies are not ready after npm install"
 }
+build_frontend() {
+  local i
+  for i in 1 2 3; do
+    if npm run build; then
+      return 0
+    fi
+    printf 'Frontend build failed, retrying (%s/3)...\n' "$i" >&2
+    verify_frontend_deps
+    sleep 2
+  done
+  fail "Frontend build failed after retries"
+}
 check_python_sources() {
   python3 -m py_compile "$APP" "$BASE/app/api_keys_store.py" "$BASE/scripts/apply_api_patch.py" "$BASE/scripts/apply_dashboard_model_patch.py" "$BASE/scripts/update_runner.py"
 }
@@ -78,7 +90,7 @@ printf '\n===== Frontend build =====\n'
 cd "$FRONT"
 install_frontend_deps
 verify_frontend_deps
-npm run build
+build_frontend
 cd "$BASE"
 
 printf '\n===== Backup current source =====\n'
