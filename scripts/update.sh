@@ -71,6 +71,17 @@ build_frontend() {
   done
   fail "Frontend build failed after retries"
 }
+remove_existing_container() {
+  local i
+  docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    if ! docker ps -a --format '{{.Names}}' | grep -Fxq "$CONTAINER"; then
+      return 0
+    fi
+    sleep 1
+  done
+  fail "Container name is still busy: $CONTAINER"
+}
 check_python_sources() {
   python3 -m py_compile app/app.py app/api_keys_store.py scripts/apply_api_patch.py scripts/apply_dashboard_model_patch.py scripts/update_runner.py
 }
@@ -151,7 +162,7 @@ fi
 
 say "Recreating container"
 mkdir -p "$INSTALL_DIR/run"
-docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+remove_existing_container
 docker run -d \
   --name "$CONTAINER" \
   --restart unless-stopped \

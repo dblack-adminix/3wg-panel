@@ -68,6 +68,17 @@ build_frontend() {
   done
   fail "Frontend build failed after retries"
 }
+remove_existing_container() {
+  local i
+  docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    if ! docker ps -a --format '{{.Names}}' | grep -Fxq "$CONTAINER"; then
+      return 0
+    fi
+    sleep 1
+  done
+  fail "Container name is still busy: $CONTAINER"
+}
 check_python_sources() {
   python3 -m py_compile "$APP" "$BASE/app/api_keys_store.py" "$BASE/scripts/apply_api_patch.py" "$BASE/scripts/apply_dashboard_model_patch.py" "$BASE/scripts/update_runner.py"
 }
@@ -109,7 +120,7 @@ docker build -f "$BASE/app/Dockerfile" -t "$IMAGE" "$BASE"
 
 printf '\n===== Recreate 3WG Panel container =====\n'
 mkdir -p "$BASE/run"
-docker rm -f "$CONTAINER" 2>/dev/null || true
+remove_existing_container
 docker run -d \
   --name "$CONTAINER" \
   --restart unless-stopped \
