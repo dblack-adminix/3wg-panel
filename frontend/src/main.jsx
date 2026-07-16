@@ -3052,11 +3052,15 @@ function NetworkToolResult({ kind, result, peer }) {
   );
 }
 
-function getNetworkToolBadge(kind, result) {
+function getNetworkToolBadge(kind, result, peer) {
   if (!result) return null;
   if (kind === 'traceroute') {
     const trace = parseTraceSummary(result.output || '');
     if (result.ok && trace.timedOut) return { className: 'status-pill warn', label: 'WARN' };
+  }
+  const vpnActive = Boolean(peer && (peer.status === 'active' || peer.status === 'online' || peer.live?.latest_handshake));
+  if (kind === 'ping' && !result.ok && vpnActive) {
+    return { className: 'status-pill warn', label: 'WARN' };
   }
   return result.ok
     ? { className: 'status-pill online', label: 'OK' }
@@ -3116,8 +3120,8 @@ function NetworkToolPage({ kind, onLogout, user }) {
 
   const title = isTrace ? 'Traceroute' : 'Ping';
   const subtitle = isTrace ? 'Проверка маршрута от панели до IP или hostname' : 'Проверка доступности IP или hostname от панели';
-  const resultBadge = getNetworkToolBadge(kind, result);
   const selectedPeerData = peers.find((item) => String(item.id) === String(selectedPeer));
+  const resultBadge = getNetworkToolBadge(kind, result, selectedPeerData);
 
   return (
     <Shell title={title} subtitle={subtitle} onLogout={onLogout} user={user}>
