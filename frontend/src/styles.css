@@ -341,7 +341,8 @@ html[data-theme="light"] .sidebar-backdrop { background: rgba(15, 23, 42, .42); 
 .users-table .user-traffic-limit-cell { min-width: 0; }
 .users-table .traffic-limit-cell { gap: 3px; }
 .users-table td.actions-cell { width: 172px; min-width: 172px; overflow: visible; }
-.users-table .inline-password { width: 126px; }
+.users-table .user-password-row { display: grid; grid-template-columns: 126px 22px; width: 153px; gap: 5px; }
+.users-table .inline-password { width: 126px; min-width: 0; flex: 0 0 126px; box-sizing: border-box; }
 .audit-filter-card { margin-bottom: 12px; }
 .audit-filters { display: grid; grid-template-columns: 120px repeat(3, minmax(160px, 1fr)) auto; gap: 10px; align-items: end; }
 .audit-filters label { display: grid; gap: 7px; }
