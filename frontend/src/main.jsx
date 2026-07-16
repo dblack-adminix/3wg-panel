@@ -2919,33 +2919,34 @@ function HealthDiagnosticsPage({ onLogout, user }) {
     return acc;
   }, {});
   const summary = data.summary || { ok: 0, warn: 0, fail: 0 };
-  const renderGroup = (group, items, extraClass = '') => (
-    <section className={`card health-group-card ${extraClass}`} key={group}>
-      <div className="section-head">
-        <h2>{group}</h2>
+  const renderCheck = (group, item, idx) => {
+    const key = `${group}-${idx}-${item.name}`;
+    return (
+      <div className={`health-check ${item.status}`} key={key}>
+        <div className="health-check-main">
+          <span className={`health-pill ${item.status}`}>{healthStatusLabel(item.status)}</span>
+          <div>
+            <b>{item.name}</b>
+            <small>{item.message}</small>
+          </div>
+          <button className="copy-button" type="button" onClick={() => setExpanded(expanded === key ? null : key)}>
+            {expanded === key ? 'Скрыть' : 'Детали'}
+          </button>
+        </div>
+        {expanded === key && <pre>{JSON.stringify(item.details || {}, null, 2)}</pre>}
+      </div>
+    );
+  };
+  const renderGroupPanel = (group, items) => (
+    <div className="health-group-panel" key={group}>
+      <div className="health-group-title">
+        <h3>{group}</h3>
         <span className="muted">{items.length} checks</span>
       </div>
       <div className="health-check-list">
-        {items.map((item, idx) => {
-          const key = `${group}-${idx}-${item.name}`;
-          return (
-            <div className={`health-check ${item.status}`} key={key}>
-              <div className="health-check-main">
-                <span className={`health-pill ${item.status}`}>{healthStatusLabel(item.status)}</span>
-                <div>
-                  <b>{item.name}</b>
-                  <small>{item.message}</small>
-                </div>
-                <button className="copy-button" type="button" onClick={() => setExpanded(expanded === key ? null : key)}>
-                  {expanded === key ? 'Скрыть' : 'Детали'}
-                </button>
-              </div>
-              {expanded === key && <pre>{JSON.stringify(item.details || {}, null, 2)}</pre>}
-            </div>
-          );
-        })}
+        {items.map((item, idx) => renderCheck(group, item, idx))}
       </div>
-    </section>
+    </div>
   );
   const generalGroups = ['Panel', 'Docker', 'Storage', 'Network', 'Reverse proxy'].filter((group) => groups[group]);
   const protocolGroups = ['WireGuard', 'AmneziaWG'].filter((group) => groups[group]);
@@ -2965,18 +2966,38 @@ function HealthDiagnosticsPage({ onLogout, user }) {
             <section className="card health-summary warn"><span>WARN</span><b>{summary.warn || 0}</b></section>
             <section className="card health-summary fail"><span>FAIL</span><b>{summary.fail || 0}</b></section>
           </div>
-          <div className="health-group-grid compact">
-            {generalGroups.map((group) => renderGroup(group, groups[group]))}
-          </div>
+          {generalGroups.length > 0 && (
+            <section className="card health-section-card">
+              <div className="section-head">
+                <h2>Основные проверки</h2>
+                <span className="muted">{generalGroups.reduce((sum, group) => sum + groups[group].length, 0)} checks</span>
+              </div>
+              <div className="health-section-grid core">
+                {generalGroups.map((group) => renderGroupPanel(group, groups[group]))}
+              </div>
+            </section>
+          )}
           {protocolGroups.length > 0 && (
-            <div className="health-protocol-grid">
-              {protocolGroups.map((group) => renderGroup(group, groups[group], 'protocol'))}
-            </div>
+            <section className="card health-section-card">
+              <div className="section-head">
+                <h2>VPN протоколы</h2>
+                <span className="muted">{protocolGroups.reduce((sum, group) => sum + groups[group].length, 0)} checks</span>
+              </div>
+              <div className="health-section-grid protocols">
+                {protocolGroups.map((group) => renderGroupPanel(group, groups[group]))}
+              </div>
+            </section>
           )}
           {otherGroups.length > 0 && (
-            <div className="health-group-grid compact">
-              {otherGroups.map((group) => renderGroup(group, groups[group]))}
-            </div>
+            <section className="card health-section-card">
+              <div className="section-head">
+                <h2>Дополнительно</h2>
+                <span className="muted">{otherGroups.reduce((sum, group) => sum + groups[group].length, 0)} checks</span>
+              </div>
+              <div className="health-section-grid core">
+                {otherGroups.map((group) => renderGroupPanel(group, groups[group]))}
+              </div>
+            </section>
           )}
         </>
       )}
