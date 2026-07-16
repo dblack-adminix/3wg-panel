@@ -2921,6 +2921,8 @@ function HealthDiagnosticsPage({ onLogout, user }) {
   const summary = data.summary || { ok: 0, warn: 0, fail: 0 };
   const renderCheck = (group, item, idx) => {
     const key = `${group}-${idx}-${item.name}`;
+    const details = item.details || null;
+    const hasDetails = details && (Array.isArray(details) ? details.length > 0 : Object.keys(details).length > 0);
     return (
       <div className={`health-check ${item.status}`} key={key}>
         <div className="health-check-main">
@@ -2929,11 +2931,11 @@ function HealthDiagnosticsPage({ onLogout, user }) {
             <b>{item.name}</b>
             <small>{item.message}</small>
           </div>
-          <button className="copy-button" type="button" onClick={() => setExpanded(expanded === key ? null : key)}>
+          {hasDetails ? <button className="copy-button" type="button" onClick={() => setExpanded(expanded === key ? null : key)}>
             {expanded === key ? 'Скрыть' : 'Детали'}
-          </button>
+          </button> : <span className="health-no-details">—</span>}
         </div>
-        {expanded === key && <pre>{JSON.stringify(item.details || {}, null, 2)}</pre>}
+        {hasDetails && expanded === key && <pre>{JSON.stringify(details, null, 2)}</pre>}
       </div>
     );
   };
