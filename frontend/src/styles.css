@@ -326,13 +326,21 @@ html[data-theme="light"] .sidebar-backdrop { background: rgba(15, 23, 42, .42); 
 .user-admin-grid { display: grid; grid-template-columns: minmax(300px, 340px) minmax(0, 1fr); gap: 12px; align-items: start; }
 .user-create-card form { display: grid; gap: 10px; }
 .users-list-card { min-width: 0; }
-.users-table { min-width: 760px; }
+.users-list-card .table-wrap { overflow-x: visible; }
+.users-table { width: max-content; min-width: 0; table-layout: auto; }
 .users-table th,
 .users-table td { padding: 8px 5px; }
+.users-table th:nth-child(1), .users-table td:nth-child(1) { width: 42px; }
+.users-table th:nth-child(2), .users-table td:nth-child(2) { width: 130px; }
+.users-table th:nth-child(3), .users-table td:nth-child(3) { width: 112px; }
+.users-table th:nth-child(4), .users-table td:nth-child(4) { width: 64px; }
+.users-table th:nth-child(5), .users-table td:nth-child(5) { width: 78px; }
+.users-table th:nth-child(6), .users-table td:nth-child(6) { width: 220px; }
+.users-table th:nth-child(7), .users-table td:nth-child(7) { width: 70px; }
 .users-table .inline-number { width: 58px; height: 28px; }
 .users-table .user-traffic-limit-cell { min-width: 0; }
 .users-table .traffic-limit-cell { gap: 3px; }
-.users-table td.actions-cell { width: 150px; min-width: 150px; }
+.users-table td.actions-cell { width: 150px; min-width: 150px; overflow: visible; }
 .users-table .inline-password { width: 104px; }
 .audit-filter-card { margin-bottom: 12px; }
 .audit-filters { display: grid; grid-template-columns: 120px repeat(3, minmax(160px, 1fr)) auto; gap: 10px; align-items: end; }
