@@ -45,6 +45,27 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 .brand-block img { display: block; width: 195px; height: 50px; object-fit: contain; }
 .nav-title { color: #808080; font-size: 10px; letter-spacing: .18em; font-weight: 600; }
 .nav-title { margin: 18px 0 8px; }
+.nav-title-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 0;
+  background: transparent;
+  padding: 0 2px;
+  text-align: left;
+  cursor: pointer;
+}
+.nav-title-toggle svg {
+  transition: transform .16s ease;
+}
+.nav-title-toggle.open svg {
+  transform: rotate(90deg);
+}
+.nav-group {
+  display: grid;
+  gap: 2px;
+}
 .nav { width: 100%; display: flex; gap: 10px; align-items: center; height: 34px; color: #dddddd; text-decoration: none; border: 1px solid transparent; border-radius: 6px; background: transparent; padding: 0 10px; font-weight: 400; }
 .nav.active { border-color: #4a5f00; background: #161d00; }
 .logout { cursor: pointer; }
@@ -118,6 +139,7 @@ html[data-theme="light"] .nav { color: #475569; }
 html[data-theme="light"] .nav:hover { background: rgba(111, 149, 0, .08); color: #111827; }
 html[data-theme="light"] .nav.active { background: rgba(111, 149, 0, .12); color: #4d6900; border-right-color: #6f9500; }
 html[data-theme="light"] .nav-title,
+html[data-theme="light"] .nav-title-toggle,
 html[data-theme="light"] .muted,
 html[data-theme="light"] .topbar p,
 html[data-theme="light"] .stat-label,
