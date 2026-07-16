@@ -1886,21 +1886,36 @@ function UsersPage({ onLogout, user }) {
         <section className="card user-create-card">
           <h2>Добавить пользователя</h2>
           <form onSubmit={create}>
-            <input className="name-input" placeholder="Логин" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
-            <input className="name-input" placeholder="Пароль" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
-            <input className="name-input" min="0" type="number" value={form.peer_limit} onChange={(e) => setForm({ ...form, peer_limit: Number(e.target.value) })} />
-            <select className="category-select" value={form.traffic_limit_bytes ? String(Math.round(form.traffic_limit_bytes / 1024 / 1024 / 1024)) : ''} onChange={(e) => setForm({ ...form, traffic_limit_bytes: e.target.value ? gibToBytes(Number(e.target.value)) : 0 })}>
-              <option value="">Трафик без лимита</option>
-              <option value="10">10 GiB на пользователя</option>
-              <option value="50">50 GiB на пользователя</option>
-              <option value="100">100 GiB на пользователя</option>
-              <option value="250">250 GiB на пользователя</option>
-              <option value="500">500 GiB на пользователя</option>
-            </select>
-            <select className="category-select" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-              <option value="user">Пользователь</option>
-              <option value="admin">Администратор</option>
-            </select>
+            <label className="user-create-field">
+              <span>Логин</span>
+              <input className="name-input" placeholder="Например: client01" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
+            </label>
+            <label className="user-create-field">
+              <span>Пароль</span>
+              <input className="name-input" placeholder="Пароль" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+            </label>
+            <label className="user-create-field">
+              <span>Лимит peer'ов</span>
+              <input className="name-input" min="0" type="number" value={form.peer_limit} onChange={(e) => setForm({ ...form, peer_limit: Number(e.target.value) })} />
+            </label>
+            <label className="user-create-field">
+              <span>Лимит трафика</span>
+              <select className="category-select" value={form.traffic_limit_bytes ? String(Math.round(form.traffic_limit_bytes / 1024 / 1024 / 1024)) : ''} onChange={(e) => setForm({ ...form, traffic_limit_bytes: e.target.value ? gibToBytes(Number(e.target.value)) : 0 })}>
+                <option value="">Без лимита</option>
+                <option value="10">10 GiB на пользователя</option>
+                <option value="50">50 GiB на пользователя</option>
+                <option value="100">100 GiB на пользователя</option>
+                <option value="250">250 GiB на пользователя</option>
+                <option value="500">500 GiB на пользователя</option>
+              </select>
+            </label>
+            <label className="user-create-field">
+              <span>Роль</span>
+              <select className="category-select" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
+                <option value="user">Пользователь</option>
+                <option value="admin">Администратор</option>
+              </select>
+            </label>
             <button className="orange-btn" disabled={busy || !form.username.trim() || !form.password.trim()}><Plus size={15} /> Создать</button>
           </form>
           {error && <div className="warning">{error}</div>}
