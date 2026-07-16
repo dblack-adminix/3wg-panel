@@ -2884,7 +2884,9 @@ function parseTraceSummary(output = '') {
       return { index: Number(match[1]), host, timeMs: timeMs || '' };
     })
     .filter(Boolean);
-  return { hops, lastHop: hops[hops.length - 1] || null };
+  const answered = hops.filter((hop) => hop.host && hop.host !== '*' && hop.timeMs);
+  const timedOut = hops.length > 0 && answered.length === 0;
+  return { hops, answered, timedOut, lastHop: answered[answered.length - 1] || hops[hops.length - 1] || null };
 }
 
 function healthStatusLabel(status) {
@@ -2972,20 +2974,32 @@ function NetworkToolResult({ kind, result, peer }) {
   const isTrace = kind === 'traceroute';
   const ping = !isTrace ? parsePingSummary(result.output || '') : null;
   const trace = isTrace ? parseTraceSummary(result.output || '') : null;
-  const healthy = result.ok;
+  const healthy = isTrace ? Boolean(result.ok && trace.answered.length > 0) : result.ok;
+  const traceTimedOut = isTrace && trace.timedOut;
   const vpnActive = Boolean(peer && (peer.status === 'active' || peer.status === 'online' || peer.live?.latest_handshake));
   const statusTitle = healthy
     ? (isTrace ? 'Маршрут построен' : 'Host отвечает')
+    : traceTimedOut
+      ? 'Маршрут не виден'
     : vpnActive
       ? 'VPN активен, ICMP не отвечает'
       : (isTrace ? 'Маршрут не завершён' : 'Ответов нет');
+  const statusLabel = healthy
+    ? 'Проверка успешна'
+    : traceTimedOut
+      ? 'Нет ответов от hops'
+      : vpnActive
+        ? 'VPN peer online'
+        : 'Есть проблема';
+  const heroClass = healthy ? 'ok' : (traceTimedOut || vpnActive) ? 'warn' : 'bad';
 
   return (
     <>
-      <div className={healthy ? 'tool-result-hero ok' : vpnActive ? 'tool-result-hero warn' : 'tool-result-hero bad'}>
+      <div className={`tool-result-hero ${heroClass}`}>
         <div>
-          <span>{healthy ? 'Проверка успешна' : vpnActive ? 'VPN peer online' : 'Есть проблема'}</span>
+          <span>{statusLabel}</span>
           <b>{statusTitle}</b>
+          {traceTimedOut && <small>Команда выполнилась, но все переходы вернули `*`. Обычно ICMP/UDP traceroute фильтруется контейнером, peer'ом или сетью.</small>}
         </div>
         <strong>{result.duration_ms} ms</strong>
       </div>
@@ -2993,6 +3007,7 @@ function NetworkToolResult({ kind, result, peer }) {
       {isTrace ? (
         <div className="tool-summary-grid">
           <div><span>Hops</span><b>{trace.hops.length}</b></div>
+          <div><span>Answered</span><b className={trace.answered.length ? 'active-text' : 'danger-text'}>{trace.answered.length}</b></div>
           <div><span>Last hop</span><b title={trace.lastHop?.host || '-'}>{trace.lastHop?.host || '-'}</b></div>
           <div><span>Return code</span><b>{result.return_code}</b></div>
         </div>
