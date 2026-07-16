@@ -146,6 +146,110 @@ def api_manual_backup_dir() -> Path:
     return path
 
 
+def api_auto_backup_settings() -> dict:
+    raw = panel_setting_get('backup_auto')
+    settings = dict(AUTO_BACKUP_DEFAULTS)
+    if raw:
+        try:
+            loaded = json.loads(raw)
+            if isinstance(loaded, dict):
+                settings.update(loaded)
+        except Exception:
+            pass
+    settings['enabled'] = bool(settings.get('enabled'))
+    try:
+        settings['interval_hours'] = int(settings.get('interval_hours', AUTO_BACKUP_DEFAULTS['interval_hours']))
+    except (TypeError, ValueError):
+        settings['interval_hours'] = AUTO_BACKUP_DEFAULTS['interval_hours']
+    try:
+        settings['keep_last'] = int(settings.get('keep_last', AUTO_BACKUP_DEFAULTS['keep_last']))
+    except (TypeError, ValueError):
+        settings['keep_last'] = AUTO_BACKUP_DEFAULTS['keep_last']
+    try:
+        settings['last_run_at'] = int(settings.get('last_run_at') or 0)
+    except (TypeError, ValueError):
+        settings['last_run_at'] = 0
+    settings['interval_hours'] = min(max(settings['interval_hours'], 1), 168)
+    settings['keep_last'] = min(max(settings['keep_last'], 1), 100)
+    settings['next_run_at'] = (
+        settings['last_run_at'] + settings['interval_hours'] * 3600
+        if settings['enabled'] and settings['last_run_at']
+        else 0
+    )
+    return settings
+
+
+def api_save_auto_backup_settings(settings: dict) -> dict:
+    interval_hours = min(max(int(settings.get('interval_hours', 24)), 1), 168)
+    if interval_hours not in AUTO_BACKUP_INTERVALS:
+        interval_hours = AUTO_BACKUP_DEFAULTS['interval_hours']
+    payload = {
+        'enabled': bool(settings.get('enabled')),
+        'interval_hours': interval_hours,
+        'keep_last': min(max(int(settings.get('keep_last', 7)), 1), 100),
+        'last_run_at': int(settings.get('last_run_at') or 0),
+    }
+    panel_setting_set('backup_auto', json.dumps(payload, ensure_ascii=False, separators=(',', ':')))
+    return api_auto_backup_settings()
+
+
+def api_prune_auto_backups(keep_last: int) -> list[str]:
+    deleted = []
+    auto_files = [
+        p for p in sorted(api_manual_backup_dir().glob('3wg-panel.auto.*.tgz'), key=lambda x: x.stat().st_mtime, reverse=True)
+        if p.is_file()
+    ]
+    for path in auto_files[max(1, keep_last):]:
+        try:
+            path.unlink()
+            deleted.append(path.name)
+        except FileNotFoundError:
+            pass
+    return deleted
+
+
+def api_maybe_run_auto_backup(force: bool = False) -> dict | None:
+    settings = api_auto_backup_settings()
+    if not settings['enabled']:
+        return None
+    now = int(time.time())
+    due_at = settings['last_run_at'] + settings['interval_hours'] * 3600 if settings['last_run_at'] else 0
+    if not force and due_at and now < due_at:
+        return None
+    if not AUTO_BACKUP_LOCK.acquire(blocking=False):
+        return None
+    try:
+        settings = api_auto_backup_settings()
+        now = int(time.time())
+        due_at = settings['last_run_at'] + settings['interval_hours'] * 3600 if settings['last_run_at'] else 0
+        if not force and settings['last_run_at'] and now < due_at:
+            return None
+        path = api_create_backup_archive('auto')
+        settings['last_run_at'] = int(path.stat().st_mtime)
+        saved = api_save_auto_backup_settings(settings)
+        deleted = api_prune_auto_backups(saved['keep_last'])
+        return {'backup': api_backup_payload(path), 'deleted': deleted, 'auto': saved}
+    finally:
+        AUTO_BACKUP_LOCK.release()
+
+
+def auto_backup_worker() -> None:
+    while True:
+        try:
+            api_maybe_run_auto_backup()
+        except Exception as e:
+            print(f"Auto backup failed: {e}")
+        time.sleep(60)
+
+
+def start_auto_backup_worker() -> None:
+    global AUTO_BACKUP_THREAD_STARTED
+    if AUTO_BACKUP_THREAD_STARTED:
+        return
+    AUTO_BACKUP_THREAD_STARTED = True
+    threading.Thread(target=auto_backup_worker, daemon=True).start()
+
+
 def api_backup_path(name: str) -> Path:
     clean = Path(str(name or '')).name
     if not clean or clean != str(name or '') or not clean.endswith('.tgz'):
@@ -1315,7 +1419,8 @@ def api_audit_events(
 
 @app.get('/api/backups')
 def api_backups_list(user=Depends(api_require_admin)):
-    return {'ok': True, 'backups': api_list_backups()}
+    api_maybe_run_auto_backup()
+    return {'ok': True, 'backups': api_list_backups(), 'auto': api_auto_backup_settings()}
 
 
 @app.post('/api/backups')
@@ -1327,13 +1432,56 @@ async def api_backups_create(request: Request, user=Depends(api_require_admin)):
         "backup создан",
         [f"Файл: {path.name}", f"Размер: {human_bytes(payload['size'])}", f"Кто: {user.get('username')}"],
     )
-    return {'ok': True, 'backup': payload, 'backups': api_list_backups()}
+    return {'ok': True, 'backup': payload, 'backups': api_list_backups(), 'auto': api_auto_backup_settings()}
+
+
+@app.post('/api/backups/auto')
+async def api_backups_auto_update(request: Request, user=Depends(api_require_admin)):
+    data = await api_read_payload(request)
+    try:
+        settings = api_auto_backup_settings()
+        settings.update({
+            'enabled': bool(data.get('enabled')),
+            'interval_hours': int(data.get('interval_hours', settings['interval_hours'])),
+            'keep_last': int(data.get('keep_last', settings['keep_last'])),
+        })
+        saved = api_save_auto_backup_settings(settings)
+    except (TypeError, ValueError):
+        return api_error('Некорректные настройки auto backup', status_code=400)
+    deleted = api_prune_auto_backups(saved['keep_last'])
+    result = api_maybe_run_auto_backup(force=bool(data.get('run_now')))
+    if result:
+        saved = result['auto']
+        deleted.extend(result.get('deleted') or [])
+    api_audit_log(
+        request,
+        user,
+        'backup.auto.update',
+        'backup',
+        'auto',
+        'auto backup',
+        {'settings': saved, 'pruned': deleted},
+    )
+    return {'ok': True, 'auto': saved, 'deleted': deleted, 'backups': api_list_backups()}
 
 
 @app.get('/api/backups/{name}/download')
 def api_backups_download(name: str, user=Depends(api_require_admin)):
     path = api_backup_path(name)
     return FileResponse(path, filename=path.name, media_type='application/gzip')
+
+
+@app.delete('/api/backups/{name}')
+async def api_backups_delete(name: str, request: Request, user=Depends(api_require_admin)):
+    path = api_backup_path(name)
+    payload = api_backup_payload(path)
+    path.unlink()
+    api_audit_log(request, user, 'backup.delete', 'backup', payload['name'], payload['name'], {'size': payload['size']})
+    telegram_notify(
+        "backup удалён",
+        [f"Файл: {payload['name']}", f"Размер: {human_bytes(payload['size'])}", f"Кто: {user.get('username')}"],
+    )
+    return {'ok': True, 'deleted': payload['name'], 'backups': api_list_backups(), 'auto': api_auto_backup_settings()}
 
 
 @app.post('/api/backups/{name}/restore')
@@ -1368,7 +1516,13 @@ async def api_backups_restore(name: str, request: Request, user=Depends(api_requ
         path.name,
         {'pre_restore_backup': pre_restore.name, 'restored': ['data', 'clients']},
     )
-    return {'ok': True, 'restored': path.name, 'pre_restore_backup': api_backup_payload(pre_restore), 'backups': api_list_backups()}
+    return {
+        'ok': True,
+        'restored': path.name,
+        'pre_restore_backup': api_backup_payload(pre_restore),
+        'backups': api_list_backups(),
+        'auto': api_auto_backup_settings(),
+    }
 
 
 @app.post('/api/users')
