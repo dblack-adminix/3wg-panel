@@ -1774,6 +1774,7 @@ async def api_create_peers(request: Request, user=Depends(api_require_auth)):
     )
 
     live, _ = api_live_maps()
+    counters = api_record_peer_traffic_counters(live)
     with db() as conn:
         qmarks = ','.join('?' for _ in created_ids)
         rows = conn.execute(f"""
