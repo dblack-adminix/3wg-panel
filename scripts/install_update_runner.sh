@@ -25,7 +25,7 @@ chmod 775 "$BASE/run"
 
 cat > "$UNIT" <<UNIT
 [Unit]
-Description=3WG Panel host update runner
+Description=3WG Core host update runner
 After=network-online.target docker.service
 Wants=network-online.target
 
@@ -52,7 +52,7 @@ else
   systemctl restart "$SERVICE"
 fi
 
-printf '3WG Panel update runner installed.\n'
+printf '3WG Core update runner installed.\n'
 printf 'Service: %s\n' "$SERVICE"
 printf 'Socket:  %s/run/update-runner.sock\n' "$BASE"
 systemctl --no-pager --lines=20 status "$SERVICE"

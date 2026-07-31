@@ -765,7 +765,7 @@ def telegram_status_payload() -> dict:
 def telegram_send_message(title: str, lines: list[str] | None = None) -> bool:
     if not telegram_enabled() or not telegram_configured():
         return False
-    text_lines = [f"3WG Panel: {title}"]
+    text_lines = [f"3WG Core: {title}"]
     for line in lines or []:
         clean = str(line).strip()
         if clean:

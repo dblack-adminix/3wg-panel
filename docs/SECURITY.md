@@ -2,7 +2,7 @@
 
 ## Как лучше публиковать панель
 
-Рекомендуемый вариант — держать 3WG Panel на localhost и отдавать наружу только через HTTPS reverse proxy:
+Рекомендуемый вариант — держать 3WG Core на localhost и отдавать наружу только через HTTPS reverse proxy:
 
 ```text
 127.0.0.1:18080 -> Caddy/Nginx -> Internet

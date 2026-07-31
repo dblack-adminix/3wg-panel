@@ -79,7 +79,7 @@ def api_dashboard_payload(user: dict) -> dict:
     return {
         'ok': True,
         'screen': 'dashboard',
-        'title': '3WG Panel',
+        'title': '3WG Core',
         'subtitle': f"Node / {ENDPOINT_HOST}",
         'endpoint_host': ENDPOINT_HOST,
         'theme': {'name': 'classic-neo', 'source': 'legacy-html-design'},

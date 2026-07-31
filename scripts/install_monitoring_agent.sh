@@ -84,7 +84,7 @@ Containers:
 Prometheus targets on this node:
   node_exporter: $MONITORING_BIND_HOST:$NODE_EXPORTER_PORT
   cAdvisor:      $MONITORING_BIND_HOST:$CADVISOR_PORT
-  3WG Panel:     panel-host:18080/metrics
+  3WG Core:     panel-host:18080/metrics
 
 For remote Prometheus prefer private IP/VPN or firewall allowlist.
 DONE

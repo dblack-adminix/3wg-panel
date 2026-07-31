@@ -201,7 +201,7 @@ done
 
 cat <<DONE
 
-3WG Panel updated successfully.
+3WG Core updated successfully.
 Branch/tag: $BRANCH
 Image:      $IMAGE
 Container:  $CONTAINER

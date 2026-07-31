@@ -319,7 +319,7 @@ need_cmd curl
 need_cmd python3
 ensure_node_runtime
 
-say "3WG Panel installer"
+say "3WG Core installer"
 REPO_URL="$(ask 'Git repository' "$REPO_URL_DEFAULT")"
 BRANCH="$(ask 'Git branch/tag' "$BRANCH_DEFAULT")"
 INSTALL_DIR="$(ask 'Install directory' "$INSTALL_DIR_DEFAULT")"
@@ -496,7 +496,7 @@ fi
 
 cat <<DONE
 
-3WG Panel installed.
+3WG Core installed.
 URL:      $PANEL_URL
 Local:    http://$BIND_HOST:$BIND_PORT/
 User:     $PANEL_USER

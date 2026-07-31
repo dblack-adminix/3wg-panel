@@ -113,7 +113,7 @@ AWG_MASK = {
 # Важно: для мобильного AmneziaWG убираем <r 2>, оставляем чистый <b ...>
 AWG_I1_NATIVE = "<b 0x858000010001000000000669636c6f756403636f6d0000010001c00c000100010000105a00044d583737>"
 
-app = FastAPI(title="3WG Panel")
+app = FastAPI(title="3WG Core")
 security = HTTPBasic(auto_error=False)
 
 
@@ -427,7 +427,7 @@ def login_html(error: str = "") -> str:
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<title>3WG Panel Login</title>
+<title>3WG Core Login</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
 :root {{
@@ -534,9 +534,9 @@ button{{
 </head>
 <body>
   <form class="login-card" method="post" action="/login">
-    <div class="badge">SECURE NODE PANEL</div>
-    <div class="logo">3WG Panel</div>
-    <div class="sub">Управление WireGuard / AmneziaWG peer'ами</div>
+    <div class="badge">3WG CORE</div>
+    <div class="logo">3WG Core</div>
+    <div class="sub">Централизованная платформа управления WireGuard и AmneziaWG</div>
     {err}
     <label>Логин</label>
     <input name="username" autocomplete="username" autofocus required>
@@ -1494,7 +1494,7 @@ def index(user=Depends(auth)):
     existing_count = sum(len(pm) for pm in live.values())
 
     body = f"""
-<h1>3WG Panel</h1>
+<h1>3WG Core</h1>
 
 <div class="grid">
   <div class="stat"><div class="n">{total}</div><div class="l">клиентов в панели</div></div>
@@ -1535,7 +1535,7 @@ def index(user=Depends(auth)):
 <a class="btn btn2" href="/raw/amneziawg">awg show</a>
 </div>
 """
-    return HTMLResponse(page("3WG Panel", body))
+    return HTMLResponse(page("3WG Core", body))
 
 
 @app.post("/clients")
@@ -2550,7 +2550,7 @@ def theme_js():
           <div class="neo-brand-mark">3</div>
           <div>
             <div class="neo-brand-title">3WG</div>
-            <div class="neo-brand-sub">NODE PANEL</div>
+            <div class="neo-brand-sub">CORE PLATFORM</div>
           </div>
         </div>
 
@@ -2573,7 +2573,7 @@ def theme_js():
     const wrap = document.querySelector('.wrap');
     if (wrap && !document.querySelector('.neo-topbar')) {
       const oldH1 = wrap.querySelector('h1');
-      const title = oldH1 ? oldH1.textContent.trim() : '3WG Panel';
+      const title = oldH1 ? oldH1.textContent.trim() : '3WG Core';
       if (oldH1) oldH1.remove();
 
       const top = document.createElement('div');
@@ -2583,7 +2583,7 @@ def theme_js():
           <div class="neo-title-badge neo-pulse">3WG</div>
           <div>
             <h1>${title}</h1>
-            <div class="muted">WireGuard / AmneziaWG node management</div>
+            <div class="muted">WireGuard & AmneziaWG Management Platform</div>
           </div>
         </div>
         <div class="neo-top-actions">
@@ -3197,7 +3197,7 @@ button.icon-delete {
     <div class="neo-logo">3</div>
     <div>
       <div class="neo-brand-title">3WG</div>
-      <div class="neo-brand-sub">NODE PANEL</div>
+      <div class="neo-brand-sub">CORE PLATFORM</div>
     </div>
   </div>
 
@@ -3221,7 +3221,7 @@ button.icon-delete {
       <div class="neo-title-icon">3WG</div>
       <div>
         <h1>__TITLE__</h1>
-        <div class="neo-sub">WireGuard / AmneziaWG node management</div>
+        <div class="neo-sub">WireGuard & AmneziaWG Management Platform</div>
       </div>
     </div>
 
@@ -4176,7 +4176,7 @@ pre {
     <div class="neo-logo">3</div>
     <div>
       <div class="neo-brand-title">3WG</div>
-      <div class="neo-brand-sub">NODE PANEL</div>
+      <div class="neo-brand-sub">CORE PLATFORM</div>
     </div>
   </div>
 
@@ -4215,7 +4215,7 @@ pre {
       <div class="neo-title-icon">3WG</div>
       <div>
         <h1>__TITLE__</h1>
-        <div class="neo-sub">WireGuard / AmneziaWG node management</div>
+        <div class="neo-sub">WireGuard & AmneziaWG Management Platform</div>
       </div>
     </div>
 
@@ -5542,7 +5542,7 @@ def index_v10(user=Depends(auth)):
     existing_count = sum(len(pm) for pm in live.values())
 
     body = f"""
-<h1>3WG Panel</h1>
+<h1>3WG Core</h1>
 
 <div class="grid">
   <div class="stat"><div class="n">{total}</div><div class="l">клиентов в панели</div></div>
@@ -5593,7 +5593,7 @@ def index_v10(user=Depends(auth)):
 </div>
 """
 
-    return HTMLResponse(page("3WG Panel", body))
+    return HTMLResponse(page("3WG Core", body))
 
 
 # =========================
@@ -6476,7 +6476,7 @@ def telegram_status_payload() -> dict:
 def telegram_send_message(title: str, lines: list[str] | None = None) -> bool:
     if not telegram_enabled() or not telegram_configured():
         return False
-    text_lines = [f"3WG Panel: {title}"]
+    text_lines = [f"3WG Core: {title}"]
     for line in lines or []:
         clean = str(line).strip()
         if clean:
@@ -8410,7 +8410,7 @@ def prometheus_metrics_payload() -> str:
         categories_total = int(conn.execute("SELECT COUNT(*) AS n FROM categories").fetchone()["n"])
 
     lines = [
-        "# HELP threewg_panel_build_info 3WG Panel build information.",
+        "# HELP threewg_panel_build_info 3WG Core build information.",
         "# TYPE threewg_panel_build_info gauge",
         metrics_line("threewg_panel_build_info", 1, {"version": APP_VERSION, "endpoint_host": ENDPOINT_HOST}),
         "# HELP threewg_panel_scrape_timestamp_seconds Last successful metrics scrape timestamp.",
@@ -8571,7 +8571,7 @@ def api_dashboard_payload(user: dict) -> dict:
     return {
         'ok': True,
         'screen': 'dashboard',
-        'title': '3WG Panel',
+        'title': '3WG Core',
         'subtitle': f"Node / {ENDPOINT_HOST}",
         'endpoint_host': ENDPOINT_HOST,
         'theme': {'name': 'classic-neo', 'source': 'legacy-html-design'},

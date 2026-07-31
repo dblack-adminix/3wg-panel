@@ -1,6 +1,6 @@
 # Установка
 
-Этот документ описывает установку 3WG Panel с GitHub на Linux-сервер. Installer поддерживает два режима: подключиться к уже установленным WireGuard/AmneziaWG контейнерам или создать protocol-контейнеры автоматически.
+Этот документ описывает установку 3WG Core с GitHub на Linux-сервер. Installer поддерживает два режима: подключиться к уже установленным WireGuard/AmneziaWG контейнерам или создать protocol-контейнеры автоматически.
 
 ## 1. Подготовьте сервер
 
@@ -56,7 +56,7 @@ Git branch/tag: dev
 Пример обычной установки: на оба вопроса нажмите Enter.
 
 ```text
-3WG Panel installer
+3WG Core installer
 Git repository [https://github.com/dblack-adminix/3wg-panel.git]:
 Git branch/tag [dev]:
 ```
@@ -86,7 +86,7 @@ Git branch/tag [dev]:
 | `AmneziaWG UDP port` | Только для auto-create режима. UDP-порт AmneziaWG наружу. | `443` | Рекомендуется `443/udp`: нестандартные порты чаще обнаруживаются DPI. |
 | `AmneziaWG network CIDR` | Только для auto-create режима. Сеть AmneziaWG клиентов. Сервер получит первый IP, клиенты начнутся со второго. | `10.50.0.0/24` | Если сеть не конфликтует с другими VPN/локальными сетями. |
 | `Client DNS servers` | DNS, которые будут прописываться в клиентские конфиги. | `1.1.1.1, 1.0.0.1` | Если Cloudflare DNS подходит. |
-| `Hide peers not created by panel? 1=yes, 0=no` | Скрывать ли peer’ы, которые были созданы не через 3WG Panel. | `1` | Для чистой таблицы оставьте `1`. Поставьте `0`, если хотите видеть все peer’ы из контейнеров. |
+| `Hide peers not created by panel? 1=yes, 0=no` | Скрывать ли peer’ы, которые были созданы не через 3WG Core. | `1` | Для чистой таблицы оставьте `1`. Поставьте `0`, если хотите видеть все peer’ы из контейнеров. |
 | `Enable Prometheus /metrics? 1=yes, 0=no` | Включить ли endpoint `/metrics` для центрального Prometheus/Grafana. | `1` | Оставьте `0`, если мониторинг пока не настроен. |
 | `Prometheus metrics token, empty = auto-generate` | Bearer token для Prometheus. Можно оставить пустым, installer сгенерирует сам. | random token | Для авто-токена нажмите Enter. |
 

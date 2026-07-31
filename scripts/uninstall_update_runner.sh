@@ -19,4 +19,4 @@ if command -v systemctl >/dev/null 2>&1; then
 fi
 rm -f "$SOCKET_PATH"
 
-printf '3WG Panel update runner removed.\n'
+printf '3WG Core update runner removed.\n'

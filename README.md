@@ -1,6 +1,8 @@
-# 3WG Panel
+# 3WG Core
 
-3WG Panel — веб-панель для управления WireGuard и AmneziaWG peer'ами на серверной ноде. Backend написан на FastAPI, интерфейс — на React, развёртывание — через Docker.
+3WG Core — централизованная платформа управления WireGuard и AmneziaWG.
+
+WireGuard & AmneziaWG Management Platform для VPN-серверов, пользователей, конфигураций, ключей, мониторинга, диагностики, резервных копий и обновлений. Backend написан на FastAPI, интерфейс — на React, развёртывание — через Docker.
 
 ## Возможности
 
@@ -47,7 +49,7 @@
 - уже существующие WireGuard/AmneziaWG контейнеры или auto-create режим installer
 - доступ контейнера панели к `/var/run/docker.sock`
 
-3WG Panel может работать с уже существующими protocol-контейнерами или создать WireGuard/AmneziaWG контейнеры автоматически во время установки.
+3WG Core может работать с уже существующими protocol-контейнерами или создать WireGuard/AmneziaWG контейнеры автоматически во время установки.
 
 ## Быстрая установка
 
@@ -131,10 +133,10 @@ docs/                документация
 
 ## Версия
 
-Текущая версия продукта: `v1.3.69`
+Текущая версия продукта: `v1.3.70`
 
 ## Copyright
 
-© 2026 3WG Panel. Контакты: [@vorchiks](https://t.me/vorchiks), [vitaly@goreev.ru](mailto:vitaly@goreev.ru), [3wg.ru](https://3wg.ru), [GitHub](https://github.com/dblack-adminix/3wg-panel).
+© 2026 3WG Core. Контакты: [@vorchiks](https://t.me/vorchiks), [vitaly@goreev.ru](mailto:vitaly@goreev.ru), [3wg.ru](https://3wg.ru), [GitHub](https://github.com/dblack-adminix/3wg-panel).
 
 WireGuard является зарегистрированным товарным знаком Jason A. Donenfeld.

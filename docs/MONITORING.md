@@ -1,4 +1,4 @@
-# Мониторинг 3WG Panel под Grafana
+# Мониторинг 3WG Core под Grafana
 
 Рекомендуемая схема: Grafana и Prometheus стоят на отдельном центральном сервере, а каждая VPN-нода только отдаёт метрики.
 
@@ -16,7 +16,7 @@ Monitoring-сервер:
 
 ## Что мониторится
 
-3WG Panel отдаёт Prometheus endpoint `/metrics`:
+3WG Core отдаёт Prometheus endpoint `/metrics`:
 
 - версия панели и endpoint host;
 - количество клиентов, включённых/отключённых peer'ов;
@@ -42,7 +42,7 @@ Monitoring-сервер:
 - container restart/status;
 - network/disk I/O контейнеров.
 
-## Включение `/metrics` в 3WG Panel через веб-интерфейс
+## Включение `/metrics` в 3WG Core через веб-интерфейс
 
 Откройте панель под администратором:
 
@@ -190,7 +190,7 @@ monitoring/grafana-dashboard-3wg-node.json
 
 Dashboard показывает:
 
-- доступность 3WG Panel;
+- доступность 3WG Core;
 - количество клиентов;
 - online peer'ы;
 - CPU/RAM VPS;

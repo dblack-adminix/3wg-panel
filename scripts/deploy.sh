@@ -95,7 +95,7 @@ check_python_sources() {
 }
 
 printf '\n======================================================\n'
-printf ' 3WG PANEL DEV DEPLOY - REACT FRONTEND\n'
+printf ' 3WG CORE DEV DEPLOY - REACT FRONTEND\n'
 printf '======================================================\n'
 
 cd "$BASE"
@@ -129,7 +129,7 @@ fi
 printf '\n===== Build Docker image =====\n'
 docker build -f "$BASE/app/Dockerfile" -t "$IMAGE" "$BASE"
 
-printf '\n===== Recreate 3WG Panel container =====\n'
+printf '\n===== Recreate 3WG Core container =====\n'
 mkdir -p "$BASE/run"
 remove_existing_container
 docker run -d \

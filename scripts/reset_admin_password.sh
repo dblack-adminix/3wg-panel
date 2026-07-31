@@ -161,7 +161,7 @@ if [ "$RESTART_CONTAINER" = "1" ]; then
 fi
 
 cat <<EOF
-3WG Panel admin credentials updated.
+3WG Core admin credentials updated.
 Env:      $ENV_FILE
 Backup:   $BACKUP
 User:     $PANEL_USER_VALUE

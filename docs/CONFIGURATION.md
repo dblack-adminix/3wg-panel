@@ -1,6 +1,6 @@
 # Конфигурация
 
-3WG Panel настраивается через `.env`.
+3WG Core настраивается через `.env`.
 
 ## Основные переменные
 
@@ -12,7 +12,7 @@
 | `SESSION_SECRET` | random hex | Секрет для подписи session cookie |
 | `ENDPOINT_HOST` | `vpn.example.com` | Хост, который попадёт в клиентские конфиги |
 | `DNS_SERVERS` | `1.1.1.1, 1.0.0.1` | DNS в генерируемых конфигах |
-| `HIDE_EXISTING_PEERS` | `1` | Скрывать peer'ы, созданные не через 3WG Panel |
+| `HIDE_EXISTING_PEERS` | `1` | Скрывать peer'ы, созданные не через 3WG Core |
 
 ## WireGuard
 

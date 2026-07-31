@@ -142,9 +142,9 @@ function Login({ onLogin }) {
   return (
     <main className="login-page">
       <form className="login-card" onSubmit={submit}>
-        <div className="badge">SECURE NODE PANEL</div>
-        <img className="login-logo" src="/logogrin.png" alt="3WG" />
-        <p className="login-subtitle">Управление WireGuard / AmneziaWG peer&apos;ами</p>
+        <div className="badge">3WG CORE</div>
+        <img className="login-logo" src="/logogrin.png" alt="3WG Core" />
+        <p className="login-subtitle">Централизованная платформа управления WireGuard и AmneziaWG</p>
         {error && <div className="login-error">{error}</div>}
         <label>Логин</label>
         <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" />
@@ -265,7 +265,7 @@ function Shell({ title, subtitle, onLogout, protocols, user, children }) {
         </header>
         {children}
         <footer className="app-footer">
-          <div>© 2026 3WG Panel. Все права защищены. Связь: <a href="https://t.me/vorchiks" target="_blank" rel="noreferrer">@vorchiks</a>, <a href="mailto:vitaly@goreev.ru">vitaly@goreev.ru</a>, <a href="https://3wg.ru" target="_blank" rel="noreferrer">3wg.ru</a>, <a href="https://github.com/dblack-adminix/3wg-panel" target="_blank" rel="noreferrer">GitHub</a>.</div>
+          <div>© 2026 3WG Core. Все права защищены. Связь: <a href="https://t.me/vorchiks" target="_blank" rel="noreferrer">@vorchiks</a>, <a href="mailto:vitaly@goreev.ru">vitaly@goreev.ru</a>, <a href="https://3wg.ru" target="_blank" rel="noreferrer">3wg.ru</a>, <a href="https://github.com/dblack-adminix/3wg-panel" target="_blank" rel="noreferrer">GitHub</a>.</div>
           <VersionLine />
         </footer>
       </main>
@@ -1062,7 +1062,7 @@ function ClientPage({ clientId, onLogout, user }) {
   };
 
   return (
-    <Shell title={title} subtitle="WireGuard / AmneziaWG node management" onLogout={onLogout} user={user}>
+    <Shell title={title} subtitle="WireGuard & AmneziaWG Management Platform" onLogout={onLogout} user={user}>
       {state.error && <div className="warning">{state.error}</div>}
       {state.loading && <section className="card detail-card">Загрузка...</section>}
       {peer && (
@@ -1845,7 +1845,7 @@ function Dashboard({ onLogout, user }) {
   const available = Object.values(state.protocols || {}).filter((p) => p.available).length;
 
   return (
-    <Shell title="3WG Panel" subtitle={user?.is_admin ? 'WireGuard / AmneziaWG node management' : 'Личный кабинет peer-ов'} onLogout={onLogout} protocols={state.protocols} user={user}>
+    <Shell title="3WG Core" subtitle={user?.is_admin ? 'WireGuard & AmneziaWG Management Platform' : 'Личный кабинет peer-ов'} onLogout={onLogout} protocols={state.protocols} user={user}>
       {state.error && <div className="warning">{state.error}</div>}
       {!user?.is_admin ? (
         <UserHome state={state} online={online} available={available} onRefresh={load} user={user} />
