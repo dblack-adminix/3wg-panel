@@ -122,6 +122,7 @@ tar --exclude=frontend/node_modules -czf "$BASE/backups/source/3wg-panel-app.$(d
 printf '\n===== Update runner =====\n'
 if command -v systemctl >/dev/null 2>&1; then
   BASE="$BASE" bash "$BASE/scripts/install_update_runner.sh"
+  BASE="$BASE" bash "$BASE/scripts/install_migration_push_runner.sh"
 else
   printf 'systemctl not found, skipping update runner service\n'
 fi

@@ -14,7 +14,7 @@ WireGuard & AmneziaWG Management Platform для VPN-серверов, поль�
 - Multi-user режим: суперпользователь создаёт пользователей, назначает лимит peer'ов и общий лимит трафика.
 - Prometheus `/metrics`, node_exporter/cAdvisor agent и стартовый Grafana dashboard.
 - P2P Guard для снижения риска BitTorrent abuse-жалоб на VPN-нодах.
-- Migration bundle для переезда на другой сервер без пересоздания клиентских конфигов.
+- Migration bundle и host-runner для переезда на другой сервер без пересоздания клиентских конфигов.
 - Telegram-уведомления о важных событиях панели.
 - Update Center: проверка версии, ссылки на changelog и безопасная подготовка UI updater.
 - Хранение состояния панели в SQLite.
@@ -34,7 +34,7 @@ WireGuard & AmneziaWG Management Platform для VPN-серверов, поль�
 - `/monitoring` — Prometheus metrics, Prometheus token и Telegram notifications
 - `/updates` — проверка версии и статус host update runner
 - `/backups` — ручные и автоматические backup'ы, restore и удаление старых архивов
-- `/migration` — создание migration bundle для переезда на другой сервер
+- `/migration` — создание migration bundle и автоперенос на новый сервер через SSH host-runner
 - `/tools/health` — диагностика Docker, протоколов, endpoint'ов и reverse proxy
 - `/health` — health-check
 - `/metrics` — Prometheus metrics endpoint, если включён в `.env`

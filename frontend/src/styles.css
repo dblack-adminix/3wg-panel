@@ -1674,6 +1674,106 @@ html[data-theme="light"] .migration-check {
   color: #64748b;
 }
 
+.migration-push-card {
+  display: grid;
+  gap: 16px;
+}
+
+.migration-push-grid {
+  display: grid;
+  grid-template-columns: 1.25fr 1fr 110px 150px 150px minmax(220px, 1fr);
+  gap: 12px;
+  align-items: end;
+}
+
+.migration-push-grid label,
+.migration-key-field {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.migration-push-grid label span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.migration-push-grid input,
+.migration-push-grid select,
+.migration-push-grid textarea {
+  width: 100%;
+  min-width: 0;
+}
+
+.migration-key-field {
+  grid-column: span 2;
+}
+
+.migration-key-field textarea {
+  min-height: 86px;
+  resize: vertical;
+}
+
+.migration-push-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  grid-column: 1 / -1;
+}
+
+.migration-runner-status {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr .7fr;
+  gap: 10px;
+}
+
+.migration-runner-status div {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255,255,255,.02);
+}
+
+.migration-runner-status span {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.migration-runner-status b {
+  display: block;
+  margin-top: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.migration-log {
+  min-height: 160px;
+  max-height: 360px;
+  overflow: auto;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #020617;
+  color: #e2e8f0;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+html[data-theme="light"] .migration-runner-status div {
+  background: #f8fafc;
+  border-color: #d8e1ec;
+}
+
 @media (max-width: 1100px) {
   .migration-hero-card {
     grid-template-columns: 1fr;
@@ -1681,10 +1781,22 @@ html[data-theme="light"] .migration-check {
   .migration-steps {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  .migration-push-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .migration-runner-status {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 640px) {
   .migration-steps {
     grid-template-columns: 1fr;
+  }
+  .migration-push-grid {
+    grid-template-columns: 1fr;
+  }
+  .migration-key-field {
+    grid-column: auto;
   }
 }

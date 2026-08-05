@@ -2430,6 +2430,20 @@ function MigrationPage({ onLogout, user }) {
   const confirm = useConfirm();
   const [bundles, setBundles] = useState([]);
   const [includeBackups, setIncludeBackups] = useState(false);
+  const [pushStatus, setPushStatus] = useState(null);
+  const [pushForm, setPushForm] = useState({
+    archive: '',
+    host: '',
+    port: 22,
+    user: 'root',
+    auth_method: 'password',
+    password: '',
+    private_key: '',
+    install_dir: '/opt/3wg-panel',
+    repo_url: 'https://github.com/dblack-adminix/3wg-panel.git',
+    branch: 'dev',
+    confirm: '',
+  });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -2437,8 +2451,15 @@ function MigrationPage({ onLogout, user }) {
   const load = async () => {
     setBusy(true);
     try {
-      const data = await api('/api/migration');
+      const [data, runner] = await Promise.all([
+        api('/api/migration'),
+        api('/api/migration/push').catch(() => null),
+      ]);
       setBundles(data.bundles || []);
+      setPushStatus(runner);
+      if (!pushForm.archive && data.bundles?.[0]?.name) {
+        setPushForm((v) => ({ ...v, archive: data.bundles[0].name }));
+      }
       setError('');
     } catch (err) {
       setError(err.message || 'Ошибка загрузки migration bundle');
@@ -2448,6 +2469,20 @@ function MigrationPage({ onLogout, user }) {
   };
 
   useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    if (!pushStatus?.job?.running) return undefined;
+    const timer = window.setInterval(async () => {
+      try {
+        setPushStatus(await api('/api/migration/push'));
+      } catch {}
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [pushStatus?.job?.running]);
+
+  const setPushField = (name, value) => {
+    setPushForm((v) => ({ ...v, [name]: value }));
+  };
 
   const create = async () => {
     const ok = await confirm({
@@ -2466,11 +2501,41 @@ function MigrationPage({ onLogout, user }) {
         body: JSON.stringify({ include_backups: includeBackups }),
       });
       setBundles(data.bundles || []);
+      if (data.bundle?.name) setPushForm((v) => ({ ...v, archive: data.bundle.name }));
       setNotice(`Migration bundle создан: ${data.bundle?.name || ''}`);
       setError('');
       toast.success('Migration bundle создан');
     } catch (err) {
       setError(err.message || 'Ошибка создания migration bundle');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const pushToServer = async (e) => {
+    e.preventDefault();
+    const ok = await confirm({
+      title: 'Запустить перенос на новый сервер',
+      message: `Runner подключится к ${pushForm.user}@${pushForm.host}:${pushForm.port}, загрузит bundle и запустит import.`,
+      details: 'Новый сервер должен быть чистым Linux-сервером с root-доступом по SSH. Старый сервер не выключайте до проверки health на новом.',
+      tone: 'danger',
+      confirmLabel: 'Запустить',
+    });
+    if (!ok) return;
+    setBusy('push');
+    setNotice('');
+    try {
+      const payload = { ...pushForm, port: Number(pushForm.port || 22) };
+      const data = await api('/api/migration/push', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      setPushStatus(data);
+      setPushForm((v) => ({ ...v, password: '', private_key: '', confirm: '' }));
+      setError('');
+      toast.success('Migration push запущен');
+    } catch (err) {
+      setError(err.message || 'Ошибка запуска migration push');
     } finally {
       setBusy(false);
     }
@@ -2539,11 +2604,90 @@ function MigrationPage({ onLogout, user }) {
       <section className="card migration-runbook">
         <h2>Как перенести</h2>
         <div className="migration-steps">
-          <div><b>1</b><span>Создайте и скачайте migration bundle со старого сервера.</span></div>
-          <div><b>2</b><span>Установите 3WG Core на новый сервер и скопируйте archive туда.</span></div>
-          <div><b>3</b><span>На новом сервере выполните `sudo bash scripts/migration_import.sh /path/to/archive.tgz`.</span></div>
-          <div><b>4</b><span>Проверьте health, Docker containers и UDP-порты, затем переключите DNS A-запись.</span></div>
+          <div><b>1</b><span>Создайте migration bundle со старого сервера.</span></div>
+          <div><b>2</b><span>Введите SSH-доступ нового сервера и выберите архив.</span></div>
+          <div><b>3</b><span>Runner сам загрузит проект, bundle и запустит import на новом сервере.</span></div>
+          <div><b>4</b><span>После проверки health переключите DNS A-запись endpoint-домена.</span></div>
         </div>
+      </section>
+
+      <section className="card migration-push-card">
+        <div className="section-head">
+          <div>
+            <h2>Автоперенос на новый сервер</h2>
+            <p className="muted">Runner работает на host, поэтому web-контейнер не получает root-доступ. Пароль или private key используются только для запуска текущей задачи.</p>
+          </div>
+          <span className={`status-pill ${pushStatus?.runner?.can_run ? 'online' : 'offline'}`}>
+            {pushStatus?.runner?.can_run ? 'RUNNER READY' : 'RUNNER OFF'}
+          </span>
+        </div>
+        <form className="migration-push-grid" onSubmit={pushToServer}>
+          <label>
+            <span>Migration bundle</span>
+            <select className="category-select" value={pushForm.archive} onChange={(e) => setPushField('archive', e.target.value)} required>
+              <option value="">Выберите bundle</option>
+              {bundles.map((bundle) => <option key={bundle.name} value={bundle.name}>{bundle.name}</option>)}
+            </select>
+          </label>
+          <label>
+            <span>Новый сервер</span>
+            <input value={pushForm.host} onChange={(e) => setPushField('host', e.target.value)} placeholder="nl-ams-05.nodax.eu" required />
+          </label>
+          <label>
+            <span>SSH port</span>
+            <input type="number" min="1" max="65535" value={pushForm.port} onChange={(e) => setPushField('port', e.target.value)} required />
+          </label>
+          <label>
+            <span>SSH user</span>
+            <input value={pushForm.user} onChange={(e) => setPushField('user', e.target.value)} placeholder="root" required />
+          </label>
+          <label>
+            <span>Auth</span>
+            <select className="category-select" value={pushForm.auth_method} onChange={(e) => setPushField('auth_method', e.target.value)}>
+              <option value="password">Password</option>
+              <option value="key">Private key</option>
+            </select>
+          </label>
+          {pushForm.auth_method === 'password' ? (
+            <label>
+              <span>SSH password</span>
+              <input type="password" autoComplete="new-password" value={pushForm.password} onChange={(e) => setPushField('password', e.target.value)} required />
+            </label>
+          ) : (
+            <label className="migration-key-field">
+              <span>SSH private key</span>
+              <textarea value={pushForm.private_key} onChange={(e) => setPushField('private_key', e.target.value)} placeholder="-----BEGIN OPENSSH PRIVATE KEY-----" required />
+            </label>
+          )}
+          <label>
+            <span>Install dir</span>
+            <input value={pushForm.install_dir} onChange={(e) => setPushField('install_dir', e.target.value)} required />
+          </label>
+          <label>
+            <span>Git repo</span>
+            <input value={pushForm.repo_url} onChange={(e) => setPushField('repo_url', e.target.value)} required />
+          </label>
+          <label>
+            <span>Branch / tag</span>
+            <input value={pushForm.branch} onChange={(e) => setPushField('branch', e.target.value)} required />
+          </label>
+          <label>
+            <span>Подтверждение</span>
+            <input value={pushForm.confirm} onChange={(e) => setPushField('confirm', e.target.value)} placeholder="MIGRATE" required />
+          </label>
+          <div className="migration-push-actions">
+            <button className="orange-btn" type="submit" disabled={busy === 'push' || !pushStatus?.runner?.can_run || !bundles.length}>
+              <Send size={15} /> Залить и запустить import
+            </button>
+            <button className="copy-button" type="button" onClick={load} disabled={busy}><RefreshCw size={14} /> Обновить runner</button>
+          </div>
+        </form>
+        <div className="migration-runner-status">
+          <div><span>Socket</span><b>{pushStatus?.runner?.socket || '-'}</b></div>
+          <div><span>Статус</span><b>{pushStatus?.runner?.reason || '-'}</b></div>
+          <div><span>Job</span><b>{pushStatus?.job?.running ? 'running' : (pushStatus?.job?.exit_code === 0 ? 'done' : (pushStatus?.job?.exit_code ? 'error' : 'idle'))}</b></div>
+        </div>
+        <pre className="migration-log">{(pushStatus?.job?.log || ['Migration push ещё не запускался.']).join('\n')}</pre>
       </section>
 
       <section className="card">

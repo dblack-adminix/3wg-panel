@@ -167,8 +167,9 @@ docker build -f app/Dockerfile -t "$IMAGE" .
 say "Installing update runner"
 if command -v systemctl >/dev/null 2>&1; then
   BASE="$INSTALL_DIR" bash scripts/install_update_runner.sh
+  BASE="$INSTALL_DIR" bash scripts/install_migration_push_runner.sh
 else
-  warn "systemctl не найден, update runner не установлен"
+  warn "systemctl не найден, update/migration runners не установлены"
 fi
 
 say "Recreating container"

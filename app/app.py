@@ -69,6 +69,8 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 UPDATE_RUNNER_ENABLED = os.getenv("UPDATE_RUNNER_ENABLED", "1") == "1"
 UPDATE_RUNNER_SOCKET = os.getenv("UPDATE_RUNNER_SOCKET", "/app/run/update-runner.sock")
+MIGRATION_RUNNER_ENABLED = os.getenv("MIGRATION_RUNNER_ENABLED", "1") == "1"
+MIGRATION_RUNNER_SOCKET = os.getenv("MIGRATION_RUNNER_SOCKET", "/app/run/migration-runner.sock")
 PANEL_CONTAINER = os.getenv("PANEL_CONTAINER", "3wg-panel")
 
 PROTOCOLS = {
@@ -375,6 +377,87 @@ def update_job_payload() -> dict:
             "log": list(job.get("log") or [])[-240:],
         }
     return empty_update_job()
+
+
+def migration_runner_request(command: str, **extra) -> dict:
+    payload = {"command": command, **extra}
+    sock_path = Path(MIGRATION_RUNNER_SOCKET)
+    if not MIGRATION_RUNNER_ENABLED:
+        raise RuntimeError("Migration runner disabled")
+    if not sock_path.exists():
+        raise RuntimeError(f"Migration runner socket not found: {MIGRATION_RUNNER_SOCKET}")
+    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    client.settimeout(5)
+    try:
+        client.connect(str(sock_path))
+        client.sendall((json.dumps(payload, ensure_ascii=False) + "\n").encode("utf-8"))
+        data = b""
+        while not data.endswith(b"\n"):
+            chunk = client.recv(65536)
+            if not chunk:
+                break
+            data += chunk
+    finally:
+        client.close()
+    if not data:
+        raise RuntimeError("Migration runner returned empty response")
+    response = json.loads(data.decode("utf-8"))
+    if not response.get("ok"):
+        raise RuntimeError(str(response.get("error") or "Migration runner error"))
+    return response
+
+
+def migration_runner_status() -> dict | None:
+    try:
+        return migration_runner_request("status")
+    except (OSError, RuntimeError, ValueError, json.JSONDecodeError):
+        return None
+
+
+def empty_migration_job() -> dict:
+    return {"running": False, "started_at": None, "finished_at": None, "exit_code": None, "log": []}
+
+
+def migration_runner_payload() -> dict:
+    sock_path = Path(MIGRATION_RUNNER_SOCKET)
+    exists = sock_path.exists()
+    status = migration_runner_status() if MIGRATION_RUNNER_ENABLED and exists else None
+    runner = status.get("runner") if status else {}
+    can_run = bool(MIGRATION_RUNNER_ENABLED and exists and status)
+    if not MIGRATION_RUNNER_ENABLED:
+        reason = "Migration runner disabled"
+    elif not exists:
+        reason = f"Migration runner socket not found: {MIGRATION_RUNNER_SOCKET}"
+    elif not status:
+        reason = "Migration runner is not responding"
+    else:
+        reason = "ready"
+    return {
+        "enabled": MIGRATION_RUNNER_ENABLED,
+        "socket": MIGRATION_RUNNER_SOCKET,
+        "base": runner.get("base"),
+        "log_path": runner.get("log_path"),
+        "pid": runner.get("pid"),
+        "sshpass": bool(runner.get("sshpass")),
+        "exists": exists,
+        "can_run": can_run,
+        "reason": reason,
+        "confirm_text": "MIGRATE",
+    }
+
+
+def migration_job_payload() -> dict:
+    status = migration_runner_status()
+    if status and isinstance(status.get("job"), dict):
+        job = status["job"]
+        return {
+            "running": bool(job.get("running")),
+            "started_at": job.get("started_at"),
+            "finished_at": job.get("finished_at"),
+            "exit_code": job.get("exit_code"),
+            "log": list(job.get("log") or [])[-240:],
+        }
+    return empty_migration_job()
 
 
 def update_status_payload() -> dict:
@@ -6038,6 +6121,7 @@ def api_env_snapshot() -> bytes:
         'METRICS_ENABLED', 'METRICS_REQUIRE_TOKEN', 'METRICS_TOKEN',
         'TELEGRAM_ENABLED', 'TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID',
         'UPDATE_RUNNER_ENABLED', 'UPDATE_RUNNER_SOCKET',
+        'MIGRATION_RUNNER_ENABLED', 'MIGRATION_RUNNER_SOCKET',
     ]
     lines = []
     for key in keys:
@@ -7381,6 +7465,61 @@ async def api_migration_export(request: Request, user=Depends(api_require_admin)
         [f"Файл: {path.name}", f"Размер: {human_bytes(payload['size'])}", f"Кто: {user.get('username')}"],
     )
     return {'ok': True, 'bundle': payload, 'bundles': api_list_migration_bundles()}
+
+
+@app.get('/api/migration/push')
+def api_migration_push_status(user=Depends(api_require_admin)):
+    return {'ok': True, 'runner': migration_runner_payload(), 'job': migration_job_payload()}
+
+
+@app.post('/api/migration/push')
+async def api_migration_push(request: Request, user=Depends(api_require_admin)):
+    data = await api_read_payload(request)
+    archive = api_migration_path(str(data.get('archive') or ''))
+    if str(data.get('confirm') or '').strip() != 'MIGRATE':
+        raise HTTPException(status_code=400, detail='Для запуска введите MIGRATE')
+    auth_method = str(data.get('auth_method') or 'password').strip()
+    if auth_method not in ('password', 'key'):
+        raise HTTPException(status_code=400, detail='Некорректный SSH auth method')
+    payload = {
+        'host': str(data.get('host') or '').strip(),
+        'user': str(data.get('user') or 'root').strip() or 'root',
+        'port': data.get('port') or 22,
+        'auth_method': auth_method,
+        'password': str(data.get('password') or ''),
+        'private_key': str(data.get('private_key') or ''),
+        'archive': archive.name,
+        'install_dir': str(data.get('install_dir') or '/opt/3wg-panel').strip() or '/opt/3wg-panel',
+        'repo_url': str(data.get('repo_url') or 'https://github.com/dblack-adminix/3wg-panel.git').strip(),
+        'branch': str(data.get('branch') or 'dev').strip() or 'dev',
+    }
+    try:
+        response = migration_runner_request('push', **payload)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    api_audit_log(
+        request,
+        user,
+        'migration.push',
+        'migration',
+        archive.name,
+        archive.name,
+        {
+            'host': payload['host'],
+            'user': payload['user'],
+            'port': payload['port'],
+            'auth_method': auth_method,
+            'archive': archive.name,
+            'install_dir': payload['install_dir'],
+            'repo_url': payload['repo_url'],
+            'branch': payload['branch'],
+        },
+    )
+    telegram_notify(
+        "migration push запущен",
+        [f"Target: {payload['user']}@{payload['host']}:{payload['port']}", f"Файл: {archive.name}", f"Кто: {user.get('username')}"],
+    )
+    return {'ok': True, 'runner': migration_runner_payload(), 'job': response.get('job') or migration_job_payload()}
 
 
 @app.get('/api/migration/{name}/download')

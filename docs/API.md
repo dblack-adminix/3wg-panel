@@ -552,6 +552,38 @@ curl -fsS \
   "$BASE_URL/api/migration/3wg-core.migration.node.example.2026-08-05_12-00-00.tgz"
 ```
 
+Статус host runner для автопереноса:
+
+```bash
+curl -fsS \
+  -H "X-API-Key: $API_KEY" \
+  "$BASE_URL/api/migration/push"
+```
+
+Запустить загрузку bundle на новый сервер и import:
+
+```bash
+curl -fsS \
+  -X POST \
+  -H "X-API-Key: $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "archive":"3wg-core.migration.node.example.2026-08-05_12-00-00.tgz",
+    "host":"new-node.example",
+    "port":22,
+    "user":"root",
+    "auth_method":"password",
+    "password":"SSH_PASSWORD",
+    "install_dir":"/opt/3wg-panel",
+    "repo_url":"https://github.com/dblack-adminix/3wg-panel.git",
+    "branch":"dev",
+    "confirm":"MIGRATE"
+  }' \
+  "$BASE_URL/api/migration/push"
+```
+
+Для `auth_method:"key"` передайте `private_key` вместо `password`. SSH password/private key не сохраняются в базе и не попадают в audit context.
+
 Import выполняется на новом сервере root-скриптом:
 
 ```bash
