@@ -246,6 +246,28 @@ docker rm -f 3wg-panel
 sudo bash scripts/install.sh
 ```
 
+## Переезд на другой сервер
+
+Для незаметного переезда пользователей используйте migration bundle, а не обычный UI backup. Обычный backup переносит только `data/` и `clients/`, но для бесшовного переезда нужны ещё `.env` и server-side WireGuard/AmneziaWG config'и из protocol-контейнеров.
+
+На старом сервере:
+
+```bash
+cd /opt/3wg-panel
+sudo bash scripts/migration_export.sh
+```
+
+На новом сервере после установки 3WG Core:
+
+```bash
+cd /opt/3wg-panel
+sudo bash scripts/migration_import.sh /path/to/3wg-core.migration.<old-host>.<date>.tgz
+```
+
+Чтобы пользователи ничего не меняли в приложениях, сохраните тот же endpoint-домен, те же UDP-порты и server private keys. После проверки нового сервера перепишите DNS A-запись домена на новый IP.
+
+Подробный runbook: [MIGRATION.md](MIGRATION.md).
+
 ## История трафика
 
 История трафика хранится в SQLite table `traffic_snapshots`. Она начинает накапливаться только после включения этой функции. Старую месячную статистику восстановить нельзя, если snapshots раньше не собирались.

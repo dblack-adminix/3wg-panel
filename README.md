@@ -14,6 +14,7 @@ WireGuard & AmneziaWG Management Platform для VPN-серверов, поль�
 - Multi-user режим: суперпользователь создаёт пользователей, назначает лимит peer'ов и общий лимит трафика.
 - Prometheus `/metrics`, node_exporter/cAdvisor agent и стартовый Grafana dashboard.
 - P2P Guard для снижения риска BitTorrent abuse-жалоб на VPN-нодах.
+- Migration bundle для переезда на другой сервер без пересоздания клиентских конфигов.
 - Telegram-уведомления о важных событиях панели.
 - Update Center: проверка версии, ссылки на changelog и безопасная подготовка UI updater.
 - Хранение состояния панели в SQLite.
@@ -99,6 +100,7 @@ Installer спросит:
 
 - Обновление через `scripts/update.sh`, backup, restore, logs, health-check: [docs/OPERATIONS.md](docs/OPERATIONS.md)
 - Мониторинг через Prometheus/Grafana: [docs/MONITORING.md](docs/MONITORING.md)
+- Переезд на другой сервер без смены клиентских config'ов: [docs/MIGRATION.md](docs/MIGRATION.md)
 - REST API для интеграций: [docs/API.md](docs/API.md)
 - API-ключи и хранение token'ов: [docs/API_KEYS.md](docs/API_KEYS.md)
 - Roadmap развития: [docs/ROADMAP.md](docs/ROADMAP.md)
@@ -125,6 +127,8 @@ scripts/deploy.sh    dev deploy script для cz-prg-01
 scripts/install.sh   интерактивный production installer
 scripts/provision_protocols.sh auto-create protocol containers
 scripts/reset_admin_password.sh смена пароля администратора панели
+scripts/migration_export.sh export bundle для переноса ноды
+scripts/migration_import.sh import bundle на новый сервер
 scripts/install_monitoring_agent.sh node_exporter + cAdvisor для Prometheus
 scripts/update.sh    production updater без перезаписи .env
 monitoring/          Prometheus rules и Grafana dashboard examples
@@ -134,7 +138,7 @@ docs/                документация
 
 ## Версия
 
-Текущая версия продукта: `v1.3.74`
+Текущая версия продукта: `v1.3.75`
 
 ## Copyright
 
