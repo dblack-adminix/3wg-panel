@@ -23,6 +23,7 @@ import {
   RefreshCw,
   RotateCcw,
   Send,
+  ShieldAlert,
   Trash2,
   X,
   ShieldCheck,
@@ -213,6 +214,7 @@ function Sidebar({ onLogout, protocols: initialProtocols = null, user, mobileOpe
           <a className={`nav ${path === '/users' ? 'active' : ''}`} href="/users" onClick={onClose}><Users size={14} /> <span>Пользователи</span></a>
           <a className={`nav ${path === '/apikeys' ? 'active' : ''}`} href="/apikeys" onClick={onClose}><Key size={14} /> <span>API-ключи</span></a>
           <a className={`nav ${path === '/monitoring' ? 'active' : ''}`} href="/monitoring" onClick={onClose}><Activity size={14} /> <span>Мониторинг</span></a>
+          <a className={`nav ${path === '/abuse' ? 'active' : ''}`} href="/abuse" onClick={onClose}><ShieldAlert size={14} /> <span>P2P Guard</span></a>
           <a className={`nav ${path === '/updates' ? 'active' : ''}`} href="/updates" onClick={onClose}><RefreshCw size={14} /> <span>Обновления</span></a>
           <a className={`nav ${path === '/audit' ? 'active' : ''}`} href="/audit" onClick={onClose}><Terminal size={14} /> <span>Audit log</span></a>
           <a className={`nav ${path === '/backups' ? 'active' : ''}`} href="/backups" onClick={onClose}><Download size={14} /> <span>Backups</span></a>
@@ -2683,6 +2685,163 @@ function MonitoringPage({ onLogout, user }) {
   );
 }
 
+function P2PGuardPage({ onLogout, user }) {
+  const toast = useToast();
+  const confirm = useConfirm();
+  const [state, setState] = useState({ loading: true, data: null, error: '' });
+  const [form, setForm] = useState({ enabled: false, mode: 'soft', allow_udp_ports: '53,123,443' });
+  const [busy, setBusy] = useState(false);
+
+  const load = async () => {
+    try {
+      const data = await api('/api/p2p-guard');
+      setState({ loading: false, data, error: '' });
+      setForm({
+        enabled: Boolean(data.settings?.enabled),
+        mode: data.settings?.mode || 'soft',
+        allow_udp_ports: data.settings?.allow_udp_ports || '53,123,443',
+      });
+    } catch (err) {
+      setState({ loading: false, data: null, error: err.message || 'Ошибка P2P Guard' });
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const save = async (e) => {
+    e.preventDefault();
+    if (form.enabled && form.mode === 'strict') {
+      const ok = await confirm({
+        title: 'Включить строгий режим',
+        message: 'Strict режим режет почти весь UDP от VPN-клиентов.',
+        details: 'DNS/NTP и указанные UDP-порты останутся разрешены. Игры, звонки и часть приложений могут работать хуже.',
+        tone: 'block',
+        confirmLabel: 'Включить',
+      });
+      if (!ok) return;
+    }
+    setBusy(true);
+    try {
+      const data = await api('/api/p2p-guard', { method: 'PATCH', body: JSON.stringify(form) });
+      setState({ loading: false, data, error: '' });
+      toast.success('P2P Guard применён');
+    } catch (err) {
+      setState((s) => ({ ...s, error: err.message || 'Ошибка сохранения P2P Guard' }));
+      toast.error(err.message || 'Ошибка сохранения P2P Guard');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const apply = async () => {
+    setBusy(true);
+    try {
+      const data = await api('/api/p2p-guard/apply', { method: 'POST' });
+      setState({ loading: false, data, error: '' });
+      setForm({
+        enabled: Boolean(data.settings?.enabled),
+        mode: data.settings?.mode || 'soft',
+        allow_udp_ports: data.settings?.allow_udp_ports || '53,123,443',
+      });
+      toast.success('Правила применены повторно');
+    } catch (err) {
+      setState((s) => ({ ...s, error: err.message || 'Ошибка применения правил' }));
+      toast.error(err.message || 'Ошибка применения правил');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const data = state.data || {};
+  const settings = data.settings || {};
+  const protocols = Object.values(data.protocols || {});
+  const activeCount = protocols.filter((p) => p.active).length;
+
+  return (
+    <Shell title="P2P Guard" subtitle="Блокировка BitTorrent/P2P трафика внутри VPN-контейнеров" onLogout={onLogout} user={user}>
+      {state.error && <div className="warning">{state.error}</div>}
+      {state.loading && <section className="card">Загрузка...</section>}
+      {!state.loading && (
+        <div className="p2p-grid">
+          <section className="card p2p-hero">
+            <div>
+              <span className="eyebrow">Anti-Abuse</span>
+              <h2>BitTorrent traffic guard</h2>
+              <p className="muted">Правила ставятся в контейнеры WireGuard и AmneziaWG на FORWARD цепочку интерфейсов wg0/awg0. Это снижает риск abuse-жалоб, но не является абсолютным DPI.</p>
+            </div>
+            <div className="p2p-kpis">
+              <div><span>Состояние</span><b className={settings.enabled ? 'active-text' : 'muted'}>{settings.enabled ? 'ENABLED' : 'DISABLED'}</b></div>
+              <div><span>Режим</span><b>{settings.mode || 'soft'}</b></div>
+              <div><span>Контейнеры</span><b>{activeCount} / {protocols.length}</b></div>
+            </div>
+          </section>
+
+          <section className="card p2p-settings">
+            <h2>Настройки блокировки</h2>
+            <form className="monitoring-form" onSubmit={save}>
+              <label className="toggle-row">
+                <input type="checkbox" checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />
+                <span>Включить P2P Guard</span>
+              </label>
+              <label>
+                <span>Режим</span>
+                <select className="name-input" value={form.mode} onChange={(e) => setForm({ ...form, mode: e.target.value })}>
+                  <option value="soft">soft — порты и BitTorrent сигнатуры</option>
+                  <option value="strict">strict — soft + блок почти всего UDP</option>
+                </select>
+              </label>
+              <label>
+                <span>UDP разрешены в strict</span>
+                <input className="name-input" value={form.allow_udp_ports} onChange={(e) => setForm({ ...form, allow_udp_ports: e.target.value })} placeholder="53,123,443" />
+              </label>
+              <div className="monitoring-actions">
+                <button className="orange-btn" type="submit" disabled={busy}><ShieldAlert size={15} /> Сохранить и применить</button>
+                <button className="blue-btn" type="button" onClick={apply} disabled={busy}><RefreshCw size={15} /> Применить повторно</button>
+              </div>
+            </form>
+          </section>
+
+          <section className="card p2p-protocols">
+            <div className="section-head">
+              <h2>VPN контейнеры</h2>
+              <span className={activeCount === protocols.length && settings.enabled ? 'active-text' : 'muted'}>{activeCount} active</span>
+            </div>
+            <div className="p2p-protocol-list">
+              {protocols.map((p) => (
+                <div className={`p2p-protocol ${p.active ? 'active' : ''}`} key={p.protocol}>
+                  <div>
+                    <b className={p.protocol === 'wireguard' ? 'traffic-proto wg' : 'traffic-proto awg'}>{p.title}</b>
+                    <span>{p.container} / {p.interface}</span>
+                  </div>
+                  <div className="p2p-state">
+                    <span className={p.available ? 'active-text' : 'muted'}>{p.available ? 'ONLINE' : 'OFFLINE'}</span>
+                    <span className={p.active ? 'active-text' : 'muted'}>{p.active ? 'RULES ACTIVE' : 'NO HOOK'}</span>
+                    <code>{p.rules_count || 0} rules</code>
+                  </div>
+                  {p.error && <div className="warning">{p.error}</div>}
+                  <details>
+                    <summary>Показать iptables</summary>
+                    <pre>{(p.rules || []).join('\n') || 'Правила не применены'}</pre>
+                  </details>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="card p2p-notes">
+            <h2>Что блокируется</h2>
+            <div className="p2p-note-grid">
+              <div><b>Порты</b><span>6881-6999, 6969, 51413, 2710, 4444, 45100-45199 по TCP/UDP.</span></div>
+              <div><b>Сигнатуры</b><span>BitTorrent protocol, DHT announce/get_peers/find_node, info_hash, peer_id.</span></div>
+              <div><b>Strict UDP</b><span>В strict режиме весь прочий UDP от клиентов режется, кроме списка разрешённых портов.</span></div>
+            </div>
+          </section>
+        </div>
+      )}
+    </Shell>
+  );
+}
+
 function UpdateCenterPage({ onLogout, user }) {
   const toast = useToast();
   const confirm = useConfirm();
@@ -3501,6 +3660,7 @@ function App() {
   if (isAdmin && window.location.pathname === '/apikeys') return <ApiKeysPage onLogout={logout} user={auth.user} />;
   if (isAdmin && window.location.pathname === '/users') return <UsersPage onLogout={logout} user={auth.user} />;
   if (isAdmin && window.location.pathname === '/monitoring') return <MonitoringPage onLogout={logout} user={auth.user} />;
+  if (isAdmin && window.location.pathname === '/abuse') return <P2PGuardPage onLogout={logout} user={auth.user} />;
   if (isAdmin && window.location.pathname === '/updates') return <UpdateCenterPage onLogout={logout} user={auth.user} />;
   if (isAdmin && window.location.pathname === '/audit') return <AuditPage onLogout={logout} user={auth.user} />;
   if (isAdmin && window.location.pathname === '/backups') return <BackupsPage onLogout={logout} user={auth.user} />;

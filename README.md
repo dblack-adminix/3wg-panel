@@ -13,6 +13,7 @@ WireGuard & AmneziaWG Management Platform для VPN-серверов, поль�
 - Подробные страницы истории трафика.
 - Multi-user режим: суперпользователь создаёт пользователей, назначает лимит peer'ов и общий лимит трафика.
 - Prometheus `/metrics`, node_exporter/cAdvisor agent и стартовый Grafana dashboard.
+- P2P Guard для снижения риска BitTorrent abuse-жалоб на VPN-нодах.
 - Telegram-уведомления о важных событиях панели.
 - Update Center: проверка версии, ссылки на changelog и безопасная подготовка UI updater.
 - Хранение состояния панели в SQLite.
@@ -133,7 +134,7 @@ docs/                документация
 
 ## Версия
 
-Текущая версия продукта: `v1.3.73`
+Текущая версия продукта: `v1.3.74`
 
 ## Copyright
 

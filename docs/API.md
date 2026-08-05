@@ -575,6 +575,47 @@ curl -fsS \
 Authorization: Bearer <prometheus_token>
 ```
 
+## P2P Guard API
+
+Доступно admin/API-key. Управляет BitTorrent/P2P фильтрацией внутри VPN-контейнеров.
+
+Получить состояние:
+
+```bash
+curl -fsS -H "X-API-Key: $API_KEY" "$BASE_URL/api/p2p-guard"
+```
+
+Включить soft режим:
+
+```bash
+curl -fsS \
+  -X PATCH \
+  -H "X-API-Key: $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"enabled":true,"mode":"soft"}' \
+  "$BASE_URL/api/p2p-guard"
+```
+
+Включить strict режим:
+
+```bash
+curl -fsS \
+  -X PATCH \
+  -H "X-API-Key: $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"enabled":true,"mode":"strict","allow_udp_ports":"53,123,443"}' \
+  "$BASE_URL/api/p2p-guard"
+```
+
+Повторно применить текущие правила после перезапуска protocol-контейнеров:
+
+```bash
+curl -fsS \
+  -X POST \
+  -H "X-API-Key: $API_KEY" \
+  "$BASE_URL/api/p2p-guard/apply"
+```
+
 ## Telegram API
 
 Доступно admin/API-key.

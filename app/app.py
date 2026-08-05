@@ -5710,7 +5710,7 @@ async def react_frontend_middleware(request: Request, call_next):
         if asset_file.exists() and asset_file.is_file():
             return ReactFileResponse(asset_file)
 
-    if (path in ('/', '/login', '/ui', '/users', '/apikeys', '/monitoring', '/updates', '/audit', '/backups', '/tools/system', '/tools/health', '/tools/ping', '/tools/traceroute') or re.match(r'^/client/\d+$', path) or re.match(r'^/status/(wireguard|amneziawg)$', path) or re.match(r'^/traffic/(wireguard|amneziawg)$', path)) and index_file.exists():
+    if (path in ('/', '/login', '/ui', '/users', '/apikeys', '/monitoring', '/abuse', '/updates', '/audit', '/backups', '/tools/system', '/tools/health', '/tools/ping', '/tools/traceroute') or re.match(r'^/client/\d+$', path) or re.match(r'^/status/(wireguard|amneziawg)$', path) or re.match(r'^/traffic/(wireguard|amneziawg)$', path)) and index_file.exists():
         return ReactFileResponse(
             index_file,
             media_type='text/html; charset=utf-8',
@@ -7722,6 +7722,231 @@ def api_peer_delete(client_id: int, request: Request, user=Depends(api_require_a
         [f"{c['name']} / {c['protocol']}", f"IP: {c['ip_cidr']}", f"Кто: {user.get('username')}"],
     )
     return {'ok': True, 'deleted_id': client_id}
+
+# === 3WG P2P GUARD API START ===
+P2P_GUARD_CHAIN = '3WG-P2P-GUARD'
+P2P_GUARD_DEFAULTS = {
+    'enabled': False,
+    'mode': 'soft',
+    'allow_udp_ports': '53,123,443',
+    'updated_at': 0,
+}
+P2P_GUARD_PORTS = '6881:6999,6969,51413,2710,4444,45100:45199'
+P2P_GUARD_SIGNATURES = [
+    'BitTorrent protocol',
+    'announce_peer',
+    'find_node',
+    'get_peers',
+    'info_hash',
+    'peer_id=',
+    'torrent',
+]
+
+
+def p2p_guard_settings() -> dict:
+    raw = panel_setting_get('p2p_guard')
+    settings = dict(P2P_GUARD_DEFAULTS)
+    if raw:
+        try:
+            loaded = json.loads(raw)
+            if isinstance(loaded, dict):
+                settings.update(loaded)
+        except Exception:
+            pass
+    mode = str(settings.get('mode') or 'soft').strip().lower()
+    if mode not in ('soft', 'strict'):
+        mode = 'soft'
+    settings['mode'] = mode
+    settings['enabled'] = bool(settings.get('enabled'))
+    settings['allow_udp_ports'] = p2p_guard_normalize_ports(settings.get('allow_udp_ports') or '53,123,443')
+    try:
+        settings['updated_at'] = int(settings.get('updated_at') or 0)
+    except (TypeError, ValueError):
+        settings['updated_at'] = 0
+    return settings
+
+
+def p2p_guard_save_settings(settings: dict) -> dict:
+    clean = dict(P2P_GUARD_DEFAULTS)
+    clean.update(settings or {})
+    clean['enabled'] = bool(clean.get('enabled'))
+    clean['mode'] = str(clean.get('mode') or 'soft').strip().lower()
+    if clean['mode'] not in ('soft', 'strict'):
+        clean['mode'] = 'soft'
+    clean['allow_udp_ports'] = p2p_guard_normalize_ports(clean.get('allow_udp_ports') or '53,123,443')
+    clean['updated_at'] = int(time.time())
+    panel_setting_set('p2p_guard', json.dumps(clean, ensure_ascii=False, separators=(',', ':')))
+    return p2p_guard_settings()
+
+
+def p2p_guard_normalize_ports(value) -> str:
+    raw = str(value or '').replace(' ', '')
+    if not raw:
+        return '53,123,443'
+    parts = []
+    for item in raw.split(','):
+        if not item:
+            continue
+        if ':' in item or '-' in item:
+            sep = ':' if ':' in item else '-'
+            left, right = item.split(sep, 1)
+            if not left.isdigit() or not right.isdigit():
+                raise HTTPException(status_code=400, detail='Некорректный список UDP портов')
+            a, b = int(left), int(right)
+            if a < 1 or b > 65535 or a > b:
+                raise HTTPException(status_code=400, detail='Некорректный диапазон UDP портов')
+            parts.append(f'{a}:{b}')
+        else:
+            if not item.isdigit():
+                raise HTTPException(status_code=400, detail='Некорректный список UDP портов')
+            port = int(item)
+            if port < 1 or port > 65535:
+                raise HTTPException(status_code=400, detail='Некорректный UDP порт')
+            parts.append(str(port))
+    return ','.join(dict.fromkeys(parts)) or '53,123,443'
+
+
+def p2p_guard_exec(protocol: str, args: list[str]) -> dict:
+    p = proto(protocol)
+    started = time.time()
+    try:
+        container = dc().containers.get(p['container'])
+        result = container.exec_run(args, stdout=True, stderr=True)
+        output = result.output.decode('utf-8', errors='replace') if isinstance(result.output, (bytes, bytearray)) else str(result.output or '')
+        return {
+            'ok': result.exit_code == 0,
+            'exit_code': int(result.exit_code or 0),
+            'output': output.strip(),
+            'duration_ms': int((time.time() - started) * 1000),
+        }
+    except Exception as e:
+        return {'ok': False, 'exit_code': 125, 'output': str(e), 'duration_ms': int((time.time() - started) * 1000)}
+
+
+def p2p_guard_iptables(protocol: str, args: list[str], check: bool = False) -> dict:
+    result = p2p_guard_exec(protocol, ['iptables', *args])
+    if check and not result['ok']:
+        raise RuntimeError(result.get('output') or 'iptables failed')
+    return result
+
+
+def p2p_guard_chain_exists(protocol: str) -> bool:
+    return p2p_guard_iptables(protocol, ['-S', P2P_GUARD_CHAIN])['ok']
+
+
+def p2p_guard_hook_exists(protocol: str) -> bool:
+    iface = PROTOCOLS[protocol]['interface']
+    return p2p_guard_iptables(protocol, ['-C', 'FORWARD', '-i', iface, '-j', P2P_GUARD_CHAIN])['ok']
+
+
+def p2p_guard_status_for(protocol: str) -> dict:
+    p = PROTOCOLS[protocol]
+    state = api_protocol_state(protocol)
+    chain = p2p_guard_chain_exists(protocol)
+    hook = p2p_guard_hook_exists(protocol) if chain else False
+    rules = p2p_guard_iptables(protocol, ['-S', P2P_GUARD_CHAIN]) if chain else {'ok': True, 'output': ''}
+    rule_lines = [line for line in (rules.get('output') or '').splitlines() if line.strip()]
+    return {
+        'protocol': protocol,
+        'title': p['title'],
+        'container': p['container'],
+        'interface': p['interface'],
+        'available': bool(state.get('available')),
+        'chain': chain,
+        'hook': hook,
+        'active': chain and hook,
+        'rules_count': max(0, len([line for line in rule_lines if line.startswith('-A ')])),
+        'rules': rule_lines[:80],
+        'error': '' if rules.get('ok', True) else rules.get('output', ''),
+    }
+
+
+def p2p_guard_status_payload() -> dict:
+    settings = p2p_guard_settings()
+    protocols = {protocol: p2p_guard_status_for(protocol) for protocol in PROTOCOLS}
+    return {'ok': True, 'settings': settings, 'protocols': protocols}
+
+
+def p2p_guard_reset_protocol(protocol: str) -> dict:
+    iface = PROTOCOLS[protocol]['interface']
+    # Delete all matching hooks; Docker/container restarts can occasionally leave duplicates.
+    while p2p_guard_iptables(protocol, ['-C', 'FORWARD', '-i', iface, '-j', P2P_GUARD_CHAIN])['ok']:
+        p2p_guard_iptables(protocol, ['-D', 'FORWARD', '-i', iface, '-j', P2P_GUARD_CHAIN])
+    p2p_guard_iptables(protocol, ['-F', P2P_GUARD_CHAIN])
+    p2p_guard_iptables(protocol, ['-X', P2P_GUARD_CHAIN])
+    return p2p_guard_status_for(protocol)
+
+
+def p2p_guard_apply_protocol(protocol: str, settings: dict) -> dict:
+    iface = PROTOCOLS[protocol]['interface']
+    p2p_guard_iptables(protocol, ['-N', P2P_GUARD_CHAIN])
+    p2p_guard_iptables(protocol, ['-F', P2P_GUARD_CHAIN], check=True)
+    if not p2p_guard_hook_exists(protocol):
+        p2p_guard_iptables(protocol, ['-I', 'FORWARD', '1', '-i', iface, '-j', P2P_GUARD_CHAIN], check=True)
+
+    # Return local/private traffic before filtering internet abuse patterns.
+    for cidr in ('10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'):
+        p2p_guard_iptables(protocol, ['-A', P2P_GUARD_CHAIN, '-d', cidr, '-j', 'RETURN'])
+
+    for proto_name in ('tcp', 'udp'):
+        p2p_guard_iptables(protocol, ['-A', P2P_GUARD_CHAIN, '-p', proto_name, '-m', 'multiport', '--dports', P2P_GUARD_PORTS, '-j', 'REJECT'])
+
+    for signature in P2P_GUARD_SIGNATURES:
+        for proto_name in ('tcp', 'udp'):
+            p2p_guard_iptables(protocol, ['-A', P2P_GUARD_CHAIN, '-p', proto_name, '-m', 'string', '--algo', 'bm', '--string', signature, '-j', 'REJECT'])
+
+    if settings.get('mode') == 'strict':
+        allowed = p2p_guard_normalize_ports(settings.get('allow_udp_ports') or '53,123,443')
+        p2p_guard_iptables(protocol, ['-A', P2P_GUARD_CHAIN, '-p', 'udp', '-m', 'multiport', '--dports', allowed, '-j', 'RETURN'])
+        p2p_guard_iptables(protocol, ['-A', P2P_GUARD_CHAIN, '-p', 'udp', '-j', 'REJECT'])
+
+    p2p_guard_iptables(protocol, ['-A', P2P_GUARD_CHAIN, '-j', 'RETURN'])
+    return p2p_guard_status_for(protocol)
+
+
+def p2p_guard_apply_all(settings: dict) -> dict:
+    result = {}
+    for protocol in PROTOCOLS:
+        try:
+            result[protocol] = p2p_guard_apply_protocol(protocol, settings) if settings.get('enabled') else p2p_guard_reset_protocol(protocol)
+        except Exception as e:
+            status = p2p_guard_status_for(protocol)
+            status['error'] = str(e)
+            result[protocol] = status
+    return result
+
+
+@app.get('/api/p2p-guard')
+def api_p2p_guard_get(user=Depends(api_require_admin)):
+    return p2p_guard_status_payload()
+
+
+@app.patch('/api/p2p-guard')
+async def api_p2p_guard_update(request: Request, user=Depends(api_require_admin)):
+    data = await api_read_payload(request)
+    before = p2p_guard_settings()
+    settings = p2p_guard_save_settings({
+        'enabled': bool(data.get('enabled')),
+        'mode': data.get('mode') or before.get('mode') or 'soft',
+        'allow_udp_ports': data.get('allow_udp_ports') or before.get('allow_udp_ports') or '53,123,443',
+    })
+    protocols = p2p_guard_apply_all(settings)
+    api_audit_log(request, user, 'p2p_guard.update', 'security', 'p2p_guard', 'P2P Guard', {'before': before, 'after': settings})
+    telegram_notify(
+        'P2P Guard обновлён',
+        [f"Режим: {'enabled' if settings['enabled'] else 'disabled'} / {settings['mode']}", f"Кто: {user.get('username')}"],
+    )
+    return {'ok': True, 'settings': settings, 'protocols': protocols}
+
+
+@app.post('/api/p2p-guard/apply')
+async def api_p2p_guard_apply(request: Request, user=Depends(api_require_admin)):
+    settings = p2p_guard_settings()
+    protocols = p2p_guard_apply_all(settings)
+    api_audit_log(request, user, 'p2p_guard.apply', 'security', 'p2p_guard', 'P2P Guard', {'settings': settings})
+    return {'ok': True, 'settings': settings, 'protocols': protocols}
+# === 3WG P2P GUARD API END ===
+
 # === 3WG REACT API END ===
 
 # === 3WG SYSTEM STATUS API START ===
