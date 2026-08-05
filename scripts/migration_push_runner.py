@@ -147,7 +147,7 @@ def auth_prefix(payload: dict, temp_files: list[Path]) -> tuple[list[str], list[
     return prefix, ssh_opts, env
 
 
-def remote_script(install_dir: str, repo_url: str, branch: str, archive_remote: str) -> str:
+def remote_prepare_script(install_dir: str, repo_url: str, branch: str) -> str:
     return f"""set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a
 if command -v apt-get >/dev/null 2>&1; then
@@ -163,8 +163,6 @@ else
   git -C {shlex.quote(install_dir)} checkout {shlex.quote(branch)}
   git -C {shlex.quote(install_dir)} pull --ff-only
 fi
-cd {shlex.quote(install_dir)}
-bash scripts/migration_import.sh {shlex.quote(archive_remote)}
 """
 
 
@@ -192,13 +190,15 @@ def run_push(payload: dict) -> None:
         ssh_base = [*prefix, "ssh", "-p", str(port), *ssh_opts, target]
         scp_base = [*prefix, "scp", "-P", str(port), *ssh_opts]
 
+        run_cmd([*ssh_base, "bash -s"], input_text=remote_prepare_script(install_dir, repo_url, branch), env=auth_env, timeout=1800)
         run_cmd([*ssh_base, f"mkdir -p {shlex.quote(install_dir.rstrip('/') + '/backups/migration')}"], env=auth_env)
         run_cmd([*scp_base, str(archive), f"{target}:{remote_archive}"], env=auth_env)
-        run_cmd([*ssh_base, "bash -s"], input_text=remote_script(install_dir, repo_url, branch, remote_archive), env=auth_env, timeout=1800)
 
         with STATE_LOCK:
             STATE["exit_code"] = 0
-        append_log("Migration push finished successfully")
+        append_log("Migration bundle uploaded successfully")
+        append_log("Import was NOT started automatically.")
+        append_log(f"Run on the new server when ready: cd {shlex.quote(install_dir)} && sudo bash scripts/migration_import.sh {shlex.quote(remote_archive)}")
     except Exception as exc:
         with STATE_LOCK:
             STATE["exit_code"] = -1

@@ -560,7 +560,7 @@ curl -fsS \
   "$BASE_URL/api/migration/push"
 ```
 
-Запустить загрузку bundle на новый сервер и import:
+Подготовить новый сервер и загрузить bundle:
 
 ```bash
 curl -fsS \
@@ -583,6 +583,8 @@ curl -fsS \
 ```
 
 Для `auth_method:"key"` передайте `private_key` вместо `password`. SSH password/private key не сохраняются в базе и не попадают в audit context.
+
+Этот endpoint не запускает import автоматически. Он только готовит проект на новом сервере и копирует archive. Команду для ручного import runner вернёт в job log.
 
 Import выполняется на новом сервере root-скриптом:
 

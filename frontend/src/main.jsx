@@ -2515,11 +2515,11 @@ function MigrationPage({ onLogout, user }) {
   const pushToServer = async (e) => {
     e.preventDefault();
     const ok = await confirm({
-      title: 'Запустить перенос на новый сервер',
-      message: `Runner подключится к ${pushForm.user}@${pushForm.host}:${pushForm.port}, загрузит bundle и запустит import.`,
-      details: 'Новый сервер должен быть чистым Linux-сервером с root-доступом по SSH. Старый сервер не выключайте до проверки health на новом.',
+      title: 'Подготовить новый сервер',
+      message: `Runner подключится к ${pushForm.user}@${pushForm.host}:${pushForm.port}, подготовит папку проекта и загрузит bundle.`,
+      details: 'Import не запускается автоматически. После переключения/проверки DNS зайдите на новый сервер и запустите команду из лога вручную.',
       tone: 'danger',
-      confirmLabel: 'Запустить',
+      confirmLabel: 'Подготовить',
     });
     if (!ok) return;
     setBusy('push');
@@ -2575,7 +2575,7 @@ function MigrationPage({ onLogout, user }) {
             <div>
               <span>Для бесшовности</span>
               <b>Домен и UDP-порты те же</b>
-              <small>После import достаточно переписать DNS A-запись endpoint-домена на новый IP.</small>
+              <small>Endpoint-домен остаётся прежним, а SSH host нового сервера вводится как временный IP/hostname.</small>
             </div>
             <div>
               <span>Ключи сервера</span>
@@ -2585,7 +2585,7 @@ function MigrationPage({ onLogout, user }) {
             <div>
               <span>Import</span>
               <b>Через root-скрипт</b>
-              <small>Восстановление специально не запускается из web UI, чтобы не отрезать доступ к серверу случайным кликом.</small>
+              <small>Runner только готовит новый сервер и заливает bundle. Import запускаем вручную на новом сервере.</small>
             </div>
           </div>
         </div>
@@ -2605,17 +2605,17 @@ function MigrationPage({ onLogout, user }) {
         <h2>Как перенести</h2>
         <div className="migration-steps">
           <div><b>1</b><span>Создайте migration bundle со старого сервера.</span></div>
-          <div><b>2</b><span>Введите SSH-доступ нового сервера и выберите архив.</span></div>
-          <div><b>3</b><span>Runner сам загрузит проект, bundle и запустит import на новом сервере.</span></div>
-          <div><b>4</b><span>После проверки health переключите DNS A-запись endpoint-домена.</span></div>
+          <div><b>2</b><span>В SSH host введите IP или временный hostname нового сервера, не endpoint-домен.</span></div>
+          <div><b>3</b><span>Runner загрузит проект и bundle, но не запустит import автоматически.</span></div>
+          <div><b>4</b><span>Когда будете готовы, запустите import на новом сервере и затем переключите DNS.</span></div>
         </div>
       </section>
 
       <section className="card migration-push-card">
         <div className="section-head">
           <div>
-            <h2>Автоперенос на новый сервер</h2>
-            <p className="muted">Runner работает на host, поэтому web-контейнер не получает root-доступ. Пароль или private key используются только для запуска текущей задачи.</p>
+            <h2>Подготовить новый сервер</h2>
+            <p className="muted">Введите IP или временный hostname нового сервера. Endpoint-домен клиентов пока должен оставаться на старом сервере.</p>
           </div>
           <span className={`status-pill ${pushStatus?.runner?.can_run ? 'online' : 'offline'}`}>
             {pushStatus?.runner?.can_run ? 'RUNNER READY' : 'RUNNER OFF'}
@@ -2630,8 +2630,8 @@ function MigrationPage({ onLogout, user }) {
             </select>
           </label>
           <label>
-            <span>Новый сервер</span>
-            <input value={pushForm.host} onChange={(e) => setPushField('host', e.target.value)} placeholder="nl-ams-05.nodax.eu" required />
+            <span>SSH host / IP нового сервера</span>
+            <input value={pushForm.host} onChange={(e) => setPushField('host', e.target.value)} placeholder="94.228.170.72 или nl-ams-05.nodax.eu" required />
           </label>
           <label>
             <span>SSH port</span>
@@ -2677,7 +2677,7 @@ function MigrationPage({ onLogout, user }) {
           </label>
           <div className="migration-push-actions">
             <button className="orange-btn" type="submit" disabled={busy === 'push' || !pushStatus?.runner?.can_run || !bundles.length}>
-              <Send size={15} /> Залить и запустить import
+              <Send size={15} /> Подготовить и залить bundle
             </button>
             <button className="copy-button" type="button" onClick={load} disabled={busy}><RefreshCw size={14} /> Обновить runner</button>
           </div>

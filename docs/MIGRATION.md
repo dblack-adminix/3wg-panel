@@ -57,10 +57,17 @@ sudo bash scripts/migration_export.sh
 
 1. Откройте `/migration`.
 2. Создайте bundle.
-3. В блоке `Автоперенос на новый сервер` укажите SSH host, port, user, пароль или private key.
+3. В блоке `Подготовить новый сервер` укажите SSH host/IP нового сервера, port, user, пароль или private key.
 4. Выберите bundle, введите `MIGRATE` и запустите перенос.
 
-Панель передаёт задачу host-runner'у через Unix socket. SSH-секреты не пишутся в audit log и не сохраняются в базе. На новом сервере runner загрузит репозиторий, скопирует bundle в `backups/migration/` и выполнит `scripts/migration_import.sh`.
+Панель передаёт задачу host-runner'у через Unix socket. SSH-секреты не пишутся в audit log и не сохраняются в базе. На новом сервере runner загрузит/обновит репозиторий и скопирует bundle в `backups/migration/`.
+
+Import не запускается автоматически. Это важно: endpoint-домен в этот момент ещё обычно указывает на старый сервер. После подготовки runner покажет в логе команду, которую нужно выполнить на новом сервере вручную, когда будете готовы:
+
+```bash
+cd /opt/3wg-panel
+sudo bash scripts/migration_import.sh /opt/3wg-panel/backups/migration/<bundle>.tgz
+```
 
 Рекомендуемый SSH user — `root`. Если используете другого пользователя, он должен иметь права запускать установку Docker/Git/Node и import-скрипт.
 
