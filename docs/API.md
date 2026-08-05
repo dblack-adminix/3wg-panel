@@ -369,6 +369,31 @@ curl -fsS -H "X-API-Key: $API_KEY" "$BASE_URL/api/node/protocols"
 curl -fsS -H "X-API-Key: $API_KEY" "$BASE_URL/api/node/status"
 ```
 
+Ответ содержит `fornex_vpn_ports` — список UDP/TCP портов, которые Fornex указывает как доступные для VPN. Для WireGuard не используйте `51820`, если сервер стоит у Fornex: этот порт не входит в разрешённый список. Практичный вариант для WireGuard — один из портов диапазона `1116-1150`, например `1144/udp`, если он свободен. Для AmneziaWG обычно оставляйте `443/udp`.
+
+### Сменить UDP-порт протокола
+
+Доступно только администратору. Панель проверяет, что порт свободен, делает backup protocol config, меняет `ListenPort`, пересоздаёт protocol-контейнер с новым UDP mapping и обновляет `.env`.
+
+```bash
+curl -fsS \
+  -X PATCH \
+  -H "X-API-Key: $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"port":1144,"confirm":"PORT"}' \
+  "$BASE_URL/api/node/protocols/wireguard/port"
+```
+
+Разрешённые Fornex VPN ports:
+
+```text
+20, 21, 53, 80, 88, 110, 123, 143, 389, 443, 464, 500,
+587, 636, 749, 853, 993, 995, 1116-1150, 1863,
+3074-3079, 3268, 3269, 3283, 3306, 3389, 3478-3480,
+3658, 3689, 3724, 4000, 4379, 4380, 4398, 4500, 5165,
+5222, 5223, 5228-5230, 5235-5236, 5269, 5280
+```
+
 ### Node diagnostics
 
 ```bash

@@ -15,6 +15,7 @@ WireGuard & AmneziaWG Management Platform для VPN-серверов, поль�
 - Prometheus `/metrics`, node_exporter/cAdvisor agent и стартовый Grafana dashboard.
 - P2P Guard для снижения риска BitTorrent abuse-жалоб на VPN-нодах.
 - Migration bundle и host-runner для переезда на другой сервер без пересоздания клиентских конфигов.
+- Смена UDP-портов WireGuard/AmneziaWG из веб-интерфейса с подсказкой по разрешённым Fornex VPN ports.
 - Telegram-уведомления о важных событиях панели.
 - Update Center: проверка версии, ссылки на changelog и безопасная подготовка UI updater.
 - Хранение состояния панели в SQLite.
@@ -139,7 +140,7 @@ docs/                документация
 
 ## Версия
 
-Текущая версия продукта: `v1.3.76`
+Текущая версия продукта: `v1.3.79`
 
 ## Copyright
 

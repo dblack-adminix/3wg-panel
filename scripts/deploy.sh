@@ -137,6 +137,7 @@ docker run -d \
   --name "$CONTAINER" \
   --restart unless-stopped \
   --env-file "$BASE/.env" \
+  -v "$BASE/.env:/app/.env" \
   -p 127.0.0.1:18080:18080 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v "$BASE/data:/app/data" \

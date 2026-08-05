@@ -467,6 +467,7 @@ docker run -d \
   --name "$CONTAINER" \
   --restart unless-stopped \
   --env-file "$INSTALL_DIR/.env" \
+  -v "$INSTALL_DIR/.env:/app/.env" \
   -p "$BIND_HOST:$BIND_PORT:18080" \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v "$INSTALL_DIR/data:/app/data" \

@@ -1266,6 +1266,10 @@ function formatBytes(v) {
 
 function StatusPage({ protocol, onLogout, user }) {
   const [state, setState] = useState({ loading: true, status: null, error: '' });
+  const [portForm, setPortForm] = useState({ port: '', confirm: '' });
+  const [portBusy, setPortBusy] = useState(false);
+  const toast = useToast();
+  const confirm = useConfirm();
 
   const load = async () => {
     try {
@@ -1284,6 +1288,47 @@ function StatusPage({ protocol, onLogout, user }) {
   const online = peers.filter((p) => p.online).length;
   const title = `${item?.title || protocol} status`;
   const [rawOpen, setRawOpen] = useState(false);
+  const fornexPorts = state.status?.fornex_vpn_ports || '20, 21, 53, 80, 88, 110, 123, 143, 389, 443, 464, 500, 587, 636, 749, 853, 993, 995, 1116-1150, 1863, 3074-3079, 3268, 3269, 3283, 3306, 3389, 3478-3480, 3658, 3689, 3724, 4000, 4379, 4380, 4398, 4500, 5165, 5222, 5223, 5228-5230, 5235-5236, 5269, 5280';
+
+  useEffect(() => {
+    if (item?.port) setPortForm((prev) => ({ ...prev, port: String(item.port) }));
+  }, [item?.port]);
+
+  const updatePort = async (event) => {
+    event.preventDefault();
+    if (!item) return;
+    const port = Number(portForm.port);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      toast.error('Введите UDP порт от 1 до 65535');
+      return;
+    }
+    const ok = await confirm({
+      title: `Сменить UDP порт ${item.title}`,
+      message: `Контейнер ${item.container} будет пересоздан на порту ${port}/udp.`,
+      details: 'Существующие клиенты начнут получать новый endpoint в QR и config. Старые config-файлы у клиентов нужно обновить вручную.',
+      tone: 'warn',
+      confirmLabel: 'Сменить порт',
+    });
+    if (!ok) return;
+    setPortBusy(true);
+    try {
+      const data = await api(`/api/node/protocols/${protocol}/port`, {
+        method: 'PATCH',
+        body: JSON.stringify({ port, confirm: portForm.confirm }),
+      });
+      setState((prev) => ({
+        ...prev,
+        status: prev.status ? { ...prev.status, protocols: data.protocols, fornex_vpn_ports: data.fornex_vpn_ports } : prev.status,
+      }));
+      setPortForm((prev) => ({ ...prev, confirm: '' }));
+      toast.success(data.result?.changed ? `Порт изменён на ${port}/udp` : `Порт уже ${port}/udp`);
+      await load();
+    } catch (err) {
+      toast.error(err.message || 'Не удалось сменить порт');
+    } finally {
+      setPortBusy(false);
+    }
+  };
 
   return (
     <Shell title={title} subtitle={item ? `${item.container} / ${item.interface}` : 'Protocol health'} onLogout={onLogout} user={user}>
@@ -1313,6 +1358,35 @@ function StatusPage({ protocol, onLogout, user }) {
               <StatCard value={item.port} label="порт UDP" icon={Network} />
             </div>
           </div>
+
+          {user?.is_admin && (
+            <section className="card protocol-port-card">
+              <div className="section-head">
+                <div>
+                  <h2>UDP порт</h2>
+                  <p>{protocol === 'amneziawg' ? 'Для AmneziaWG лучше держать 443/udp, если он свободен.' : 'Для WireGuard у Fornex не используйте 51820/udp: он не входит в разрешённый список.'}</p>
+                </div>
+                <span className="status-pill ready">{item.port}/udp</span>
+              </div>
+              <div className="fornex-ports">
+                <span>Fornex VPN ports</span>
+                <code>{fornexPorts}</code>
+              </div>
+              <form className="protocol-port-form" onSubmit={updatePort}>
+                <label>
+                  Новый UDP порт
+                  <input value={portForm.port} inputMode="numeric" onChange={(e) => setPortForm((prev) => ({ ...prev, port: e.target.value }))} placeholder="например 1144" />
+                </label>
+                <label>
+                  Подтверждение
+                  <input value={portForm.confirm} onChange={(e) => setPortForm((prev) => ({ ...prev, confirm: e.target.value }))} placeholder="PORT" />
+                </label>
+                <button className="orange-button" type="submit" disabled={portBusy || portForm.confirm.trim().toUpperCase() !== 'PORT'}>
+                  <RefreshCw size={15} /> {portBusy ? 'Меняю...' : 'Сменить порт'}
+                </button>
+              </form>
+            </section>
+          )}
 
           <section className="card status-peers-card">
             <div className="section-head">

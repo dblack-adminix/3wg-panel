@@ -8,6 +8,164 @@ START = '# === 3WG REACT API START ==='
 END = '# === 3WG REACT API END ==='
 FRONTEND_END = '# === 3WG REACT FRONTEND END ==='
 
+PORT_CHANGE_HELPERS = r'''
+def valid_udp_port(value) -> int:
+    try:
+        port = int(value)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Некорректный UDP порт")
+    if port < 1 or port > 65535:
+        raise HTTPException(status_code=400, detail="Некорректный UDP порт")
+    return port
+
+
+def env_key_for_protocol_port(protocol: str) -> str:
+    return "WG_PORT" if protocol == "wireguard" else "AWG_PORT"
+
+
+def env_file_path() -> Path:
+    candidates = [Path("/srv/3wg-panel/.env"), APP_DIR / ".env"]
+    for path in candidates:
+        if path.exists():
+            return path
+    return candidates[0]
+
+
+def update_env_port(protocol: str, port: int) -> bool:
+    path = env_file_path()
+    if not path.exists():
+        return False
+    key = env_key_for_protocol_port(protocol)
+    text = path.read_text(encoding="utf-8")
+    line = f"{key}={port}"
+    if re.search(rf"^{re.escape(key)}=.*$", text, flags=re.M):
+        text = re.sub(rf"^{re.escape(key)}=.*$", line, text, flags=re.M)
+    else:
+        if text and not text.endswith("\n"):
+            text += "\n"
+        text += line + "\n"
+    backup = BACKUPS_DIR / "source" / f".env.port-change.{time.strftime('%Y%m%d_%H%M%S')}.backup"
+    backup.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        backup.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+        backup.chmod(0o600)
+    except Exception:
+        pass
+    path.write_text(text, encoding="utf-8")
+    path.chmod(0o600)
+    return True
+
+
+def docker_udp_port_owner(port: int) -> str | None:
+    target = str(port)
+    try:
+        containers = dc().containers.list(all=True)
+    except Exception:
+        return None
+    for container in containers:
+        ports = (container.attrs.get("NetworkSettings") or {}).get("Ports") or {}
+        for key, bindings in ports.items():
+            if not str(key).endswith("/udp"):
+                continue
+            for binding in bindings or []:
+                if str((binding or {}).get("HostPort") or "").strip() == target:
+                    return container.name
+    return None
+
+
+def ensure_udp_port_available(protocol: str, port: int) -> None:
+    owner = docker_udp_port_owner(port)
+    current_container = proto(protocol)["container"]
+    if owner and owner != current_container:
+        raise HTTPException(status_code=409, detail=f"UDP порт {port} уже занят контейнером {owner}")
+
+
+def set_container_listen_port(protocol: str, port: int) -> None:
+    p = proto(protocol)
+    backup_config(protocol)
+    script = (
+        f"python3 - <<'PY'\n"
+        f"from pathlib import Path\n"
+        f"import re\n"
+        f"path = Path({p['config_path']!r})\n"
+        f"text = path.read_text()\n"
+        f"line = 'ListenPort = {port}'\n"
+        f"if re.search(r'^\\s*ListenPort\\s*=.*$', text, flags=re.M):\n"
+        f"    text = re.sub(r'^\\s*ListenPort\\s*=.*$', line, text, flags=re.M)\n"
+        f"else:\n"
+        f"    text = text.rstrip() + '\\n' + line + '\\n'\n"
+        f"path.write_text(text)\n"
+        f"PY\n"
+    )
+    sh(p["container"], script)
+
+
+def recreate_protocol_container(protocol: str, port: int) -> None:
+    p = proto(protocol)
+    docker_client = dc()
+    old = docker_client.containers.get(p["container"])
+    attrs = old.attrs
+    config = attrs.get("Config") or {}
+    host_config = attrs.get("HostConfig") or {}
+    image = config.get("Image") or (old.image.tags[0] if old.image.tags else old.image.id)
+    env = list(config.get("Env") or [])
+    binds = list(host_config.get("Binds") or [])
+    cap_add = host_config.get("CapAdd") or []
+    sysctls = host_config.get("Sysctls") or {}
+    restart_name = (host_config.get("RestartPolicy") or {}).get("Name") or "unless-stopped"
+    command = config.get("Cmd")
+    entrypoint = config.get("Entrypoint")
+    labels = config.get("Labels") or {}
+    old.stop(timeout=10)
+    old.remove()
+    try:
+        docker_client.containers.run(
+            image,
+            name=p["container"],
+            detach=True,
+            environment=env,
+            command=command,
+            entrypoint=entrypoint,
+            labels=labels,
+            volumes=binds,
+            ports={f"{port}/udp": port},
+            cap_add=cap_add,
+            sysctls=sysctls,
+            restart_policy={"Name": restart_name},
+        )
+    except Exception:
+        try:
+            docker_client.containers.run(
+                image,
+                name=p["container"],
+                detach=True,
+                environment=env,
+                command=command,
+                entrypoint=entrypoint,
+                labels=labels,
+                volumes=binds,
+                ports={f"{port}/udp": port},
+                cap_add=cap_add,
+                sysctls=sysctls,
+                restart_policy={"Name": restart_name},
+                privileged=bool(host_config.get("Privileged")),
+            )
+        except Exception:
+            raise
+
+
+def change_protocol_port(protocol: str, port: int) -> dict:
+    ensure_udp_port_available(protocol, port)
+    current = int(docker_published_udp_port(protocol))
+    if port == current:
+        return {"changed": False, "protocol": protocol, "port": port, "state": api_protocol_state(protocol)}
+    set_container_listen_port(protocol, port)
+    recreate_protocol_container(protocol, port)
+    update_env_port(protocol, port)
+    runtime_cache_clear()
+    return {"changed": True, "protocol": protocol, "old_port": current, "port": port, "state": api_protocol_state(protocol)}
+'''.strip() + '\n'
+
 API_BLOCK = r'''
 # === 3WG REACT API START ===
 # JSON API for the future React frontend.
@@ -1435,7 +1593,58 @@ def api_node_protocols(user=Depends(api_require_auth)):
     return {
         'ok': True,
         'endpoint_host': ENDPOINT_HOST,
+        'fornex_vpn_ports': FORNEX_VPN_PORTS,
         'protocols': {protocol: api_protocol_state(protocol) for protocol in PROTOCOLS},
+    }
+
+
+@app.get('/api/node/protocols/ports')
+def api_node_protocol_ports(user=Depends(api_require_admin)):
+    return {
+        'ok': True,
+        'fornex_vpn_ports': FORNEX_VPN_PORTS,
+        'recommendations': {
+            'wireguard': 'Для Fornex используйте порт из разрешенного списка, например 1144/udp, если он свободен.',
+            'amneziawg': 'Для AmneziaWG обычно лучше 443/udp, если на сервере он не занят другим UDP-сервисом.',
+        },
+    }
+
+
+@app.patch('/api/node/protocols/{protocol}/port')
+async def api_node_protocol_port_update(protocol: str, request: Request, user=Depends(api_require_admin)):
+    proto(protocol)
+    data = await api_read_payload(request)
+    port = valid_udp_port(data.get('port'))
+    if str(data.get('confirm', '')).strip().upper() != 'PORT':
+        return api_error('Для смены порта введите подтверждение PORT', status_code=400)
+    before = api_protocol_state(protocol)
+    try:
+        result = change_protocol_port(protocol, port)
+    except HTTPException:
+        raise
+    except (docker.errors.APIError, docker.errors.NotFound, RuntimeError, OSError, ValueError) as e:
+        api_audit_log(request, user, 'protocol.port.error', 'protocol', protocol, 'host', {'port': port, 'error': str(e)})
+        return api_error(f'Не удалось сменить UDP порт: {e}', status_code=502)
+    after = api_protocol_state(protocol)
+    api_audit_log(
+        request,
+        user,
+        'protocol.port.update',
+        'protocol',
+        protocol,
+        'host',
+        {'from': before.get('port'), 'to': port, 'changed': bool(result.get('changed'))},
+    )
+    telegram_notify(
+        f"3WG Core: {user.get('username')} изменил UDP порт {after.get('title')}: "
+        f"{before.get('port')} -> {after.get('port')}"
+    )
+    return {
+        'ok': True,
+        'result': result,
+        'endpoint_host': ENDPOINT_HOST,
+        'fornex_vpn_ports': FORNEX_VPN_PORTS,
+        'protocols': {key: api_protocol_state(key) for key in PROTOCOLS},
     }
 
 
@@ -1447,6 +1656,7 @@ def api_node_status(user=Depends(api_require_auth)):
     return {
         'ok': True,
         'endpoint_host': ENDPOINT_HOST,
+        'fornex_vpn_ports': FORNEX_VPN_PORTS,
         'dns_servers': DNS_SERVERS,
         'clients_total': int(total),
         'peers_total': sum(len(pm) for pm in live.values()),
@@ -2536,8 +2746,23 @@ if 'MIGRATION_RUNNER_ENABLED = ' not in text:
         'MIGRATION_RUNNER_SOCKET = os.getenv("MIGRATION_RUNNER_SOCKET", "/app/run/migration-runner.sock")\n',
         1,
     )
+if 'FORNEX_VPN_PORTS = ' not in text:
+    text = text.replace(
+        'PANEL_CONTAINER = os.getenv("PANEL_CONTAINER", "3wg-panel")\n',
+        'PANEL_CONTAINER = os.getenv("PANEL_CONTAINER", "3wg-panel")\n'
+        'FORNEX_VPN_PORTS = (\n'
+        '    "20, 21, 53, 80, 88, 110, 123, 143, 389, 443, 464, 500, "\n'
+        '    "587, 636, 749, 853, 993, 995, 1116-1150, 1863, "\n'
+        '    "3074-3079, 3268, 3269, 3283, 3306, 3389, 3478-3480, "\n'
+        '    "3658, 3689, 3724, 4000, 4379, 4380, 4398, 4500, 5165, "\n'
+        '    "5222, 5223, 5228-5230, 5235-5236, 5269, 5280"\n'
+        ')\n',
+        1,
+    )
 if 'def migration_runner_request(' not in text and 'def update_status_payload(' in text:
     text = text.replace('def update_status_payload() -> dict:\n', MIGRATION_HELPERS + '\n\ndef update_status_payload() -> dict:\n', 1)
+if 'def change_protocol_port(' not in text and 'def db():\n' in text:
+    text = text.replace('def db():\n', PORT_CHANGE_HELPERS + '\n\ndef db():\n', 1)
 block_re = re.compile(re.escape(START) + r'.*?' + re.escape(END) + r'\n?', flags=re.S)
 cleaned = block_re.sub('', text).rstrip()
 if FRONTEND_END in cleaned:
