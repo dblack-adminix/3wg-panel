@@ -34,6 +34,7 @@ WireGuard & AmneziaWG Management Platform для VPN-серверов, поль�
 - `/monitoring` — Prometheus metrics, Prometheus token и Telegram notifications
 - `/updates` — проверка версии и статус host update runner
 - `/backups` — ручные и автоматические backup'ы, restore и удаление старых архивов
+- `/migration` — создание migration bundle для переезда на другой сервер
 - `/tools/health` — диагностика Docker, протоколов, endpoint'ов и reverse proxy
 - `/health` — health-check
 - `/metrics` — Prometheus metrics endpoint, если включён в `.env`
@@ -138,7 +139,7 @@ docs/                документация
 
 ## Версия
 
-Текущая версия продукта: `v1.3.75`
+Текущая версия продукта: `v1.3.76`
 
 ## Copyright
 

@@ -1613,3 +1613,78 @@ html[data-theme="light"] .copy-button.danger-action {
   border-color: #fdba74;
   color: #c2410c;
 }
+
+.migration-hero-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: start;
+}
+
+.migration-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.migration-runbook h2 {
+  margin-bottom: 14px;
+}
+
+.migration-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.migration-steps div {
+  min-height: 92px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,.02);
+  border-radius: 8px;
+}
+
+.migration-steps b {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-bottom: 10px;
+  border-radius: 7px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.migration-steps span {
+  display: block;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+html[data-theme="light"] .migration-steps div {
+  background: #f8fafc;
+  border-color: #d8e1ec;
+}
+
+html[data-theme="light"] .migration-steps span,
+html[data-theme="light"] .migration-check {
+  color: #64748b;
+}
+
+@media (max-width: 1100px) {
+  .migration-hero-card {
+    grid-template-columns: 1fr;
+  }
+  .migration-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .migration-steps {
+    grid-template-columns: 1fr;
+  }
+}

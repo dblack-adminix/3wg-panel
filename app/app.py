@@ -5710,7 +5710,7 @@ async def react_frontend_middleware(request: Request, call_next):
         if asset_file.exists() and asset_file.is_file():
             return ReactFileResponse(asset_file)
 
-    if (path in ('/', '/login', '/ui', '/users', '/apikeys', '/monitoring', '/abuse', '/updates', '/audit', '/backups', '/tools/system', '/tools/health', '/tools/ping', '/tools/traceroute') or re.match(r'^/client/\d+$', path) or re.match(r'^/status/(wireguard|amneziawg)$', path) or re.match(r'^/traffic/(wireguard|amneziawg)$', path)) and index_file.exists():
+    if (path in ('/', '/login', '/ui', '/users', '/apikeys', '/monitoring', '/abuse', '/updates', '/audit', '/backups', '/migration', '/tools/system', '/tools/health', '/tools/ping', '/tools/traceroute') or re.match(r'^/client/\d+$', path) or re.match(r'^/status/(wireguard|amneziawg)$', path) or re.match(r'^/traffic/(wireguard|amneziawg)$', path)) and index_file.exists():
         return ReactFileResponse(
             index_file,
             media_type='text/html; charset=utf-8',
@@ -5857,6 +5857,12 @@ def api_manual_backup_dir() -> Path:
     return path
 
 
+def api_migration_dir() -> Path:
+    path = BACKUPS_DIR / 'migration'
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def api_auto_backup_settings() -> dict:
     raw = panel_setting_get('backup_auto')
     settings = dict(AUTO_BACKUP_DEFAULTS)
@@ -5990,6 +5996,116 @@ def api_list_backups() -> list[dict]:
         for p in sorted(api_manual_backup_dir().glob('*.tgz'), key=lambda x: x.stat().st_mtime, reverse=True)
         if p.is_file()
     ]
+
+
+def api_migration_path(name: str) -> Path:
+    clean = Path(str(name or '')).name
+    if not clean or clean != str(name or '') or not clean.endswith('.tgz'):
+        raise HTTPException(status_code=400, detail='Некорректное имя migration bundle')
+    path = (api_migration_dir() / clean).resolve()
+    root = api_migration_dir().resolve()
+    if root not in path.parents:
+        raise HTTPException(status_code=400, detail='Некорректный путь migration bundle')
+    if not path.exists() or not path.is_file():
+        raise HTTPException(status_code=404, detail='Migration bundle не найден')
+    return path
+
+
+def api_migration_payload(path: Path) -> dict:
+    stat = path.stat()
+    return {
+        'name': path.name,
+        'size': int(stat.st_size),
+        'created_at': int(stat.st_mtime),
+        'download_url': f'/api/migration/{path.name}/download',
+    }
+
+
+def api_list_migration_bundles() -> list[dict]:
+    return [
+        api_migration_payload(p)
+        for p in sorted(api_migration_dir().glob('*.tgz'), key=lambda x: x.stat().st_mtime, reverse=True)
+        if p.is_file()
+    ]
+
+
+def api_env_snapshot() -> bytes:
+    keys = [
+        'PANEL_USER', 'PANEL_PASSWORD', 'PANEL_CONTAINER', 'ENDPOINT_HOST',
+        'WG_CONTAINER', 'WG_INTERFACE', 'WG_PORT', 'WG_CONFIG_PATH', 'WG_NETWORK',
+        'AWG_CONTAINER', 'AWG_INTERFACE', 'AWG_PORT', 'AWG_CONFIG_PATH', 'AWG_NETWORK',
+        'DNS_SERVERS', 'SESSION_SECRET', 'HIDE_EXISTING_PEERS',
+        'METRICS_ENABLED', 'METRICS_REQUIRE_TOKEN', 'METRICS_TOKEN',
+        'TELEGRAM_ENABLED', 'TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID',
+        'UPDATE_RUNNER_ENABLED', 'UPDATE_RUNNER_SOCKET',
+    ]
+    lines = []
+    for key in keys:
+        if key in os.environ:
+            value = str(os.environ.get(key, '')).replace('\n', '')
+            lines.append(f'{key}={value}')
+    return ('\n'.join(lines) + '\n').encode('utf-8')
+
+
+def api_tar_add_bytes(tar: tarfile.TarFile, arcname: str, payload: bytes, mode: int = 0o600) -> None:
+    info = tarfile.TarInfo(arcname)
+    info.size = len(payload)
+    info.mtime = int(time.time())
+    info.mode = mode
+    tar.addfile(info, io.BytesIO(payload))
+
+
+def api_container_file_bytes(container_name: str, path: str) -> bytes | None:
+    if not container_name or not path:
+        return None
+    try:
+        container = dc().containers.get(container_name)
+        stream, _ = container.get_archive(path)
+        raw = b''.join(stream)
+        with tarfile.open(fileobj=io.BytesIO(raw), mode='r:') as src_tar:
+            member = next((m for m in src_tar.getmembers() if m.isfile()), None)
+            if not member:
+                return None
+            extracted = src_tar.extractfile(member)
+            return extracted.read() if extracted else None
+    except Exception:
+        return None
+
+
+def api_create_migration_bundle(include_backups: bool = False) -> Path:
+    migration_dir = api_migration_dir()
+    ts = time.strftime('%Y-%m-%d_%H-%M-%S', time.localtime())
+    safe_host = re.sub(r'[^A-Za-z0-9_.-]+', '-', ENDPOINT_HOST or socket.gethostname()).strip('-') or 'node'
+    path = migration_dir / f'3wg-core.migration.{safe_host}.{ts}.tgz'
+    manifest = {
+        'product': '3WG Core',
+        'kind': 'migration-bundle',
+        'version': APP_VERSION,
+        'created_at': int(time.time()),
+        'endpoint_host': ENDPOINT_HOST,
+        'include_backups': bool(include_backups),
+        'includes': ['panel/.env', 'panel/data', 'panel/clients', 'protocols/*/config.conf'],
+    }
+    with tarfile.open(path, 'w:gz') as tar:
+        api_tar_add_bytes(tar, 'metadata.json', json.dumps(manifest, ensure_ascii=False, indent=2).encode('utf-8'), 0o600)
+        api_tar_add_bytes(tar, 'panel/.env', api_env_snapshot(), 0o600)
+        if DATA_DIR.exists():
+            tar.add(DATA_DIR, arcname='panel/data', recursive=True)
+        if CLIENTS_DIR.exists():
+            tar.add(CLIENTS_DIR, arcname='panel/clients', recursive=True)
+        if include_backups:
+            for child in BACKUPS_DIR.iterdir() if BACKUPS_DIR.exists() else []:
+                if child.name == 'migration':
+                    continue
+                tar.add(child, arcname=f'panel/backups/{child.name}', recursive=True)
+        for protocol, p in PROTOCOLS.items():
+            config = api_container_file_bytes(p['container'], p['config_path'])
+            if config:
+                api_tar_add_bytes(tar, f'protocols/{protocol}/config.conf', config, 0o600)
+                api_tar_add_bytes(tar, f'protocols/{protocol}/container.txt', str(p['container']).encode('utf-8') + b'\n', 0o600)
+                api_tar_add_bytes(tar, f'protocols/{protocol}/config_path.txt', str(p['config_path']).encode('utf-8') + b'\n', 0o600)
+    path.chmod(0o600)
+    return path
 
 
 def api_create_backup_archive(reason: str = 'manual') -> Path:
@@ -7246,6 +7362,40 @@ async def api_backups_restore(name: str, request: Request, user=Depends(api_requ
         'backups': api_list_backups(),
         'auto': api_auto_backup_settings(),
     }
+
+
+@app.get('/api/migration')
+def api_migration_list(user=Depends(api_require_admin)):
+    return {'ok': True, 'bundles': api_list_migration_bundles()}
+
+
+@app.post('/api/migration/export')
+async def api_migration_export(request: Request, user=Depends(api_require_admin)):
+    data = await api_read_payload(request)
+    include_backups = bool(data.get('include_backups'))
+    path = api_create_migration_bundle(include_backups=include_backups)
+    payload = api_migration_payload(path)
+    api_audit_log(request, user, 'migration.export', 'migration', path.name, path.name, {'size': payload['size'], 'include_backups': include_backups})
+    telegram_notify(
+        "migration bundle создан",
+        [f"Файл: {path.name}", f"Размер: {human_bytes(payload['size'])}", f"Кто: {user.get('username')}"],
+    )
+    return {'ok': True, 'bundle': payload, 'bundles': api_list_migration_bundles()}
+
+
+@app.get('/api/migration/{name}/download')
+def api_migration_download(name: str, user=Depends(api_require_admin)):
+    path = api_migration_path(name)
+    return FileResponse(path, filename=path.name, media_type='application/gzip')
+
+
+@app.delete('/api/migration/{name}')
+async def api_migration_delete(name: str, request: Request, user=Depends(api_require_admin)):
+    path = api_migration_path(name)
+    payload = api_migration_payload(path)
+    path.unlink()
+    api_audit_log(request, user, 'migration.delete', 'migration', payload['name'], payload['name'], {'size': payload['size']})
+    return {'ok': True, 'deleted': payload['name'], 'bundles': api_list_migration_bundles()}
 
 
 @app.post('/api/users')

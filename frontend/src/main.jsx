@@ -218,6 +218,7 @@ function Sidebar({ onLogout, protocols: initialProtocols = null, user, mobileOpe
           <a className={`nav ${path === '/updates' ? 'active' : ''}`} href="/updates" onClick={onClose}><RefreshCw size={14} /> <span>Обновления</span></a>
           <a className={`nav ${path === '/audit' ? 'active' : ''}`} href="/audit" onClick={onClose}><Terminal size={14} /> <span>Audit log</span></a>
           <a className={`nav ${path === '/backups' ? 'active' : ''}`} href="/backups" onClick={onClose}><Download size={14} /> <span>Backups</span></a>
+          <a className={`nav ${path === '/migration' ? 'active' : ''}`} href="/migration" onClick={onClose}><Send size={14} /> <span>Migration</span></a>
         </div>
       )}
       {isAdmin && (
@@ -2424,6 +2425,158 @@ function BackupRow({ backup, busy, onRestore, onDelete }) {
   );
 }
 
+function MigrationPage({ onLogout, user }) {
+  const toast = useToast();
+  const confirm = useConfirm();
+  const [bundles, setBundles] = useState([]);
+  const [includeBackups, setIncludeBackups] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+
+  const load = async () => {
+    setBusy(true);
+    try {
+      const data = await api('/api/migration');
+      setBundles(data.bundles || []);
+      setError('');
+    } catch (err) {
+      setError(err.message || 'Ошибка загрузки migration bundle');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const create = async () => {
+    const ok = await confirm({
+      title: 'Создать migration bundle',
+      message: 'Архив будет содержать секреты панели и приватные server keys WireGuard/AmneziaWG.',
+      details: 'Храните файл как пароль администратора. Его нельзя отправлять в общий чат или публичное хранилище.',
+      tone: 'danger',
+      confirmLabel: 'Создать',
+    });
+    if (!ok) return;
+    setBusy('create');
+    setNotice('');
+    try {
+      const data = await api('/api/migration/export', {
+        method: 'POST',
+        body: JSON.stringify({ include_backups: includeBackups }),
+      });
+      setBundles(data.bundles || []);
+      setNotice(`Migration bundle создан: ${data.bundle?.name || ''}`);
+      setError('');
+      toast.success('Migration bundle создан');
+    } catch (err) {
+      setError(err.message || 'Ошибка создания migration bundle');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async (bundle) => {
+    const ok = await confirm({
+      title: 'Удалить migration bundle',
+      message: `Удалить архив ${bundle.name}?`,
+      details: 'Файл будет удалён с сервера. Если он нужен для переезда, сначала скачайте его.',
+      tone: 'danger',
+      confirmLabel: 'Удалить',
+    });
+    if (!ok) return;
+    setBusy(bundle.name);
+    setNotice('');
+    try {
+      const data = await api(`/api/migration/${encodeURIComponent(bundle.name)}`, { method: 'DELETE' });
+      setBundles(data.bundles || []);
+      setNotice(`Migration bundle удалён: ${data.deleted || bundle.name}`);
+      setError('');
+      toast.success('Migration bundle удалён');
+    } catch (err) {
+      setError(err.message || 'Ошибка удаления migration bundle');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Shell title="Migration" subtitle="Переезд на другой сервер без пересоздания клиентских config'ов" onLogout={onLogout} user={user}>
+      <section className="card migration-hero-card">
+        <div>
+          <h2>Server migration</h2>
+          <p className="muted">Создаёт переносимый архив для новой ноды: состояние панели, клиентские файлы, `.env` и server-side config'и протоколов из Docker-контейнеров.</p>
+          <div className="backup-explain-grid">
+            <div>
+              <span>Для бесшовности</span>
+              <b>Домен и UDP-порты те же</b>
+              <small>После import достаточно переписать DNS A-запись endpoint-домена на новый IP.</small>
+            </div>
+            <div>
+              <span>Ключи сервера</span>
+              <b>Сохраняются</b>
+              <small>Старые клиентские config'и продолжат доверять тому же server public key.</small>
+            </div>
+            <div>
+              <span>Import</span>
+              <b>Через root-скрипт</b>
+              <small>Восстановление специально не запускается из web UI, чтобы не отрезать доступ к серверу случайным кликом.</small>
+            </div>
+          </div>
+        </div>
+        <div className="backup-actions">
+          <label className="migration-check">
+            <input type="checkbox" checked={includeBackups} onChange={(e) => setIncludeBackups(e.target.checked)} />
+            <span>Включить backup-архивы</span>
+          </label>
+          <button className="orange-btn" type="button" onClick={create} disabled={busy}><Download size={15} /> Создать bundle</button>
+          <button className="copy-button" type="button" onClick={load} disabled={busy}><RefreshCw size={14} /> Обновить</button>
+        </div>
+        {notice && <div className="success">{notice}</div>}
+        {error && <div className="warning">{error}</div>}
+      </section>
+
+      <section className="card migration-runbook">
+        <h2>Как перенести</h2>
+        <div className="migration-steps">
+          <div><b>1</b><span>Создайте и скачайте migration bundle со старого сервера.</span></div>
+          <div><b>2</b><span>Установите 3WG Core на новый сервер и скопируйте archive туда.</span></div>
+          <div><b>3</b><span>На новом сервере выполните `sudo bash scripts/migration_import.sh /path/to/archive.tgz`.</span></div>
+          <div><b>4</b><span>Проверьте health, Docker containers и UDP-порты, затем переключите DNS A-запись.</span></div>
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="section-head">
+          <h2>Migration bundles</h2>
+          <span className="muted">{bundles.length} файлов</span>
+        </div>
+        <div className="table-wrap">
+          <table className="clients-table backup-table">
+            <thead><tr><th>Файл</th><th>Размер</th><th>Создан</th><th>Действия</th></tr></thead>
+            <tbody>
+              {bundles.length === 0 && <tr><td className="empty-table" colSpan={4}>{busy ? 'Загрузка...' : 'Migration bundle пока нет'}</td></tr>}
+              {bundles.map((bundle) => (
+                <tr key={bundle.name}>
+                  <td><b className="backup-name" title={bundle.name}>{bundle.name}</b></td>
+                  <td>{formatBytes(bundle.size)}</td>
+                  <td>{formatBackupTime(bundle.created_at)}</td>
+                  <td className="backup-row-actions">
+                    <a className="copy-button" href={bundle.download_url} title="Скачать migration bundle"><Download size={14} /> Скачать</a>
+                    <button className="copy-button delete-action" type="button" title="Удалить migration bundle" disabled={busy === bundle.name} onClick={() => remove(bundle)}>
+                      <Trash2 size={14} /> Удалить
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </Shell>
+  );
+}
+
 function ApiKeysPage({ onLogout, user }) {
   const toast = useToast();
   const confirm = useConfirm();
@@ -3664,6 +3817,7 @@ function App() {
   if (isAdmin && window.location.pathname === '/updates') return <UpdateCenterPage onLogout={logout} user={auth.user} />;
   if (isAdmin && window.location.pathname === '/audit') return <AuditPage onLogout={logout} user={auth.user} />;
   if (isAdmin && window.location.pathname === '/backups') return <BackupsPage onLogout={logout} user={auth.user} />;
+  if (isAdmin && window.location.pathname === '/migration') return <MigrationPage onLogout={logout} user={auth.user} />;
   if (isAdmin && window.location.pathname === '/tools/system') return <SystemStatusPage onLogout={logout} user={auth.user} />;
   if (isAdmin && window.location.pathname === '/tools/health') return <HealthDiagnosticsPage onLogout={logout} user={auth.user} />;
   if (isAdmin && window.location.pathname === '/tools/ping') return <NetworkToolPage kind="ping" onLogout={logout} user={auth.user} />;

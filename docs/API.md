@@ -513,6 +513,52 @@ curl -fsS \
 
 Restore создаёт pre-restore backup перед заменой `data/` и `clients/`.
 
+## Migration API
+
+Доступно admin/API-key. Migration bundle предназначен для переезда на другой сервер и содержит секреты: `.env`, server private keys и protocol config'и. Храните его как пароль администратора.
+
+Список:
+
+```bash
+curl -fsS -H "X-API-Key: $API_KEY" "$BASE_URL/api/migration"
+```
+
+Создать bundle:
+
+```bash
+curl -fsS \
+  -X POST \
+  -H "X-API-Key: $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"include_backups":false}' \
+  "$BASE_URL/api/migration/export"
+```
+
+Скачать:
+
+```bash
+curl -fL \
+  -H "X-API-Key: $API_KEY" \
+  "$BASE_URL/api/migration/3wg-core.migration.node.example.2026-08-05_12-00-00.tgz/download" \
+  -o migration.tgz
+```
+
+Удалить:
+
+```bash
+curl -fsS \
+  -X DELETE \
+  -H "X-API-Key: $API_KEY" \
+  "$BASE_URL/api/migration/3wg-core.migration.node.example.2026-08-05_12-00-00.tgz"
+```
+
+Import выполняется на новом сервере root-скриптом:
+
+```bash
+cd /opt/3wg-panel
+sudo bash scripts/migration_import.sh /path/to/migration.tgz
+```
+
 ## Audit API
 
 Доступно admin/API-key.
