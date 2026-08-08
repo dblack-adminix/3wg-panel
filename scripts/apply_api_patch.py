@@ -73,11 +73,42 @@ def docker_udp_port_owner(port: int) -> str | None:
     return None
 
 
+def host_udp_port_owner(port: int) -> str | None:
+    try:
+        result = subprocess.run(
+            ["ss", "-H", "-lunp"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+    except Exception:
+        return None
+    if result.returncode != 0:
+        return None
+    marker = f":{port}"
+    for line in result.stdout.splitlines():
+        parts = line.split()
+        if len(parts) < 5:
+            continue
+        local = parts[4]
+        if not (local.endswith(marker) or local.endswith(f"{marker}]") or f"{marker} " in line):
+            continue
+        match = re.search(r'users:\(\("([^"]+)"', line)
+        if match:
+            return match.group(1)
+        return "system"
+    return None
+
+
 def ensure_udp_port_available(protocol: str, port: int) -> None:
     owner = docker_udp_port_owner(port)
     current_container = proto(protocol)["container"]
     if owner and owner != current_container:
         raise HTTPException(status_code=409, detail=f"UDP порт {port} уже занят контейнером {owner}")
+    host_owner = host_udp_port_owner(port)
+    if host_owner and host_owner != "docker-proxy":
+        raise HTTPException(status_code=409, detail=f"UDP порт {port} уже занят процессом {host_owner}")
 
 
 def set_container_listen_port(protocol: str, port: int) -> None:
@@ -2808,6 +2839,8 @@ def migration_job_payload() -> dict:
 '''.strip() + '\n'
 
 text = APP_PATH.read_text(encoding='utf-8')
+if 'import subprocess\n' not in text:
+    text = text.replace('import shutil\n', 'import shutil\nimport subprocess\n', 1)
 if 'MIGRATION_RUNNER_ENABLED = ' not in text:
     text = text.replace(
         'UPDATE_RUNNER_SOCKET = os.getenv("UPDATE_RUNNER_SOCKET", "/app/run/update-runner.sock")\n',
