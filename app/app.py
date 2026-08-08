@@ -868,31 +868,43 @@ def set_container_listen_port(protocol: str, port: int) -> None:
     sh(p["container"], script)
 
 
+def protocol_config_with_listen_port(text: str, port: int) -> str:
+    line = f"ListenPort = {port}"
+    if re.search(r"^\s*ListenPort\s*=.*$", text, flags=re.M):
+        return re.sub(r"^\s*ListenPort\s*=.*$", line, text, flags=re.M)
+    return text.rstrip() + "\n" + line + "\n"
+
+
 def put_container_text_file(container, path: str, text: str, mode: int = 0o600) -> None:
     target = Path(path)
-    parent = str(target.parent)
-    container.exec_run(["sh", "-lc", f"mkdir -p {shlex.quote(parent)}"])
+    base = target.parent.parent if len(target.parts) >= 3 else target.parent
+    arc_dir = target.parent.name
+    arc_name = f"{arc_dir}/{target.name}" if base != target.parent else target.name
     data = io.BytesIO()
     payload = text.encode("utf-8")
     with tarfile.open(fileobj=data, mode="w") as tar:
-        info = tarfile.TarInfo(target.name)
+        if base != target.parent:
+            dir_info = tarfile.TarInfo(arc_dir)
+            dir_info.type = tarfile.DIRTYPE
+            dir_info.mode = 0o700
+            dir_info.mtime = int(time.time())
+            tar.addfile(dir_info)
+        info = tarfile.TarInfo(arc_name)
         info.size = len(payload)
         info.mode = mode
         info.mtime = int(time.time())
         tar.addfile(info, io.BytesIO(payload))
     data.seek(0)
-    container.put_archive(parent, data.read())
+    container.put_archive(str(base), data.read())
 
 
-def ensure_protocol_autostart(protocol: str) -> None:
+def protocol_autostart_script(protocol: str) -> str:
     p = proto(protocol)
     tool = shlex.quote(p["tool"])
     quick = shlex.quote(f"{p['tool']}-quick")
     iface = shlex.quote(p["interface"])
     config_path = shlex.quote(p["config_path"])
-    script = (
-        "if [ -f /opt/amnezia/start.sh ]; then\n"
-        "cat > /opt/amnezia/start.sh <<'SH'\n"
+    return (
         "#!/bin/sh\n"
         f"if command -v {tool} >/dev/null 2>&1 && command -v {quick} >/dev/null 2>&1; then\n"
         f"  if ! {tool} show {iface} >/dev/null 2>&1; then\n"
@@ -900,11 +912,12 @@ def ensure_protocol_autostart(protocol: str) -> None:
         "  fi\n"
         "fi\n"
         "tail -f /dev/null\n"
-        "SH\n"
-        "chmod +x /opt/amnezia/start.sh\n"
-        "fi\n"
     )
-    sh(p["container"], script, check=False)
+
+
+def ensure_protocol_autostart(protocol: str) -> None:
+    p = proto(protocol)
+    put_container_text_file(dc().containers.get(p["container"]), "/opt/amnezia/start.sh", protocol_autostart_script(protocol), mode=0o755)
 
 
 def activate_protocol_interface(protocol: str) -> None:
@@ -918,14 +931,13 @@ def activate_protocol_interface(protocol: str) -> None:
     exec_c(p["container"], [p["tool"], "show", p["interface"]], check=True)
 
 
-def recreate_protocol_container(protocol: str, port: int) -> None:
+def recreate_protocol_container(protocol: str, port: int, config_text: str) -> None:
     p = proto(protocol)
     docker_client = dc()
     old = docker_client.containers.get(p["container"])
     attrs = old.attrs
     config = attrs.get("Config") or {}
     host_config = attrs.get("HostConfig") or {}
-    config_text = exec_c(p["container"], ["sh", "-lc", f"cat {shlex.quote(p['config_path'])}"], check=True)
     image = config.get("Image") or (old.image.tags[0] if old.image.tags else old.image.id)
     env = list(config.get("Env") or [])
     binds = list(host_config.get("Binds") or [])
@@ -937,12 +949,10 @@ def recreate_protocol_container(protocol: str, port: int) -> None:
     labels = config.get("Labels") or {}
     privileged = bool(host_config.get("Privileged"))
     security_opt = host_config.get("SecurityOpt") or None
-    old.stop(timeout=10)
-    old.remove()
-    new_container = docker_client.containers.run(
+    temp_name = f"{p['container']}-port-{int(time.time())}"
+    new_container = docker_client.containers.create(
         image,
-        name=p["container"],
-        detach=True,
+        name=temp_name,
         environment=env,
         command=command,
         entrypoint=entrypoint,
@@ -955,9 +965,33 @@ def recreate_protocol_container(protocol: str, port: int) -> None:
         privileged=privileged,
         security_opt=security_opt,
     )
-    put_container_text_file(new_container, p["config_path"], config_text)
-    ensure_protocol_autostart(protocol)
-    activate_protocol_interface(protocol)
+    try:
+        put_container_text_file(new_container, p["config_path"], config_text)
+        put_container_text_file(new_container, "/opt/amnezia/start.sh", protocol_autostart_script(protocol), mode=0o755)
+        new_container.start()
+        activate_protocol_interface_by_container(protocol, new_container.name)
+    except Exception:
+        try:
+            new_container.remove(force=True)
+        except Exception:
+            pass
+        raise
+
+    old.stop(timeout=10)
+    old.remove()
+    new_container.reload()
+    new_container.rename(p["container"])
+
+
+def activate_protocol_interface_by_container(protocol: str, container_name: str) -> None:
+    p = proto(protocol)
+    try:
+        exec_c(container_name, [p["tool"], "show", p["interface"]], check=True)
+        return
+    except Exception:
+        pass
+    sh(container_name, f"{shlex.quote(p['tool'] + '-quick')} up {shlex.quote(p['config_path'])}", check=False)
+    exec_c(container_name, [p["tool"], "show", p["interface"]], check=True)
 
 
 def change_protocol_port(protocol: str, port: int) -> dict:
@@ -966,8 +1000,10 @@ def change_protocol_port(protocol: str, port: int) -> dict:
     current = int(docker_published_udp_port(protocol))
     if port == current:
         return {"changed": False, "protocol": protocol, "port": port, "state": api_protocol_state(protocol)}
-    set_container_listen_port(protocol, port)
-    recreate_protocol_container(protocol, port)
+    original_config = exec_c(p["container"], ["sh", "-lc", f"cat {shlex.quote(p['config_path'])}"], check=True)
+    backup_config(protocol)
+    next_config = protocol_config_with_listen_port(original_config, port)
+    recreate_protocol_container(protocol, port, next_config)
     update_env_port(protocol, port)
     runtime_cache_clear()
     return {"changed": True, "protocol": protocol, "old_port": current, "port": port, "state": api_protocol_state(protocol)}
