@@ -84,18 +84,13 @@ def set_container_listen_port(protocol: str, port: int) -> None:
     p = proto(protocol)
     backup_config(protocol)
     script = (
-        f"python3 - <<'PY'\n"
-        f"from pathlib import Path\n"
-        f"import re\n"
-        f"path = Path({p['config_path']!r})\n"
-        f"text = path.read_text()\n"
-        f"line = 'ListenPort = {port}'\n"
-        f"if re.search(r'^\\s*ListenPort\\s*=.*$', text, flags=re.M):\n"
-        f"    text = re.sub(r'^\\s*ListenPort\\s*=.*$', line, text, flags=re.M)\n"
-        f"else:\n"
-        f"    text = text.rstrip() + '\\n' + line + '\\n'\n"
-        f"path.write_text(text)\n"
-        f"PY\n"
+        f"path={shlex.quote(p['config_path'])}\n"
+        f"line='ListenPort = {port}'\n"
+        f"if grep -Eq '^[[:space:]]*ListenPort[[:space:]]*=' \"$path\"; then\n"
+        f"  sed -i -E \"s|^[[:space:]]*ListenPort[[:space:]]*=.*$|$line|\" \"$path\"\n"
+        f"else\n"
+        f"  printf '\\n%s\\n' \"$line\" >> \"$path\"\n"
+        f"fi\n"
     )
     sh(p["container"], script)
 
