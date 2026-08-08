@@ -111,6 +111,16 @@ def ensure_udp_port_available(protocol: str, port: int) -> None:
         raise HTTPException(status_code=409, detail=f"UDP порт {port} уже занят процессом {host_owner}")
 
 
+def docker_port_conflict_detail(error: Exception, port: int) -> str | None:
+    text = str(error)
+    lowered = text.lower()
+    if "address already in use" not in lowered and "port is already allocated" not in lowered:
+        return None
+    if port == 443:
+        return "UDP порт 443 уже занят на сервере. Обычно его занимает Caddy/HTTP3. Освободите 443/udp или выберите другой порт из списка."
+    return f"UDP порт {port} уже занят на сервере. Освободите порт или выберите другой UDP порт."
+
+
 def set_container_listen_port(protocol: str, port: int) -> None:
     p = proto(protocol)
     backup_config(protocol)
@@ -239,11 +249,14 @@ def recreate_protocol_container(protocol: str, port: int, config_text: str) -> N
         put_container_text_file(new_container, "/opt/amnezia/start.sh", protocol_autostart_script(protocol), mode=0o755)
         new_container.start()
         activate_protocol_interface_by_container(protocol, new_container.name)
-    except Exception:
+    except Exception as e:
         try:
             new_container.remove(force=True)
         except Exception:
             pass
+        detail = docker_port_conflict_detail(e, port)
+        if detail:
+            raise HTTPException(status_code=409, detail=detail)
         raise
 
     old.stop(timeout=10)
