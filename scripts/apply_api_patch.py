@@ -95,6 +95,56 @@ def set_container_listen_port(protocol: str, port: int) -> None:
     sh(p["container"], script)
 
 
+def put_container_text_file(container, path: str, text: str, mode: int = 0o600) -> None:
+    target = Path(path)
+    parent = str(target.parent)
+    container.exec_run(["sh", "-lc", f"mkdir -p {shlex.quote(parent)}"])
+    data = io.BytesIO()
+    payload = text.encode("utf-8")
+    with tarfile.open(fileobj=data, mode="w") as tar:
+        info = tarfile.TarInfo(target.name)
+        info.size = len(payload)
+        info.mode = mode
+        info.mtime = int(time.time())
+        tar.addfile(info, io.BytesIO(payload))
+    data.seek(0)
+    container.put_archive(parent, data.read())
+
+
+def ensure_protocol_autostart(protocol: str) -> None:
+    p = proto(protocol)
+    tool = shlex.quote(p["tool"])
+    quick = shlex.quote(f"{p['tool']}-quick")
+    iface = shlex.quote(p["interface"])
+    config_path = shlex.quote(p["config_path"])
+    script = (
+        "if [ -f /opt/amnezia/start.sh ]; then\n"
+        "cat > /opt/amnezia/start.sh <<'SH'\n"
+        "#!/bin/sh\n"
+        f"if command -v {tool} >/dev/null 2>&1 && command -v {quick} >/dev/null 2>&1; then\n"
+        f"  if ! {tool} show {iface} >/dev/null 2>&1; then\n"
+        f"    {quick} up {config_path} || true\n"
+        "  fi\n"
+        "fi\n"
+        "tail -f /dev/null\n"
+        "SH\n"
+        "chmod +x /opt/amnezia/start.sh\n"
+        "fi\n"
+    )
+    sh(p["container"], script, check=False)
+
+
+def activate_protocol_interface(protocol: str) -> None:
+    p = proto(protocol)
+    try:
+        exec_c(p["container"], [p["tool"], "show", p["interface"]], check=True)
+        return
+    except Exception:
+        pass
+    sh(p["container"], f"{shlex.quote(p['tool'] + '-quick')} up {shlex.quote(p['config_path'])}", check=False)
+    exec_c(p["container"], [p["tool"], "show", p["interface"]], check=True)
+
+
 def recreate_protocol_container(protocol: str, port: int) -> None:
     p = proto(protocol)
     docker_client = dc()
@@ -102,6 +152,7 @@ def recreate_protocol_container(protocol: str, port: int) -> None:
     attrs = old.attrs
     config = attrs.get("Config") or {}
     host_config = attrs.get("HostConfig") or {}
+    config_text = exec_c(p["container"], ["sh", "-lc", f"cat {shlex.quote(p['config_path'])}"], check=True)
     image = config.get("Image") or (old.image.tags[0] if old.image.tags else old.image.id)
     env = list(config.get("Env") or [])
     binds = list(host_config.get("Binds") or [])
@@ -111,42 +162,29 @@ def recreate_protocol_container(protocol: str, port: int) -> None:
     command = config.get("Cmd")
     entrypoint = config.get("Entrypoint")
     labels = config.get("Labels") or {}
+    privileged = bool(host_config.get("Privileged"))
+    security_opt = host_config.get("SecurityOpt") or None
     old.stop(timeout=10)
     old.remove()
-    try:
-        docker_client.containers.run(
-            image,
-            name=p["container"],
-            detach=True,
-            environment=env,
-            command=command,
-            entrypoint=entrypoint,
-            labels=labels,
-            volumes=binds,
-            ports={f"{port}/udp": port},
-            cap_add=cap_add,
-            sysctls=sysctls,
-            restart_policy={"Name": restart_name},
-        )
-    except Exception:
-        try:
-            docker_client.containers.run(
-                image,
-                name=p["container"],
-                detach=True,
-                environment=env,
-                command=command,
-                entrypoint=entrypoint,
-                labels=labels,
-                volumes=binds,
-                ports={f"{port}/udp": port},
-                cap_add=cap_add,
-                sysctls=sysctls,
-                restart_policy={"Name": restart_name},
-                privileged=bool(host_config.get("Privileged")),
-            )
-        except Exception:
-            raise
+    new_container = docker_client.containers.run(
+        image,
+        name=p["container"],
+        detach=True,
+        environment=env,
+        command=command,
+        entrypoint=entrypoint,
+        labels=labels,
+        volumes=binds,
+        ports={f"{port}/udp": port},
+        cap_add=cap_add,
+        sysctls=sysctls,
+        restart_policy={"Name": restart_name},
+        privileged=privileged,
+        security_opt=security_opt,
+    )
+    put_container_text_file(new_container, p["config_path"], config_text)
+    ensure_protocol_autostart(protocol)
+    activate_protocol_interface(protocol)
 
 
 def change_protocol_port(protocol: str, port: int) -> dict:
