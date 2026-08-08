@@ -953,6 +953,9 @@ def protocol_autostart_script(protocol: str) -> str:
         f"    {quick} up {config_path} || true\n"
         "  fi\n"
         "fi\n"
+        "if [ -x /opt/amnezia/3wg-p2p-guard.sh ]; then\n"
+        "  /opt/amnezia/3wg-p2p-guard.sh || true\n"
+        "fi\n"
         "tail -f /dev/null\n"
     )
 
@@ -8456,7 +8459,9 @@ def p2p_guard_chain_exists(protocol: str) -> bool:
 
 def p2p_guard_hook_exists(protocol: str) -> bool:
     iface = PROTOCOLS[protocol]['interface']
-    return p2p_guard_iptables(protocol, ['-C', 'FORWARD', '-i', iface, '-j', P2P_GUARD_CHAIN])['ok']
+    in_hook = p2p_guard_iptables(protocol, ['-C', 'FORWARD', '-i', iface, '-j', P2P_GUARD_CHAIN])['ok']
+    out_hook = p2p_guard_iptables(protocol, ['-C', 'FORWARD', '-o', iface, '-j', P2P_GUARD_CHAIN])['ok']
+    return in_hook and out_hook
 
 
 def p2p_guard_status_for(protocol: str) -> dict:
@@ -8487,13 +8492,72 @@ def p2p_guard_status_payload() -> dict:
     return {'ok': True, 'settings': settings, 'protocols': protocols}
 
 
+def p2p_guard_rule_args(iface: str, settings: dict) -> list[list[str]]:
+    rules = [
+        ['-N', P2P_GUARD_CHAIN],
+        ['-F', P2P_GUARD_CHAIN],
+        ['-I', 'FORWARD', '1', '-i', iface, '-j', P2P_GUARD_CHAIN],
+        ['-I', 'FORWARD', '1', '-o', iface, '-j', P2P_GUARD_CHAIN],
+    ]
+    for cidr in ('10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'):
+        rules.append(['-A', P2P_GUARD_CHAIN, '-d', cidr, '-j', 'RETURN'])
+    for proto_name in ('tcp', 'udp'):
+        rules.append(['-A', P2P_GUARD_CHAIN, '-p', proto_name, '-m', 'multiport', '--dports', P2P_GUARD_PORTS, '-j', 'REJECT'])
+    for signature in P2P_GUARD_SIGNATURES:
+        for proto_name in ('tcp', 'udp'):
+            rules.append(['-A', P2P_GUARD_CHAIN, '-p', proto_name, '-m', 'string', '--algo', 'bm', '--string', signature, '-j', 'REJECT'])
+    if settings.get('mode') == 'strict':
+        allowed = p2p_guard_normalize_ports(settings.get('allow_udp_ports') or '53,123,443')
+        rules.append(['-A', P2P_GUARD_CHAIN, '-p', 'udp', '-m', 'multiport', '--dports', allowed, '-j', 'RETURN'])
+        rules.append(['-A', P2P_GUARD_CHAIN, '-p', 'udp', '-j', 'REJECT'])
+    rules.append(['-A', P2P_GUARD_CHAIN, '-j', 'RETURN'])
+    return rules
+
+
+def p2p_guard_script_text(protocol: str, settings: dict) -> str:
+    iface = PROTOCOLS[protocol]['interface']
+    lines = [
+        '#!/bin/sh',
+        'set -u',
+        f'CHAIN={shlex.quote(P2P_GUARD_CHAIN)}',
+        f'IFACE={shlex.quote(iface)}',
+        'iptables -N "$CHAIN" 2>/dev/null || true',
+        'while iptables -C FORWARD -i "$IFACE" -j "$CHAIN" 2>/dev/null; do iptables -D FORWARD -i "$IFACE" -j "$CHAIN" || break; done',
+        'while iptables -C FORWARD -o "$IFACE" -j "$CHAIN" 2>/dev/null; do iptables -D FORWARD -o "$IFACE" -j "$CHAIN" || break; done',
+        'iptables -F "$CHAIN"',
+    ]
+    for args in p2p_guard_rule_args(iface, settings):
+        if args[0] in ('-N', '-F'):
+            continue
+        lines.append('iptables ' + ' '.join(shlex.quote(arg) for arg in args))
+    return '\n'.join(lines) + '\n'
+
+
+def p2p_guard_install_script(protocol: str, settings: dict) -> None:
+    p = proto(protocol)
+    container = dc().containers.get(p['container'])
+    put_container_text_file(container, '/opt/amnezia/3wg-p2p-guard.sh', p2p_guard_script_text(protocol, settings), mode=0o755)
+    ensure_protocol_autostart(protocol)
+
+
+def p2p_guard_remove_script(protocol: str) -> None:
+    p2p_guard_exec(protocol, ['sh', '-lc', 'rm -f /opt/amnezia/3wg-p2p-guard.sh'])
+    try:
+        ensure_protocol_autostart(protocol)
+    except Exception:
+        pass
+
+
 def p2p_guard_reset_protocol(protocol: str) -> dict:
     iface = PROTOCOLS[protocol]['interface']
     # Delete all matching hooks; Docker/container restarts can occasionally leave duplicates.
     while p2p_guard_iptables(protocol, ['-C', 'FORWARD', '-i', iface, '-j', P2P_GUARD_CHAIN])['ok']:
         p2p_guard_iptables(protocol, ['-D', 'FORWARD', '-i', iface, '-j', P2P_GUARD_CHAIN])
+    while p2p_guard_iptables(protocol, ['-C', 'FORWARD', '-o', iface, '-j', P2P_GUARD_CHAIN])['ok']:
+        p2p_guard_iptables(protocol, ['-D', 'FORWARD', '-o', iface, '-j', P2P_GUARD_CHAIN])
     p2p_guard_iptables(protocol, ['-F', P2P_GUARD_CHAIN])
     p2p_guard_iptables(protocol, ['-X', P2P_GUARD_CHAIN])
+    p2p_guard_remove_script(protocol)
     return p2p_guard_status_for(protocol)
 
 
@@ -8501,26 +8565,17 @@ def p2p_guard_apply_protocol(protocol: str, settings: dict) -> dict:
     iface = PROTOCOLS[protocol]['interface']
     p2p_guard_iptables(protocol, ['-N', P2P_GUARD_CHAIN])
     p2p_guard_iptables(protocol, ['-F', P2P_GUARD_CHAIN], check=True)
-    if not p2p_guard_hook_exists(protocol):
-        p2p_guard_iptables(protocol, ['-I', 'FORWARD', '1', '-i', iface, '-j', P2P_GUARD_CHAIN], check=True)
-
-    # Return local/private traffic before filtering internet abuse patterns.
-    for cidr in ('10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'):
-        p2p_guard_iptables(protocol, ['-A', P2P_GUARD_CHAIN, '-d', cidr, '-j', 'RETURN'])
-
-    for proto_name in ('tcp', 'udp'):
-        p2p_guard_iptables(protocol, ['-A', P2P_GUARD_CHAIN, '-p', proto_name, '-m', 'multiport', '--dports', P2P_GUARD_PORTS, '-j', 'REJECT'])
-
-    for signature in P2P_GUARD_SIGNATURES:
-        for proto_name in ('tcp', 'udp'):
-            p2p_guard_iptables(protocol, ['-A', P2P_GUARD_CHAIN, '-p', proto_name, '-m', 'string', '--algo', 'bm', '--string', signature, '-j', 'REJECT'])
-
-    if settings.get('mode') == 'strict':
-        allowed = p2p_guard_normalize_ports(settings.get('allow_udp_ports') or '53,123,443')
-        p2p_guard_iptables(protocol, ['-A', P2P_GUARD_CHAIN, '-p', 'udp', '-m', 'multiport', '--dports', allowed, '-j', 'RETURN'])
-        p2p_guard_iptables(protocol, ['-A', P2P_GUARD_CHAIN, '-p', 'udp', '-j', 'REJECT'])
-
-    p2p_guard_iptables(protocol, ['-A', P2P_GUARD_CHAIN, '-j', 'RETURN'])
+    while p2p_guard_iptables(protocol, ['-C', 'FORWARD', '-i', iface, '-j', P2P_GUARD_CHAIN])['ok']:
+        p2p_guard_iptables(protocol, ['-D', 'FORWARD', '-i', iface, '-j', P2P_GUARD_CHAIN])
+    while p2p_guard_iptables(protocol, ['-C', 'FORWARD', '-o', iface, '-j', P2P_GUARD_CHAIN])['ok']:
+        p2p_guard_iptables(protocol, ['-D', 'FORWARD', '-o', iface, '-j', P2P_GUARD_CHAIN])
+    p2p_guard_iptables(protocol, ['-I', 'FORWARD', '1', '-i', iface, '-j', P2P_GUARD_CHAIN], check=True)
+    p2p_guard_iptables(protocol, ['-I', 'FORWARD', '1', '-o', iface, '-j', P2P_GUARD_CHAIN], check=True)
+    for args in p2p_guard_rule_args(iface, settings):
+        if args[0] in ('-N', '-F', '-I'):
+            continue
+        p2p_guard_iptables(protocol, args)
+    p2p_guard_install_script(protocol, settings)
     return p2p_guard_status_for(protocol)
 
 
