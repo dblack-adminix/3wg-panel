@@ -328,9 +328,12 @@ CONTAINER="$(ask 'Docker container name' "$CONTAINER_DEFAULT")"
 BIND_HOST="$(ask 'Bind host' "$BIND_HOST_DEFAULT")"
 BIND_PORT="$(ask 'Bind port' "$BIND_PORT_DEFAULT")"
 
-ENDPOINT_HOST="$(ask 'Public endpoint host / domain' "$(hostname -f 2>/dev/null || hostname)")"
+PANEL_HOST="$(ask 'Panel public host / domain' "$(hostname -f 2>/dev/null || hostname)")"
+VPN_ENDPOINT_HOST="$(ask 'VPN endpoint host / domain' "$PANEL_HOST")"
+ENDPOINT_HOST="$VPN_ENDPOINT_HOST"
+VPN_EGRESS_IP="$(ask 'VPN egress/source IP, empty = system default' '')"
 CADDY_DEFAULT="0"
-if [ "$BIND_HOST" = "127.0.0.1" ] && ! is_local_host "$ENDPOINT_HOST"; then
+if [ "$BIND_HOST" = "127.0.0.1" ] && ! is_local_host "$PANEL_HOST"; then
   CADDY_DEFAULT="1"
 fi
 SETUP_CADDY="$(ask 'Configure Caddy reverse proxy for this domain? 1=yes, 0=no' "$CADDY_DEFAULT")"
@@ -413,7 +416,10 @@ PANEL_USER=$PANEL_USER
 PANEL_PASSWORD=$PANEL_PASSWORD
 PANEL_CONTAINER=$CONTAINER
 
+PANEL_HOST=$PANEL_HOST
 ENDPOINT_HOST=$ENDPOINT_HOST
+VPN_ENDPOINT_HOST=$VPN_ENDPOINT_HOST
+VPN_EGRESS_IP=$VPN_EGRESS_IP
 
 WG_CONTAINER=$WG_CONTAINER
 WG_INTERFACE=$WG_INTERFACE
@@ -492,8 +498,8 @@ done
 PANEL_URL="http://$BIND_HOST:$BIND_PORT/"
 if [ "$SETUP_CADDY" = "1" ]; then
   say "Configuring Caddy reverse proxy"
-  setup_caddy_proxy "$ENDPOINT_HOST" "$BIND_HOST" "$BIND_PORT"
-  PANEL_URL="https://$ENDPOINT_HOST/"
+  setup_caddy_proxy "$PANEL_HOST" "$BIND_HOST" "$BIND_PORT"
+  PANEL_URL="https://$PANEL_HOST/"
 fi
 
 cat <<DONE
@@ -501,6 +507,8 @@ cat <<DONE
 3WG Core installed.
 URL:      $PANEL_URL
 Local:    http://$BIND_HOST:$BIND_PORT/
+Panel host: $PANEL_HOST
+VPN endpoint: $VPN_ENDPOINT_HOST
 User:     $PANEL_USER
 Password: $PANEL_PASSWORD
 Path:     $INSTALL_DIR

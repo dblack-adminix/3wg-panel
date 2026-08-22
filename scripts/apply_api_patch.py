@@ -595,7 +595,8 @@ def api_list_migration_bundles() -> list[dict]:
 
 def api_env_snapshot() -> bytes:
     keys = [
-        'PANEL_USER', 'PANEL_PASSWORD', 'PANEL_CONTAINER', 'ENDPOINT_HOST',
+        'PANEL_USER', 'PANEL_PASSWORD', 'PANEL_CONTAINER',
+        'PANEL_HOST', 'ENDPOINT_HOST', 'VPN_ENDPOINT_HOST', 'VPN_EGRESS_IP',
         'WG_CONTAINER', 'WG_INTERFACE', 'WG_PORT', 'WG_CONFIG_PATH', 'WG_NETWORK',
         'AWG_CONTAINER', 'AWG_INTERFACE', 'AWG_PORT', 'AWG_CONFIG_PATH', 'AWG_NETWORK',
         'DNS_SERVERS', 'SESSION_SECRET', 'HIDE_EXISTING_PEERS',
@@ -640,14 +641,17 @@ def api_container_file_bytes(container_name: str, path: str) -> bytes | None:
 def api_create_migration_bundle(include_backups: bool = False) -> Path:
     migration_dir = api_migration_dir()
     ts = time.strftime('%Y-%m-%d_%H-%M-%S', time.localtime())
-    safe_host = re.sub(r'[^A-Za-z0-9_.-]+', '-', ENDPOINT_HOST or socket.gethostname()).strip('-') or 'node'
+    safe_host = re.sub(r'[^A-Za-z0-9_.-]+', '-', PANEL_HOST or VPN_ENDPOINT_HOST or socket.gethostname()).strip('-') or 'node'
     path = migration_dir / f'3wg-core.migration.{safe_host}.{ts}.tgz'
     manifest = {
         'product': '3WG Core',
         'kind': 'migration-bundle',
         'version': APP_VERSION,
         'created_at': int(time.time()),
-        'endpoint_host': ENDPOINT_HOST,
+        'panel_host': PANEL_HOST,
+        'endpoint_host': VPN_ENDPOINT_HOST,
+        'legacy_endpoint_host': ENDPOINT_HOST,
+        'vpn_egress_ip': VPN_EGRESS_IP,
         'include_backups': bool(include_backups),
         'includes': ['panel/.env', 'panel/data', 'panel/clients', 'protocols/*/config.conf'],
     }
@@ -763,10 +767,16 @@ def api_node_diagnostics_payload() -> dict:
         checks.append(api_diag_item('Storage', label, 'ok' if writable else 'fail', str(path), {'exists': path.exists(), 'writable': writable}))
 
     try:
-        ips = sorted({item[4][0] for item in socket.getaddrinfo(ENDPOINT_HOST, None)})
-        checks.append(api_diag_item('Network', 'Endpoint DNS', 'ok', f'{ENDPOINT_HOST} resolves', {'ips': ips}))
+        ips = sorted({item[4][0] for item in socket.getaddrinfo(PANEL_HOST, None)})
+        checks.append(api_diag_item('Network', 'Panel DNS', 'ok', f'{PANEL_HOST} resolves', {'ips': ips}))
     except Exception as e:
-        checks.append(api_diag_item('Network', 'Endpoint DNS', 'fail', f'{ENDPOINT_HOST} не резолвится', {'error': str(e)}))
+        checks.append(api_diag_item('Network', 'Panel DNS', 'fail', f'{PANEL_HOST} не резолвится', {'error': str(e)}))
+
+    try:
+        ips = sorted({item[4][0] for item in socket.getaddrinfo(VPN_ENDPOINT_HOST, None)})
+        checks.append(api_diag_item('Network', 'VPN endpoint DNS', 'ok', f'{VPN_ENDPOINT_HOST} resolves', {'ips': ips}))
+    except Exception as e:
+        checks.append(api_diag_item('Network', 'VPN endpoint DNS', 'fail', f'{VPN_ENDPOINT_HOST} не резолвится', {'error': str(e)}))
 
     caddy_found = False
     try:
@@ -810,7 +820,7 @@ def api_node_diagnostics_payload() -> dict:
             ports = (container.attrs.get('NetworkSettings') or {}).get('Ports') or {}
             bindings = {k: v for k, v in ports.items() if str(k).endswith('/udp')}
             status = 'ok' if str(published_port).strip() else 'warn'
-            checks.append(api_diag_item(title, 'UDP endpoint', status, f"{ENDPOINT_HOST}:{published_port}", {'listen_port': listen_port, 'configured_port': p['port'], 'bindings': bindings}))
+            checks.append(api_diag_item(title, 'UDP endpoint', status, f"{VPN_ENDPOINT_HOST}:{published_port}", {'listen_port': listen_port, 'configured_port': p['port'], 'bindings': bindings, 'vpn_egress_ip': VPN_EGRESS_IP}))
         except Exception as e:
             checks.append(api_diag_item(title, 'UDP endpoint', 'warn', 'Не удалось определить published UDP port', {'error': str(e)}))
 
@@ -1222,8 +1232,11 @@ def api_protocol_state(protocol: str, include_raw: bool = False) -> dict:
             'tool': p['tool'],
             'port': int(str(endpoint_port)),
             'configured_port': int(str(p['port'])),
-            'endpoint_host': ENDPOINT_HOST,
-            'endpoint': f"{ENDPOINT_HOST}:{endpoint_port}",
+            'panel_host': PANEL_HOST,
+            'endpoint_host': VPN_ENDPOINT_HOST,
+            'legacy_endpoint_host': ENDPOINT_HOST,
+            'vpn_egress_ip': VPN_EGRESS_IP,
+            'endpoint': f"{VPN_ENDPOINT_HOST}:{endpoint_port}",
             'network': p['network'],
             'available': False,
             'container_status': 'unknown',
@@ -1709,7 +1722,10 @@ async def api_update_run(request: Request, user=Depends(api_require_admin)):
 def api_node_protocols(user=Depends(api_require_auth)):
     return {
         'ok': True,
-        'endpoint_host': ENDPOINT_HOST,
+        'panel_host': PANEL_HOST,
+        'endpoint_host': VPN_ENDPOINT_HOST,
+        'legacy_endpoint_host': ENDPOINT_HOST,
+        'vpn_egress_ip': VPN_EGRESS_IP,
         'fornex_vpn_ports': FORNEX_VPN_PORTS,
         'protocols': {protocol: api_protocol_state(protocol) for protocol in PROTOCOLS},
     }
@@ -1759,7 +1775,10 @@ async def api_node_protocol_port_update(protocol: str, request: Request, user=De
     return {
         'ok': True,
         'result': result,
-        'endpoint_host': ENDPOINT_HOST,
+        'panel_host': PANEL_HOST,
+        'endpoint_host': VPN_ENDPOINT_HOST,
+        'legacy_endpoint_host': ENDPOINT_HOST,
+        'vpn_egress_ip': VPN_EGRESS_IP,
         'fornex_vpn_ports': FORNEX_VPN_PORTS,
         'protocols': {key: api_protocol_state(key) for key in PROTOCOLS},
     }
@@ -1772,7 +1791,10 @@ def api_node_status(user=Depends(api_require_auth)):
         total = conn.execute('SELECT COUNT(*) AS n FROM clients WHERE COALESCE(deleted_at, 0) = 0').fetchone()['n']
     return {
         'ok': True,
-        'endpoint_host': ENDPOINT_HOST,
+        'panel_host': PANEL_HOST,
+        'endpoint_host': VPN_ENDPOINT_HOST,
+        'legacy_endpoint_host': ENDPOINT_HOST,
+        'vpn_egress_ip': VPN_EGRESS_IP,
         'fornex_vpn_ports': FORNEX_VPN_PORTS,
         'dns_servers': DNS_SERVERS,
         'clients_total': int(total),

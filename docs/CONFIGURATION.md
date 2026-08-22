@@ -10,7 +10,10 @@
 | `PANEL_PASSWORD` | `change-me` | Пароль для входа в панель |
 | `PANEL_CONTAINER` | `3wg-panel` | Имя Docker-контейнера панели для self-monitoring метрик |
 | `SESSION_SECRET` | random hex | Секрет для подписи session cookie |
-| `ENDPOINT_HOST` | `vpn.example.com` | Хост, который попадёт в клиентские конфиги |
+| `PANEL_HOST` | `panel.example.com` | Публичный web-хост панели |
+| `ENDPOINT_HOST` | `vpn.example.com` | Legacy fallback для старых установок. Если `VPN_ENDPOINT_HOST` не задан, используется как VPN endpoint |
+| `VPN_ENDPOINT_HOST` | `vpn.example.com` | Хост/IP, который попадёт в клиентские конфиги и QR |
+| `VPN_EGRESS_IP` | `176.98.186.189` | Опциональный сменяемый исходящий IP для схем с policy routing/SNAT. Сейчас хранится как настройка, firewall автоматически не меняется |
 | `DNS_SERVERS` | `1.1.1.1, 1.0.0.1` | DNS в генерируемых конфигах |
 | `HIDE_EXISTING_PEERS` | `1` | Скрывать peer'ы, созданные не через 3WG Core |
 
@@ -73,6 +76,30 @@ curl -fsS \
 ## Примечания
 
 - Если WireGuard и AmneziaWG используют один CIDR, убедитесь, что это действительно соответствует вашей сетевой схеме.
-- `ENDPOINT_HOST` должен быть доменом или IP, доступным клиентам из Интернета.
+- `VPN_ENDPOINT_HOST` должен быть доменом или IP, доступным клиентам из Интернета. Для обычной ноды он может совпадать с `PANEL_HOST`.
 - Не открывайте `/metrics`, `node_exporter` и `cAdvisor` в публичный интернет без firewall/private VPN.
 - Никогда не коммитьте `.env` в Git.
+
+## Смена VPN IP через отдельный endpoint
+
+На некоторых серверах используется два публичных IP:
+
+- основной IP для панели и обслуживания сервера
+- сменяемый IP, на который указывает DNS-запись VPN endpoint
+
+В этом случае задайте:
+
+```env
+PANEL_HOST=cz-prg-01.nodax.eu
+ENDPOINT_HOST=wg-fxc01.wire3.ru
+VPN_ENDPOINT_HOST=wg-fxc01.wire3.ru
+VPN_EGRESS_IP=176.98.186.189
+```
+
+Клиентские `.conf`, QR и AmneziaVPN payload будут получать endpoint из `VPN_ENDPOINT_HOST`. Если IP меняется, достаточно обновить DNS `A`-запись этого домена и выпускать новые конфиги уже с тем же доменным endpoint.
+
+Важно:
+
+- Docker-порты должны слушать `0.0.0.0:<udp-port>`, тогда контейнеры примут входящие подключения на оба IP.
+- DNS TTL для сменяемого endpoint лучше держать низким.
+- `VPN_EGRESS_IP` пока не включает SNAT автоматически. Если нужно, чтобы весь исходящий VPN-трафик выходил именно через второй IP, это нужно настраивать отдельными host firewall/routing правилами.

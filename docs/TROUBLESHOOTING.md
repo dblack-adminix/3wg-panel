@@ -30,10 +30,21 @@ docker exec <container> wg show
 
 Проверьте:
 
-- `ENDPOINT_HOST`
+- `VPN_ENDPOINT_HOST`
+- legacy `ENDPOINT_HOST`, если `VPN_ENDPOINT_HOST` не задан
 - UDP port протокола
 - сгенерированный файл клиента в `clients/`
 - путь к protocol config внутри контейнера
+
+Если панель открывается по одному домену, а VPN-клиенты должны подключаться через второй сменяемый IP, настройте:
+
+```env
+PANEL_HOST=panel.example.com
+VPN_ENDPOINT_HOST=wg-fxc01.wire3.ru
+ENDPOINT_HOST=wg-fxc01.wire3.ru
+```
+
+После смены второго IP обновите DNS `A`-запись `VPN_ENDPOINT_HOST`.
 
 ## Installer или Git не может скачать репозиторий
 
