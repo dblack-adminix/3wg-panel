@@ -69,6 +69,26 @@ sudo bash /tmp/3wg-update.sh
 
 Этот вариант нужен именно для старых установок: свежий updater сам зайдёт в `/opt/3wg-panel`, сделает backup, обновит исходники и уже после этого в проекте появится новый `scripts/update.sh`.
 
+## Настроить отдельный VPN endpoint на уже установленной ноде
+
+Если сервер уже установлен, а клиенты должны подключаться через отдельный сменяемый IP/DNS, сначала обновите 3WG Core до версии с поддержкой `VPN_ENDPOINT_HOST`, затем запустите helper:
+
+```bash
+cd /opt/3wg-panel
+sudo bash scripts/update.sh
+sudo bash scripts/set_endpoint_hosts.sh
+```
+
+Скрипт спросит:
+
+- `Panel public host / domain` — домен web-панели;
+- `VPN endpoint host / domain` — домен/IP, который попадёт в новые QR и `.conf`;
+- `VPN egress/source IP` — можно оставить пустым, если исходящий SNAT через второй IP пока не настроен.
+
+Скрипт сохранит backup `.env`, обновит `PANEL_HOST`, `ENDPOINT_HOST`, `VPN_ENDPOINT_HOST`, `VPN_EGRESS_IP` и перезапустит контейнер панели. VPN-контейнеры и peer'ы он не трогает.
+
+Важно: уже импортированные конфиги у клиентов не меняются автоматически. После смены endpoint старые клиенты нужно переимпортировать или скачать новый `.conf`/QR.
+
 ## Upgrade до v1.2.0
 
 Версия `v1.2.0` добавляет multi-user режим: суперпользователь создаёт пользователей панели, задаёт лимит peer'ов, а обычный пользователь видит урезанный интерфейс и управляет только своими peer'ами в пределах лимита. Также включает изменения ветки `v1.1.x`: проверку версии через GitHub tags, non-interactive apt-установку Node.js/Caddy, timeout для Caddy validate/reload/start и отключение HTTP/3 в Caddy для схемы `443/tcp` web + `443/udp` AmneziaWG.
