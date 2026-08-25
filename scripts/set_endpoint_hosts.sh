@@ -29,6 +29,47 @@ ask() {
   fi
 }
 
+is_bad_public_host() {
+  local host="${1:-}"
+  case "$host" in
+    ""|localhost|localhost.*|debian|debian.*|*.local|*.localdomain|127.*|0.0.0.0|::1)
+      return 0
+      ;;
+    *"://"*|*/*|*" "*|*$'\t'*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+detect_public_host_default() {
+  local host
+  host="$(hostname -f 2>/dev/null || hostname 2>/dev/null || true)"
+  host="${host%%[[:space:]]*}"
+  if is_bad_public_host "$host"; then
+    printf ''
+  else
+    printf '%s' "$host"
+  fi
+}
+
+ask_public_host() {
+  local label="$1"
+  local default="${2:-}"
+  local value
+  while true; do
+    value="$(ask "$label" "$default")"
+    if ! is_bad_public_host "$value"; then
+      printf '%s' "$value"
+      return 0
+    fi
+    printf 'Введите реальный публичный домен или IP без https:// и без пути. Не используйте localhost/debian.debian.\n' >&2
+    default=""
+  done
+}
+
 env_get() {
   local key="$1"
   if [ -f "$ENV_FILE" ]; then
@@ -98,10 +139,11 @@ current_endpoint="${current_endpoint:-$(env_get ENDPOINT_HOST)}"
 current_panel="$(env_get PANEL_HOST)"
 current_panel="${current_panel:-$(env_get ENDPOINT_HOST)}"
 current_egress="$(env_get VPN_EGRESS_IP)"
+public_host_default="$(detect_public_host_default)"
 
 say "3WG Core endpoint settings"
-panel_host="$(ask 'Panel public host / domain' "${current_panel:-$(hostname -f 2>/dev/null || hostname)}")"
-vpn_endpoint_host="$(ask 'VPN endpoint host / domain' "${current_endpoint:-$panel_host}")"
+panel_host="$(ask_public_host 'Panel public host / domain' "${current_panel:-$public_host_default}")"
+vpn_endpoint_host="$(ask_public_host 'VPN endpoint host / domain' "${current_endpoint:-$panel_host}")"
 vpn_egress_ip="$(ask 'VPN egress/source IP, empty = system default' "${current_egress:-}")"
 
 [ -n "$panel_host" ] || fail "Panel host is empty"

@@ -133,6 +133,42 @@ ask() {
     printf '%s' "$value"
   fi
 }
+is_bad_public_host() {
+  local host="${1:-}"
+  case "$host" in
+    ""|localhost|localhost.*|debian|debian.*|*.local|*.localdomain|127.*|0.0.0.0|::1)
+      return 0
+      ;;
+    *"://"*|*/*|*" "*|*$'\t'*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+detect_public_host_default() {
+  local host
+  host="$(hostname -f 2>/dev/null || hostname 2>/dev/null || true)"
+  host="${host%%[[:space:]]*}"
+  if is_bad_public_host "$host"; then
+    printf ''
+  else
+    printf '%s' "$host"
+  fi
+}
+ask_public_host() {
+  local prompt="$1" default="${2:-}" value
+  while true; do
+    value="$(ask "$prompt" "$default")"
+    if ! is_bad_public_host "$value"; then
+      printf '%s' "$value"
+      return 0
+    fi
+    warn "Введите реальный публичный домен или IP без https:// и без пути. Не используйте localhost/debian.debian."
+    default=""
+  done
+}
 ask_secret() {
   local prompt="$1" default="${2:-}" value
   if [ -n "$default" ]; then
@@ -328,8 +364,9 @@ CONTAINER="$(ask 'Docker container name' "$CONTAINER_DEFAULT")"
 BIND_HOST="$(ask 'Bind host' "$BIND_HOST_DEFAULT")"
 BIND_PORT="$(ask 'Bind port' "$BIND_PORT_DEFAULT")"
 
-PANEL_HOST="$(ask 'Panel public host / domain' "$(hostname -f 2>/dev/null || hostname)")"
-VPN_ENDPOINT_HOST="$(ask 'VPN endpoint host / domain' "$PANEL_HOST")"
+PUBLIC_HOST_DEFAULT="$(detect_public_host_default)"
+PANEL_HOST="$(ask_public_host 'Panel public host / domain' "$PUBLIC_HOST_DEFAULT")"
+VPN_ENDPOINT_HOST="$(ask_public_host 'VPN endpoint host / domain' "$PANEL_HOST")"
 ENDPOINT_HOST="$VPN_ENDPOINT_HOST"
 VPN_EGRESS_IP="$(ask 'VPN egress/source IP, empty = system default' '')"
 CADDY_DEFAULT="0"

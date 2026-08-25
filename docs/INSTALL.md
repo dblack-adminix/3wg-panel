@@ -93,6 +93,8 @@ Git branch/tag [dev]:
 | `Enable Prometheus /metrics? 1=yes, 0=no` | Включить ли endpoint `/metrics` для центрального Prometheus/Grafana. | `1` | Оставьте `0`, если мониторинг пока не настроен. |
 | `Prometheus metrics token, empty = auto-generate` | Bearer token для Prometheus. Можно оставить пустым, installer сгенерирует сам. | random token | Для авто-токена нажмите Enter. |
 
+Важно: если installer показывает локальное имя вроде `debian.debian`, `localhost` или `debian`, не нажимайте Enter. Введите реальный публичный домен сервера, например `nl-ams-08.nodax.eu`. Новые версии installer не принимают такие локальные имена как публичный адрес.
+
 В existing режиме после ввода имён контейнеров installer автоматически проверит:
 
 - published UDP port через Docker
@@ -132,6 +134,7 @@ H4 = 2052615782-2092742079
 
 - `Panel public host / domain` должен быть доменом web-панели.
 - `VPN endpoint host / domain` должен быть доменом или IP, куда реально подключаются VPN-клиенты.
+- Если сервер предлагает `debian.debian`, `localhost` или другое локальное имя, замените его на реальный домен, например `nl-ams-08.nodax.eu`.
 - `container name` должен совпадать с именем контейнера из `docker ps`, иначе панель не сможет управлять peer’ами.
 - Убедитесь, что в `docker ps` у protocol-контейнеров опубликованы UDP-порты. Эти порты попадут в клиентские конфиги.
 
