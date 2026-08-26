@@ -80,6 +80,26 @@ const api = async (path, options = {}) => {
   return data;
 };
 
+const EXPIRATION_PRESETS = [
+  { value: '1', label: '1 день' },
+  { value: '7', label: '7 дней' },
+  { value: '30', label: '30 дней' },
+  { value: '90', label: '90 дней' },
+  { value: '180', label: 'Полгода' },
+  { value: '365', label: '1 год' },
+];
+
+const TRAFFIC_LIMIT_PRESETS = [
+  { value: '1', label: '1 GiB' },
+  { value: '5', label: '5 GiB' },
+  { value: '10', label: '10 GiB' },
+  { value: '50', label: '50 GiB' },
+  { value: '100', label: '100 GiB' },
+  { value: '250', label: '250 GiB' },
+  { value: '500', label: '500 GiB' },
+  { value: '1000', label: '1 TiB' },
+];
+
 function IconButton({ href, onClick, title, tone = 'default', disabled = false, children }) {
   const className = `icon-button ${tone}`;
   if (href) {
@@ -290,7 +310,9 @@ function CreateClient({ protocols, categories, quota, isAdmin, onCreated }) {
   const [name, setName] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [expiresPreset, setExpiresPreset] = useState('');
+  const [customExpiresDays, setCustomExpiresDays] = useState(365);
   const [trafficLimitPreset, setTrafficLimitPreset] = useState('');
+  const [customTrafficGiB, setCustomTrafficGiB] = useState(1000);
   const available = protocols?.amneziawg?.available;
   const wgAvailable = protocols?.wireguard?.available;
   const [amnezia, setAmnezia] = useState(true);
@@ -308,8 +330,8 @@ function CreateClient({ protocols, categories, quota, isAdmin, onCreated }) {
     setLoading(true);
     try {
       const payload = { name, protocols: selected, category_id: categoryId || null };
-      if (isAdmin) payload.expires_at = expiresPreset ? futureExpiresAt(Number(expiresPreset)) : null;
-      if (isAdmin) payload.traffic_limit_bytes = trafficLimitPreset ? gibToBytes(Number(trafficLimitPreset)) : 0;
+      if (isAdmin) payload.expires_at = resolveExpiresAt(expiresPreset, customExpiresDays);
+      if (isAdmin) payload.traffic_limit_bytes = resolveTrafficLimitBytes(trafficLimitPreset, customTrafficGiB);
       await api('/api/peers', { method: 'POST', body: JSON.stringify(payload) });
       setName('');
       setExpiresPreset('');
@@ -336,21 +358,22 @@ function CreateClient({ protocols, categories, quota, isAdmin, onCreated }) {
         {isAdmin && (
           <select className="category-select create-category-select" value={expiresPreset} onChange={(e) => setExpiresPreset(e.target.value)}>
             <option value="">Без срока</option>
-            <option value="1">На 1 день</option>
-            <option value="7">На 7 дней</option>
-            <option value="30">На 30 дней</option>
-            <option value="90">На 90 дней</option>
+            {EXPIRATION_PRESETS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+            <option value="custom">Задать вручную</option>
           </select>
+        )}
+        {isAdmin && expiresPreset === 'custom' && (
+          <input className="name-input compact-custom-input" type="number" min="1" max="3650" value={customExpiresDays} onChange={(e) => setCustomExpiresDays(e.target.value)} placeholder="Срок в днях" />
         )}
         {isAdmin && (
           <select className="category-select create-category-select" value={trafficLimitPreset} onChange={(e) => setTrafficLimitPreset(e.target.value)}>
             <option value="">Без лимита трафика</option>
-            <option value="1">1 GiB</option>
-            <option value="5">5 GiB</option>
-            <option value="10">10 GiB</option>
-            <option value="50">50 GiB</option>
-            <option value="100">100 GiB</option>
+            {TRAFFIC_LIMIT_PRESETS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+            <option value="custom">Задать вручную</option>
           </select>
+        )}
+        {isAdmin && trafficLimitPreset === 'custom' && (
+          <input className="name-input compact-custom-input" type="number" min="1" max="100000" value={customTrafficGiB} onChange={(e) => setCustomTrafficGiB(e.target.value)} placeholder="Лимит в GiB" />
         )}
         <div className="protocol-row">
           <label className={!wgAvailable ? 'muted' : ''}><input type="checkbox" checked={wireguard} disabled={!wgAvailable} onChange={(e) => setWireguard(e.target.checked)} /> WireGuard {!wgAvailable && <span className="pill bad">не установлен</span>}</label>
@@ -466,9 +489,17 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
   };
 
   const changePeerExpiration = async (peer, preset) => {
+    let expiresAt = null;
+    if (preset === 'custom') {
+      const currentDays = Math.max(1, Math.round(Number(peer?.expiration?.seconds_left || 86400) / 86400));
+      const days = askCustomNumber('Срок действия peer в днях', currentDays, 1, 3650);
+      if (days === null) return;
+      expiresAt = futureExpiresAt(days);
+    } else {
+      expiresAt = preset ? futureExpiresAt(Number(preset)) : null;
+    }
     setBusyId(peer.id);
     try {
-      const expiresAt = preset ? futureExpiresAt(Number(preset)) : null;
       await api(`/api/peers/${peer.id}`, { method: 'PATCH', body: JSON.stringify({ expires_at: expiresAt }) });
       await onRefresh();
     } catch (err) {
@@ -479,9 +510,17 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
   };
 
   const changePeerTrafficLimit = async (peer, preset) => {
+    let limitBytes = 0;
+    if (preset === 'custom') {
+      const currentGiB = Math.max(1, Math.round(Number(peer?.traffic_limit?.limit_bytes || 1024 ** 3) / 1024 / 1024 / 1024));
+      const gib = askCustomNumber('Лимит трафика peer в GiB', currentGiB, 1, 100000);
+      if (gib === null) return;
+      limitBytes = gibToBytes(gib);
+    } else {
+      limitBytes = preset ? gibToBytes(Number(preset)) : 0;
+    }
     setBusyId(peer.id);
     try {
-      const limitBytes = preset ? gibToBytes(Number(preset)) : 0;
       await api(`/api/peers/${peer.id}`, { method: 'PATCH', body: JSON.stringify({ traffic_limit_bytes: limitBytes }) });
       await onRefresh();
     } catch (err) {
@@ -614,18 +653,13 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
                       <div className="policy-selects">
                         <select className="category-select table-expiration-select" value={expirationPresetValue(p)} disabled={busyId === p.id} onChange={(e) => changePeerExpiration(p, e.target.value)}>
                           <option value="">Без срока</option>
-                          <option value="1">1 день</option>
-                          <option value="7">7 дней</option>
-                          <option value="30">30 дней</option>
-                          <option value="90">90 дней</option>
+                          {EXPIRATION_PRESETS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                          <option value="custom">Вручную</option>
                         </select>
                         <select className="category-select table-limit-select" value={trafficLimitPresetValue(p)} disabled={busyId === p.id} onChange={(e) => changePeerTrafficLimit(p, e.target.value)}>
                           <option value="">Без лимита</option>
-                          <option value="1">1 GiB</option>
-                          <option value="5">5 GiB</option>
-                          <option value="10">10 GiB</option>
-                          <option value="50">50 GiB</option>
-                          <option value="100">100 GiB</option>
+                          {TRAFFIC_LIMIT_PRESETS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                          <option value="custom">Вручную</option>
                         </select>
                       </div>
                       <span className={p.traffic_limit?.exceeded ? 'limit-bar exceeded' : 'limit-bar'} title={p.traffic_limit?.label || 'без лимита'}>
@@ -703,18 +737,13 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
                 <div className="policy-selects">
                   <select className="category-select table-expiration-select" value={expirationPresetValue(p)} disabled={busyId === p.id} onChange={(e) => changePeerExpiration(p, e.target.value)}>
                     <option value="">Без срока</option>
-                    <option value="1">1 день</option>
-                    <option value="7">7 дней</option>
-                    <option value="30">30 дней</option>
-                    <option value="90">90 дней</option>
+                    {EXPIRATION_PRESETS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                    <option value="custom">Вручную</option>
                   </select>
                   <select className="category-select table-limit-select" value={trafficLimitPresetValue(p)} disabled={busyId === p.id} onChange={(e) => changePeerTrafficLimit(p, e.target.value)}>
                     <option value="">Без лимита</option>
-                    <option value="1">1 GiB</option>
-                    <option value="5">5 GiB</option>
-                    <option value="10">10 GiB</option>
-                    <option value="50">50 GiB</option>
-                    <option value="100">100 GiB</option>
+                    {TRAFFIC_LIMIT_PRESETS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                    <option value="custom">Вручную</option>
                   </select>
                 </div>
                 <small>
@@ -1204,6 +1233,47 @@ function gibToBytes(gib) {
   return Math.round(Math.max(0, Number(gib || 0)) * 1024 * 1024 * 1024);
 }
 
+function clampNumber(value, min, max) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return min;
+  return Math.min(max, Math.max(min, Math.round(number)));
+}
+
+function resolveExpiresAt(mode, customDays) {
+  if (!mode) return null;
+  const days = mode === 'custom' ? clampNumber(customDays, 1, 3650) : clampNumber(mode, 1, 3650);
+  return futureExpiresAt(days);
+}
+
+function resolveTrafficLimitBytes(mode, customGiB) {
+  if (!mode) return 0;
+  const gib = mode === 'custom' ? clampNumber(customGiB, 1, 100000) : clampNumber(mode, 1, 100000);
+  return gibToBytes(gib);
+}
+
+function limitBytesToGiB(value) {
+  const bytes = Number(value || 0);
+  if (!bytes) return 1000;
+  return Math.max(1, Math.round(bytes / 1024 / 1024 / 1024));
+}
+
+function secondsLeftToDays(value) {
+  const seconds = Number(value || 0);
+  if (!seconds) return 365;
+  return Math.max(1, Math.round(seconds / 86400));
+}
+
+function askCustomNumber(message, current, min, max) {
+  const answer = window.prompt(message, String(current || min));
+  if (answer === null) return null;
+  const value = Number(answer.replace(',', '.'));
+  if (!Number.isFinite(value) || value < min || value > max) {
+    window.alert(`Введите число от ${min} до ${max}`);
+    return null;
+  }
+  return Math.round(value);
+}
+
 function expirationPresetValue(peer) {
   const secondsLeft = Number(peer?.expiration?.seconds_left || 0);
   if (!peer?.expiration?.enabled || secondsLeft <= 0) return '';
@@ -1211,7 +1281,10 @@ function expirationPresetValue(peer) {
   if (days <= 1) return '1';
   if (days <= 7) return '7';
   if (days <= 30) return '30';
-  return '90';
+  if (days <= 90) return '90';
+  if (days <= 180) return '180';
+  if (days <= 365) return '365';
+  return 'custom';
 }
 
 function trafficLimitPresetValue(peer) {
@@ -1222,7 +1295,11 @@ function trafficLimitPresetValue(peer) {
   if (gib <= 5) return '5';
   if (gib <= 10) return '10';
   if (gib <= 50) return '50';
-  return '100';
+  if (gib <= 100) return '100';
+  if (gib <= 250) return '250';
+  if (gib <= 500) return '500';
+  if (gib <= 1000) return '1000';
+  return 'custom';
 }
 
 function userTrafficLimitPresetValue(user) {
@@ -1233,7 +1310,9 @@ function userTrafficLimitPresetValue(user) {
   if (gib <= 50) return '50';
   if (gib <= 100) return '100';
   if (gib <= 250) return '250';
-  return '500';
+  if (gib <= 500) return '500';
+  if (gib <= 1000) return '1000';
+  return 'custom';
 }
 
 function userExpirationPresetValue(user) {
@@ -1244,7 +1323,8 @@ function userExpirationPresetValue(user) {
   if (days <= 30) return '30';
   if (days <= 90) return '90';
   if (days <= 180) return '180';
-  return '365';
+  if (days <= 365) return '365';
+  return 'custom';
 }
 
 function formatDuration(seconds) {
@@ -1950,7 +2030,7 @@ function UsersPage({ onLogout, user }) {
   const toast = useToast();
   const confirm = useConfirm();
   const [users, setUsers] = useState([]);
-  const [form, setForm] = useState({ username: '', password: '', peer_limit: 1, role: 'user', traffic_limit_bytes: 0, expires_days: '' });
+  const [form, setForm] = useState({ username: '', password: '', peer_limit: 1, role: 'user', traffic_limit_mode: '', custom_traffic_gib: 1000, expires_days: '', custom_expires_days: 365 });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -1971,10 +2051,14 @@ function UsersPage({ onLogout, user }) {
     setBusy(true);
     try {
       const { expires_days, ...payload } = form;
-      payload.expires_at = expires_days ? futureExpiresAt(Number(expires_days)) : null;
+      payload.expires_at = resolveExpiresAt(expires_days, form.custom_expires_days);
+      payload.traffic_limit_bytes = resolveTrafficLimitBytes(form.traffic_limit_mode, form.custom_traffic_gib);
+      delete payload.traffic_limit_mode;
+      delete payload.custom_traffic_gib;
+      delete payload.custom_expires_days;
       const data = await api('/api/users', { method: 'POST', body: JSON.stringify(payload) });
       setUsers(data.users || []);
-      setForm({ username: '', password: '', peer_limit: 1, role: 'user', traffic_limit_bytes: 0, expires_days: '' });
+      setForm({ username: '', password: '', peer_limit: 1, role: 'user', traffic_limit_mode: '', custom_traffic_gib: 1000, expires_days: '', custom_expires_days: 365 });
       setError('');
     } catch (err) {
       setError(err.message || 'Ошибка создания пользователя');
@@ -2037,26 +2121,32 @@ function UsersPage({ onLogout, user }) {
             </label>
             <label className="user-create-field">
               <span>Лимит трафика</span>
-              <select className="category-select" value={form.traffic_limit_bytes ? String(Math.round(form.traffic_limit_bytes / 1024 / 1024 / 1024)) : ''} onChange={(e) => setForm({ ...form, traffic_limit_bytes: e.target.value ? gibToBytes(Number(e.target.value)) : 0 })}>
+              <select className="category-select" value={form.traffic_limit_mode} onChange={(e) => setForm({ ...form, traffic_limit_mode: e.target.value })}>
                 <option value="">Без лимита</option>
-                <option value="10">10 GiB на пользователя</option>
-                <option value="50">50 GiB на пользователя</option>
-                <option value="100">100 GiB на пользователя</option>
-                <option value="250">250 GiB на пользователя</option>
-                <option value="500">500 GiB на пользователя</option>
+                {TRAFFIC_LIMIT_PRESETS.filter((item) => Number(item.value) >= 10).map((item) => <option key={item.value} value={item.value}>{item.label} на пользователя</option>)}
+                <option value="custom">Задать вручную</option>
               </select>
             </label>
+            {form.traffic_limit_mode === 'custom' && (
+              <label className="user-create-field">
+                <span>Ручной трафик, GiB</span>
+                <input className="name-input" min="1" max="100000" type="number" value={form.custom_traffic_gib} onChange={(e) => setForm({ ...form, custom_traffic_gib: e.target.value })} />
+              </label>
+            )}
             <label className="user-create-field">
               <span>Срок доступа</span>
               <select className="category-select" value={form.expires_days} onChange={(e) => setForm({ ...form, expires_days: e.target.value })}>
                 <option value="">Без срока</option>
-                <option value="7">7 дней</option>
-                <option value="30">30 дней</option>
-                <option value="90">90 дней</option>
-                <option value="180">180 дней</option>
-                <option value="365">1 год</option>
+                {EXPIRATION_PRESETS.filter((item) => item.value !== '1').map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                <option value="custom">Задать вручную</option>
               </select>
             </label>
+            {form.expires_days === 'custom' && (
+              <label className="user-create-field">
+                <span>Ручной срок, дней</span>
+                <input className="name-input" min="1" max="3650" type="number" value={form.custom_expires_days} onChange={(e) => setForm({ ...form, custom_expires_days: e.target.value })} />
+              </label>
+            )}
             <label className="user-create-field">
               <span>Роль</span>
               <select className="category-select" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
@@ -2090,17 +2180,25 @@ function UsersPage({ onLogout, user }) {
 function UserRow({ item, busy, onPatch, onDelete }) {
   const [limit, setLimit] = useState(item.peer_limit);
   const [trafficLimit, setTrafficLimit] = useState(userTrafficLimitPresetValue(item));
+  const [customTrafficGiB, setCustomTrafficGiB] = useState(limitBytesToGiB(item.traffic_limit_bytes || item.traffic_limit?.limit_bytes || 1000));
   const [expiresPreset, setExpiresPreset] = useState(userExpirationPresetValue(item));
+  const [customExpiresDays, setCustomExpiresDays] = useState(secondsLeftToDays(item.expiration?.seconds_left || 365 * 86400));
   const [password, setPassword] = useState('');
   useEffect(() => { setLimit(item.peer_limit); }, [item.peer_limit]);
-  useEffect(() => { setTrafficLimit(userTrafficLimitPresetValue(item)); }, [item.traffic_limit_bytes]);
-  useEffect(() => { setExpiresPreset(userExpirationPresetValue(item)); }, [item.expires_at]);
+  useEffect(() => {
+    setTrafficLimit(userTrafficLimitPresetValue(item));
+    setCustomTrafficGiB(limitBytesToGiB(item.traffic_limit_bytes || item.traffic_limit?.limit_bytes || 1000));
+  }, [item.traffic_limit_bytes]);
+  useEffect(() => {
+    setExpiresPreset(userExpirationPresetValue(item));
+    setCustomExpiresDays(secondsLeftToDays(item.expiration?.seconds_left || 365 * 86400));
+  }, [item.expires_at]);
   const traffic = item.traffic_limit || {};
   const expiration = item.expiration || {};
   const savePayload = {
     peer_limit: limit,
-    traffic_limit_bytes: trafficLimit ? gibToBytes(Number(trafficLimit)) : 0,
-    expires_at: expiresPreset ? futureExpiresAt(Number(expiresPreset)) : null,
+    traffic_limit_bytes: resolveTrafficLimitBytes(trafficLimit, customTrafficGiB),
+    expires_at: resolveExpiresAt(expiresPreset, customExpiresDays),
   };
   return (
     <tr>
@@ -2113,12 +2211,10 @@ function UserRow({ item, busy, onPatch, onDelete }) {
         <div className="traffic-limit-cell user-traffic-limit-cell">
           <select className="category-select table-limit-select" value={trafficLimit} disabled={busy} onChange={(e) => setTrafficLimit(e.target.value)}>
             <option value="">без лимита</option>
-            <option value="10">10 GiB</option>
-            <option value="50">50 GiB</option>
-            <option value="100">100 GiB</option>
-            <option value="250">250 GiB</option>
-            <option value="500">500 GiB</option>
+            {TRAFFIC_LIMIT_PRESETS.filter((preset) => Number(preset.value) >= 10).map((preset) => <option key={preset.value} value={preset.value}>{preset.label}</option>)}
+            <option value="custom">вручную</option>
           </select>
+          {trafficLimit === 'custom' && <input className="inline-number compact-manual-limit" type="number" min="1" max="100000" value={customTrafficGiB} disabled={busy} onChange={(e) => setCustomTrafficGiB(e.target.value)} />}
           <small className={traffic.exceeded ? 'expiration-bad' : ''}>{traffic.label || 'без лимита'}</small>
           <span className={`limit-bar ${traffic.exceeded ? 'exceeded' : ''}`}><i style={{ width: `${Math.max(2, Number(traffic.percent || 0))}%` }} /></span>
         </div>
@@ -2127,12 +2223,10 @@ function UserRow({ item, busy, onPatch, onDelete }) {
         <div className="user-expiration-cell">
           <select className="category-select table-expiration-select" value={expiresPreset} disabled={busy} onChange={(e) => setExpiresPreset(e.target.value)}>
             <option value="">без срока</option>
-            <option value="7">7 дней</option>
-            <option value="30">30 дней</option>
-            <option value="90">90 дней</option>
-            <option value="180">180 дней</option>
-            <option value="365">1 год</option>
+            {EXPIRATION_PRESETS.filter((preset) => preset.value !== '1').map((preset) => <option key={preset.value} value={preset.value}>{preset.label}</option>)}
+            <option value="custom">вручную</option>
           </select>
+          {expiresPreset === 'custom' && <input className="inline-number compact-manual-limit" type="number" min="1" max="3650" value={customExpiresDays} disabled={busy} onChange={(e) => setCustomExpiresDays(e.target.value)} />}
           <small className={expiration.expired ? 'expiration-bad' : expiration.enabled ? 'expiration-soon' : ''}>{expiration.label || 'без срока'}</small>
         </div>
       </td>

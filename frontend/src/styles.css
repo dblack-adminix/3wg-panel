@@ -369,6 +369,7 @@ html[data-theme="light"] .sidebar-backdrop { background: rgba(15, 23, 42, .42); 
 .users-table .traffic-limit-cell { gap: 3px; }
 .users-table .user-expiration-cell { display: grid; gap: 3px; min-width: 0; }
 .users-table .user-expiration-cell .table-expiration-select { width: 116px; }
+.compact-manual-limit { width: 86px !important; height: 26px !important; padding: 0 7px; }
 .users-table td.actions-cell { width: 172px; min-width: 172px; overflow: visible; }
 .users-table .user-password-row { display: grid; grid-template-columns: 126px 22px; width: 153px; gap: 5px; }
 .users-table .inline-password { width: 126px; min-width: 0; flex: 0 0 126px; box-sizing: border-box; }
@@ -506,6 +507,7 @@ html[data-theme="light"] .sidebar-backdrop { background: rgba(15, 23, 42, .42); 
 .category-select { min-width: 0; height: 32px; border: 1px solid #2e2e2e; border-radius: 7px; background: #0a0a0a; color: #dddddd; font: inherit; font-size: 12px; outline: none; }
 .category-select:focus { border-color: #c8ff00; box-shadow: 0 0 0 2px rgba(200, 255, 0, .12); }
 .create-category-select { width: 260px; max-width: 100%; padding: 0 10px; }
+.compact-custom-input { width: 170px; height: 32px; padding: 0 10px; }
 .protocol-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .protocol-row input { accent-color: #c8ff00; }
 .orange-btn { width: fit-content; min-width: 176px; height: 38px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 0; border-radius: 8px; background: var(--orange); color: #080b10; font-weight: 700; font-size: 14px; cursor: pointer; padding: 0 16px; }
