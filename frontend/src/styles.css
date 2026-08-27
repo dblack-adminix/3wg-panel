@@ -370,6 +370,11 @@ html[data-theme="light"] .sidebar-backdrop { background: rgba(15, 23, 42, .42); 
 .users-table .user-expiration-cell { display: grid; gap: 3px; min-width: 0; }
 .users-table .user-expiration-cell .table-expiration-select { width: 116px; }
 .compact-manual-limit { width: 86px !important; height: 26px !important; padding: 0 7px; }
+.manual-policy-row { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.manual-policy-row label { display: inline-flex; align-items: center; gap: 4px; margin: 0; }
+.tiny-action-btn { height: 26px; padding: 0 7px; border-radius: 6px; border: 1px solid rgba(200, 255, 0, .35); background: rgba(200, 255, 0, .12); color: var(--green); font: inherit; font-size: 10px; font-weight: 800; cursor: pointer; }
+.tiny-action-btn:disabled { opacity: .55; cursor: default; }
+html[data-theme="light"] .tiny-action-btn { border-color: #a3c900; background: #eef8d8; color: #5d7f00; }
 .users-table td.actions-cell { width: 172px; min-width: 172px; overflow: visible; }
 .users-table .user-password-row { display: grid; grid-template-columns: 126px 22px; width: 153px; gap: 5px; }
 .users-table .inline-password { width: 126px; min-width: 0; flex: 0 0 126px; box-sizing: border-box; }

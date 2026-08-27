@@ -85,7 +85,7 @@ const EXPIRATION_PRESETS = [
   { value: '7', label: '7 дней' },
   { value: '30', label: '30 дней' },
   { value: '90', label: '90 дней' },
-  { value: '180', label: 'Полгода' },
+  { value: '180', label: '180 дней' },
   { value: '365', label: '1 год' },
 ];
 
@@ -407,6 +407,7 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
   const [qrPeer, setQrPeer] = useState(null);
   const [pendingAction, setPendingAction] = useState(null);
   const [busyId, setBusyId] = useState(null);
+  const [manualLimits, setManualLimits] = useState({});
   const [activeCategory, setActiveCategory] = useState('all');
   const [newCategoryName, setNewCategoryName] = useState('');
   const [categoryBusy, setCategoryBusy] = useState(false);
@@ -491,10 +492,14 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
   const changePeerExpiration = async (peer, preset) => {
     let expiresAt = null;
     if (preset === 'custom') {
-      const currentDays = Math.max(1, Math.round(Number(peer?.expiration?.seconds_left || 86400) / 86400));
-      const days = askCustomNumber('Срок действия peer в днях', currentDays, 1, 3650);
-      if (days === null) return;
-      expiresAt = futureExpiresAt(days);
+      setManualLimits((current) => ({
+        ...current,
+        [peer.id]: {
+          ...(current[peer.id] || {}),
+          expiresDays: secondsLeftToDays(peer?.expiration?.seconds_left || 365 * 86400),
+        },
+      }));
+      return;
     } else {
       expiresAt = preset ? futureExpiresAt(Number(preset)) : null;
     }
@@ -512,16 +517,66 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
   const changePeerTrafficLimit = async (peer, preset) => {
     let limitBytes = 0;
     if (preset === 'custom') {
-      const currentGiB = Math.max(1, Math.round(Number(peer?.traffic_limit?.limit_bytes || 1024 ** 3) / 1024 / 1024 / 1024));
-      const gib = askCustomNumber('Лимит трафика peer в GiB', currentGiB, 1, 100000);
-      if (gib === null) return;
-      limitBytes = gibToBytes(gib);
+      setManualLimits((current) => ({
+        ...current,
+        [peer.id]: {
+          ...(current[peer.id] || {}),
+          trafficGiB: limitBytesToGiB(peer?.traffic_limit?.limit_bytes || 1024 ** 3),
+        },
+      }));
+      return;
     } else {
       limitBytes = preset ? gibToBytes(Number(preset)) : 0;
     }
     setBusyId(peer.id);
     try {
       await api(`/api/peers/${peer.id}`, { method: 'PATCH', body: JSON.stringify({ traffic_limit_bytes: limitBytes }) });
+      await onRefresh();
+    } catch (err) {
+      toast.error(err.message || 'Ошибка изменения лимита');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const updatePeerManual = (peerId, key, value) => {
+    setManualLimits((current) => ({
+      ...current,
+      [peerId]: {
+        ...(current[peerId] || {}),
+        [key]: value,
+      },
+    }));
+  };
+
+  const clearPeerManual = (peerId, key) => {
+    setManualLimits((current) => {
+      const nextPeer = { ...(current[peerId] || {}) };
+      delete nextPeer[key];
+      return { ...current, [peerId]: nextPeer };
+    });
+  };
+
+  const applyPeerManualExpiration = async (peer) => {
+    const days = clampNumber(manualLimits[peer.id]?.expiresDays, 1, 3650);
+    setBusyId(peer.id);
+    try {
+      await api(`/api/peers/${peer.id}`, { method: 'PATCH', body: JSON.stringify({ expires_at: futureExpiresAt(days) }) });
+      clearPeerManual(peer.id, 'expiresDays');
+      await onRefresh();
+    } catch (err) {
+      toast.error(err.message || 'Ошибка изменения срока');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const applyPeerManualTraffic = async (peer) => {
+    const gib = clampNumber(manualLimits[peer.id]?.trafficGiB, 1, 100000);
+    setBusyId(peer.id);
+    try {
+      await api(`/api/peers/${peer.id}`, { method: 'PATCH', body: JSON.stringify({ traffic_limit_bytes: gibToBytes(gib) }) });
+      clearPeerManual(peer.id, 'trafficGiB');
       await onRefresh();
     } catch (err) {
       toast.error(err.message || 'Ошибка изменения лимита');
@@ -651,17 +706,33 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
                   <td>
                     <div className="policy-cell">
                       <div className="policy-selects">
-                        <select className="category-select table-expiration-select" value={expirationPresetValue(p)} disabled={busyId === p.id} onChange={(e) => changePeerExpiration(p, e.target.value)}>
+                        <select className="category-select table-expiration-select" value={manualLimits[p.id]?.expiresDays !== undefined ? 'custom' : expirationPresetValue(p)} disabled={busyId === p.id} onChange={(e) => changePeerExpiration(p, e.target.value)}>
                           <option value="">Без срока</option>
                           {EXPIRATION_PRESETS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
                           <option value="custom">Вручную</option>
                         </select>
-                        <select className="category-select table-limit-select" value={trafficLimitPresetValue(p)} disabled={busyId === p.id} onChange={(e) => changePeerTrafficLimit(p, e.target.value)}>
+                        <select className="category-select table-limit-select" value={manualLimits[p.id]?.trafficGiB !== undefined ? 'custom' : trafficLimitPresetValue(p)} disabled={busyId === p.id} onChange={(e) => changePeerTrafficLimit(p, e.target.value)}>
                           <option value="">Без лимита</option>
                           {TRAFFIC_LIMIT_PRESETS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
                           <option value="custom">Вручную</option>
                         </select>
                       </div>
+                      {(manualLimits[p.id]?.expiresDays !== undefined || manualLimits[p.id]?.trafficGiB !== undefined) && (
+                        <div className="manual-policy-row">
+                          {manualLimits[p.id]?.expiresDays !== undefined && (
+                            <label>
+                              <input className="inline-number compact-manual-limit" type="number" min="1" max="3650" value={manualLimits[p.id]?.expiresDays || ''} disabled={busyId === p.id} onChange={(e) => updatePeerManual(p.id, 'expiresDays', e.target.value)} />
+                              <button className="tiny-action-btn" type="button" disabled={busyId === p.id} onClick={(e) => { e.stopPropagation(); applyPeerManualExpiration(p); }}>дни</button>
+                            </label>
+                          )}
+                          {manualLimits[p.id]?.trafficGiB !== undefined && (
+                            <label>
+                              <input className="inline-number compact-manual-limit" type="number" min="1" max="100000" value={manualLimits[p.id]?.trafficGiB || ''} disabled={busyId === p.id} onChange={(e) => updatePeerManual(p.id, 'trafficGiB', e.target.value)} />
+                              <button className="tiny-action-btn" type="button" disabled={busyId === p.id} onClick={(e) => { e.stopPropagation(); applyPeerManualTraffic(p); }}>GiB</button>
+                            </label>
+                          )}
+                        </div>
+                      )}
                       <span className={p.traffic_limit?.exceeded ? 'limit-bar exceeded' : 'limit-bar'} title={p.traffic_limit?.label || 'без лимита'}>
                         <i style={{ width: `${p.traffic_limit?.enabled ? Math.max(4, p.traffic_limit.percent || 0) : 0}%` }} />
                       </span>
@@ -735,17 +806,33 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
                   {(categories || []).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
                 </select>
                 <div className="policy-selects">
-                  <select className="category-select table-expiration-select" value={expirationPresetValue(p)} disabled={busyId === p.id} onChange={(e) => changePeerExpiration(p, e.target.value)}>
+                  <select className="category-select table-expiration-select" value={manualLimits[p.id]?.expiresDays !== undefined ? 'custom' : expirationPresetValue(p)} disabled={busyId === p.id} onChange={(e) => changePeerExpiration(p, e.target.value)}>
                     <option value="">Без срока</option>
                     {EXPIRATION_PRESETS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
                     <option value="custom">Вручную</option>
                   </select>
-                  <select className="category-select table-limit-select" value={trafficLimitPresetValue(p)} disabled={busyId === p.id} onChange={(e) => changePeerTrafficLimit(p, e.target.value)}>
+                  <select className="category-select table-limit-select" value={manualLimits[p.id]?.trafficGiB !== undefined ? 'custom' : trafficLimitPresetValue(p)} disabled={busyId === p.id} onChange={(e) => changePeerTrafficLimit(p, e.target.value)}>
                     <option value="">Без лимита</option>
                     {TRAFFIC_LIMIT_PRESETS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
                     <option value="custom">Вручную</option>
                   </select>
                 </div>
+                {(manualLimits[p.id]?.expiresDays !== undefined || manualLimits[p.id]?.trafficGiB !== undefined) && (
+                  <div className="manual-policy-row">
+                    {manualLimits[p.id]?.expiresDays !== undefined && (
+                      <label>
+                        <input className="inline-number compact-manual-limit" type="number" min="1" max="3650" value={manualLimits[p.id]?.expiresDays || ''} disabled={busyId === p.id} onChange={(e) => updatePeerManual(p.id, 'expiresDays', e.target.value)} />
+                        <button className="tiny-action-btn" type="button" disabled={busyId === p.id} onClick={(e) => { e.stopPropagation(); applyPeerManualExpiration(p); }}>дни</button>
+                      </label>
+                    )}
+                    {manualLimits[p.id]?.trafficGiB !== undefined && (
+                      <label>
+                        <input className="inline-number compact-manual-limit" type="number" min="1" max="100000" value={manualLimits[p.id]?.trafficGiB || ''} disabled={busyId === p.id} onChange={(e) => updatePeerManual(p.id, 'trafficGiB', e.target.value)} />
+                        <button className="tiny-action-btn" type="button" disabled={busyId === p.id} onClick={(e) => { e.stopPropagation(); applyPeerManualTraffic(p); }}>GiB</button>
+                      </label>
+                    )}
+                  </div>
+                )}
                 <small>
                   <span className={p.expiration?.expired ? 'expiration-bad' : p.expiration?.enabled ? 'expiration-soon' : ''}>{p.expiration?.label || 'без срока'}</span>
                   <span className={p.traffic_limit?.exceeded ? 'expiration-bad' : p.traffic_limit?.enabled ? 'expiration-soon' : ''}>{p.traffic_limit?.label || 'без лимита'}</span>
@@ -1278,28 +1365,16 @@ function expirationPresetValue(peer) {
   const secondsLeft = Number(peer?.expiration?.seconds_left || 0);
   if (!peer?.expiration?.enabled || secondsLeft <= 0) return '';
   const days = Math.max(1, Math.round(secondsLeft / 86400));
-  if (days <= 1) return '1';
-  if (days <= 7) return '7';
-  if (days <= 30) return '30';
-  if (days <= 90) return '90';
-  if (days <= 180) return '180';
-  if (days <= 365) return '365';
-  return 'custom';
+  const preset = EXPIRATION_PRESETS.find((item) => Number(item.value) === days);
+  return preset ? preset.value : 'custom';
 }
 
 function trafficLimitPresetValue(peer) {
   const limit = Number(peer?.traffic_limit?.limit_bytes || 0);
   if (!limit) return '';
   const gib = Math.round(limit / 1024 / 1024 / 1024);
-  if (gib <= 1) return '1';
-  if (gib <= 5) return '5';
-  if (gib <= 10) return '10';
-  if (gib <= 50) return '50';
-  if (gib <= 100) return '100';
-  if (gib <= 250) return '250';
-  if (gib <= 500) return '500';
-  if (gib <= 1000) return '1000';
-  return 'custom';
+  const preset = TRAFFIC_LIMIT_PRESETS.find((item) => Number(item.value) === gib);
+  return preset ? preset.value : 'custom';
 }
 
 function userTrafficLimitPresetValue(user) {
