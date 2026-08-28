@@ -17,6 +17,7 @@ AWG_PORT="${AWG_PORT:-443}"
 AWG_NETWORK="${AWG_NETWORK:-10.50.0.0/24}"
 AWG_CONFIG_PATH="${AWG_CONFIG_PATH:-/opt/amnezia/awg/${AWG_INTERFACE}.conf}"
 AWG_IMAGE="${AWG_IMAGE:-3wg-amneziawg-runtime:local}"
+AWG_ENABLE_31="${AWG_ENABLE_31:-1}"
 
 fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 need_cmd() { command -v "$1" >/dev/null 2>&1 || fail "Не найдено: $1"; }
@@ -72,6 +73,13 @@ write_backup "$AWG_HOST_CONFIG"
 
 WG_PRIVATE_KEY="$(docker run --rm --entrypoint sh "$WG_IMAGE" -lc 'wg genkey')"
 AWG_PRIVATE_KEY="$(docker run --rm --entrypoint sh "$AWG_IMAGE" -lc 'awg genkey')"
+AWG_31_BLOCK=""
+if [ "$AWG_ENABLE_31" = "1" ]; then
+  AWG_HEADER_PROTECTION_KEY="${AWG_HEADER_PROTECTION_KEY:-$(docker run --rm --entrypoint sh "$AWG_IMAGE" -lc 'awg genkey')}"
+  AWG_CONTENT_PADDING_ADDITION="${AWG_CONTENT_PADDING_ADDITION:-10-100}"
+  AWG_31_BLOCK="HeaderProtectionKey = ${AWG_HEADER_PROTECTION_KEY}
+ContentPaddingAddition = ${AWG_CONTENT_PADDING_ADDITION}"
+fi
 WG_ADDRESS="$(server_address "$WG_NETWORK")"
 AWG_ADDRESS="$(server_address "$AWG_NETWORK")"
 
@@ -91,11 +99,12 @@ Jmax = ${AWG_JMAX:-50}
 S1 = ${AWG_S1:-54}
 S2 = ${AWG_S2:-15}
 S3 = ${AWG_S3:-36}
-S4 = ${AWG_S4:-6}
+S4 = ${AWG_S4:-12}
 H1 = ${AWG_H1:-718013012-1127562760}
 H2 = ${AWG_H2:-1324176905-1725339417}
 H3 = ${AWG_H3:-1781297739-2028576119}
 H4 = ${AWG_H4:-2052615782-2092742079}
+$AWG_31_BLOCK
 Address = $AWG_ADDRESS
 ListenPort = $AWG_PORT
 EOF_AWGCONF

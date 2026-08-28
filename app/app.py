@@ -1388,7 +1388,17 @@ AllowedIPs = {ip_cidr}
 # 3WG V2: dynamic AWG params + peer delete
 # =========================
 
-AWG_KEYS = ["Jc", "Jmin", "Jmax", "S1", "S2", "S3", "S4", "H1", "H2", "H3", "H4"]
+AWG_REQUIRED_KEYS = ["Jc", "Jmin", "Jmax", "S1", "S2", "S3", "S4", "H1", "H2", "H3", "H4"]
+AWG_31_OPTIONAL_KEYS = [
+    "HeaderProtectionKey",
+    "ContentPaddingAddition",
+    "RekeyAfterTime",
+    "RekeyTimeout",
+    "RejectAfterTime",
+    "KeepaliveTimeout",
+    "MaxHandshakeAttempts",
+]
+AWG_KEYS = AWG_REQUIRED_KEYS + AWG_31_OPTIONAL_KEYS
 AWG_I_KEYS = ["I1", "I2", "I3", "I4", "I5"]
 
 
@@ -1414,11 +1424,16 @@ def awg_params_from_server():
     cfg = read_server_config("amneziawg")
 
     mask = {}
-    for k in AWG_KEYS:
+    for k in AWG_REQUIRED_KEYS:
         m = re.search(rf"^{re.escape(k)}\s*=\s*(.+?)\s*$", cfg, flags=re.M)
         if not m:
             raise RuntimeError(f"{k} not found in AWG server config")
         mask[k] = m.group(1).strip()
+
+    for k in AWG_31_OPTIONAL_KEYS:
+        m = re.search(rf"^{re.escape(k)}\s*=\s*(.+?)\s*$", cfg, flags=re.M)
+        if m and m.group(1).strip():
+            mask[k] = m.group(1).strip()
 
     i_values = {}
     for k in AWG_I_KEYS:
@@ -1524,7 +1539,9 @@ PrivateKey = {private_key}
         mask, i_values = awg_params_from_server()
 
         for k in AWG_KEYS:
-            text += f"{k} = {mask[k]}\n"
+            v = mask.get(k, "").strip()
+            if v:
+                text += f"{k} = {v}\n"
 
         for k in AWG_I_KEYS:
             v = i_values.get(k, "").strip()

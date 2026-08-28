@@ -36,6 +36,11 @@
 | `AWG_PORT` | `42300` | Публичный UDP-порт |
 | `AWG_CONFIG_PATH` | `/opt/amnezia/awg/awg0.conf` | Путь к конфигу внутри контейнера |
 | `AWG_NETWORK` | `10.8.1.0/24` | Пул адресов клиентов |
+| `AWG_ENABLE_31` | `1` | В auto-create provisioning добавлять AmneziaWG 3.1 параметры |
+| `AWG_HEADER_PROTECTION_KEY` | generated | Опционально задать свой `HeaderProtectionKey` для AmneziaWG 3.1 |
+| `AWG_CONTENT_PADDING_ADDITION` | `10-100` | Диапазон `ContentPaddingAddition` для AmneziaWG 3.1 |
+
+Панель читает параметры AmneziaWG из серверного конфига контейнера. Старые `Jc/Jmin/Jmax/S1-S4/H1-H4` обязательны, а новые 3.1-поля (`HeaderProtectionKey`, `ContentPaddingAddition`, timing-параметры) копируются в клиентский конфиг только если они реально есть на сервере.
 
 ## Пути данных
 
