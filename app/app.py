@@ -6094,7 +6094,10 @@ async def react_frontend_middleware(request: Request, call_next):
     if path.startswith('/assets/'):
         asset_file = dist / path.lstrip('/')
         if asset_file.exists() and asset_file.is_file():
-            return ReactFileResponse(asset_file)
+            return ReactFileResponse(
+                asset_file,
+                headers={'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0'},
+            )
 
     if (path in ('/', '/login', '/ui', '/users', '/apikeys', '/monitoring', '/abuse', '/updates', '/audit', '/backups', '/migration', '/tools/system', '/tools/health', '/tools/ping', '/tools/traceroute') or re.match(r'^/client/\d+$', path) or re.match(r'^/status/(wireguard|amneziawg)$', path) or re.match(r'^/traffic/(wireguard|amneziawg)$', path)) and index_file.exists():
         return ReactFileResponse(
