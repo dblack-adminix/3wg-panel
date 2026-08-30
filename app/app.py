@@ -1987,6 +1987,7 @@ def client_view(client_id: int, user=Depends(auth)):
 <div class="qrgrid">
   <div class="qrbox">
     <h2>QR для WireGuard app</h2>
+    <p>Native .conf для WireGuard.</p>
     <img src="/client/{client_id}/qr/native">
     <p>
       <a class="btn" href="/client/{client_id}/download">Скачать .conf</a>

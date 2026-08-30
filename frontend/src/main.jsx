@@ -1032,11 +1032,15 @@ function PeerStatus({ peer }) {
 }
 
 function QrModal({ peer, onClose }) {
+  const nativeTitle = peer.protocol === 'wireguard' ? 'WireGuard app' : 'AmneziaWG app';
+  const nativeHint = peer.protocol === 'wireguard'
+    ? 'Native .conf для WireGuard.'
+    : 'Native .conf для AmneziaWG.';
   const variants = [
     {
       key: 'native',
-      title: 'AmneziaWG app',
-      hint: 'Native .conf для AmneziaWG.',
+      title: nativeTitle,
+      hint: nativeHint,
       file: peer.links?.download,
       qr: peer.links?.qr_native_png,
       fileLabel: 'Скачать .conf',
@@ -1257,8 +1261,10 @@ function ClientPage({ clientId, onLogout, user }) {
 
           <section className="qr-grid">
             <QrPanel
-              title="QR для AmneziaWG app"
-              hint="Native .conf. Если QR не применяется, скачай .conf и импортируй файлом."
+              title={`QR для ${peer.protocol === 'wireguard' ? 'WireGuard' : 'AmneziaWG'} app`}
+              hint={peer.protocol === 'wireguard'
+                ? 'Native .conf для WireGuard. Если QR не применяется, скачай .conf и импортируй файлом.'
+                : 'Native .conf для AmneziaWG. Если QR не применяется, скачай .conf и импортируй файлом.'}
               img={peer.links?.qr_native_png}
               config={peer.links?.download}
               qr={peer.links?.qr_native_png}
