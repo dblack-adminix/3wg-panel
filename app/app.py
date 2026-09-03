@@ -1228,11 +1228,21 @@ def startup():
     start_auto_backup_worker()
 
 
-def slugify(value: str) -> str:
+def slugify(value: str, max_len: int = 80) -> str:
     value = value.strip()
     value = re.sub(r"[^a-zA-Z0-9а-яА-ЯёЁ._-]+", "_", value)
-    value = value.strip("._-")
-    return value or "client"
+    value = value.strip("._-") or "client"
+    if max_len > 0 and len(value) > max_len:
+        value = value[:max_len].rstrip("._-") or "client"
+    return value
+
+
+def amnezia_tunnel_name(c) -> str:
+    raw = str(c["name"] or "client")
+    clean = re.sub(r"[^a-zA-Z0-9а-яА-ЯёЁ._ -]+", " ", raw)
+    clean = re.sub(r"\s+", " ", clean).strip(" ._-")
+    base = slugify(clean or raw, max_len=22).replace("_", "-")
+    return f"3WG-{int(c['id'])}-{base}"[:32].rstrip(" ._-")
 
 
 def genkey(protocol: str) -> str:
@@ -1689,7 +1699,7 @@ def build_amnezia_vpn_payload(c) -> str:
             }
         ],
         "defaultContainer": "amnezia-awg",
-        "description": c["name"],
+        "description": amnezia_tunnel_name(c),
         "hostName": VPN_ENDPOINT_HOST,
         "dns1": dns1,
         "dns2": dns2,
