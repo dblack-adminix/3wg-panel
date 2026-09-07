@@ -10,6 +10,7 @@
   --cyan: #ff8c00;
   --orange: #ff8c00;
   --danger: #ff8c00;
+  --corner-glow: rgba(200, 255, 0, .075);
 }
 
 * { box-sizing: border-box; }
@@ -1854,4 +1855,26 @@ html[data-theme="light"] .migration-runner-status div {
   .migration-key-field {
     grid-column: auto;
   }
+}
+
+/* Keep the accent local to a corner, even on wide table panels. */
+html[data-theme="light"] {
+  --corner-glow: rgba(111, 149, 0, .045);
+}
+
+html :is(
+  .card:not(.config-card, .raw-card, .qr-card, .peer-hero-card):not(:has(.card, .stat-card, .peer-live-card)),
+  .stat-card,
+  .login-card,
+  .traffic-total,
+  .mobile-peer-card,
+  .user-hero-stats > div,
+  .user-peer-kpis > div,
+  .monitoring-status > div,
+  .update-version-grid > div,
+  .migration-runner-status > div,
+  .tool-summary-grid > div
+) {
+  background-image: radial-gradient(ellipse 220px 140px at top right, var(--corner-glow), transparent 100%);
+  background-repeat: no-repeat;
 }
