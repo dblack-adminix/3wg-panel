@@ -32,7 +32,6 @@ import {
   Users,
   Wifi,
   WifiOff,
-  Settings,
 } from 'lucide-react';
 import './styles.css';
 
@@ -203,20 +202,8 @@ function Sidebar({ onLogout, protocols: initialProtocols = null, user, mobileOpe
     return () => { alive = false; };
   }, [initialProtocols]);
 
-  const showWireGuardStatus = Boolean(protocols?.wireguard?.available);
-  const showAmneziaStatus = protocols?.amneziawg?.available !== false;
-  if (IS_EASY) {
-    const links = [
-      ['/', 'Пиры', Users], ['/status', 'Состояние', Activity],
-      ['/backups', 'Резервные копии', Download], ['/settings', 'Настройки', Settings],
-    ];
-    const settingsPaths = ['/settings', '/apikeys', '/monitoring', '/abuse', '/updates'];
-    return <aside className={`sidebar ${mobileOpen ? 'open' : ''}`}>
-      <div className="brand-block"><img src="/logogrin.png" alt={PRODUCT_NAME} /><strong className="easy-brand">Easy Core</strong></div>
-      {links.map(([href, label, Icon]) => <a key={href} className={`nav ${(path === href || (href === '/settings' && settingsPaths.includes(path)) || (href === '/status' && path.startsWith('/status/'))) ? 'active' : ''}`} href={href} onClick={onClose}><Icon size={16} /><span>{label}</span></a>)}
-      <button className="nav logout" onClick={onLogout}><LogOut size={14} /><span>Выход</span></button>
-    </aside>;
-  }
+  const showWireGuardStatus = IS_EASY || Boolean(protocols?.wireguard?.available);
+  const showAmneziaStatus = IS_EASY || protocols?.amneziawg?.available !== false;
   const toggleManagement = () => {
     setManagementOpen((open) => {
       const next = !open;
@@ -248,22 +235,22 @@ function Sidebar({ onLogout, protocols: initialProtocols = null, user, mobileOpe
       )}
       {isAdmin && managementOpen && (
         <div className="nav-group">
-          <a className={`nav ${path === '/users' ? 'active' : ''}`} href="/users" onClick={onClose}><Users size={14} /> <span>Пользователи</span></a>
+          {!IS_EASY && <a className={`nav ${path === '/users' ? 'active' : ''}`} href="/users" onClick={onClose}><Users size={14} /> <span>Пользователи</span></a>}
           <a className={`nav ${path === '/apikeys' ? 'active' : ''}`} href="/apikeys" onClick={onClose}><Key size={14} /> <span>API-ключи</span></a>
           <a className={`nav ${path === '/monitoring' ? 'active' : ''}`} href="/monitoring" onClick={onClose}><Activity size={14} /> <span>Мониторинг</span></a>
           <a className={`nav ${path === '/abuse' ? 'active' : ''}`} href="/abuse" onClick={onClose}><ShieldAlert size={14} /> <span>P2P Guard</span></a>
           <a className={`nav ${path === '/updates' ? 'active' : ''}`} href="/updates" onClick={onClose}><RefreshCw size={14} /> <span>Обновления</span></a>
-          <a className={`nav ${path === '/audit' ? 'active' : ''}`} href="/audit" onClick={onClose}><Terminal size={14} /> <span>Audit log</span></a>
+          {!IS_EASY && <a className={`nav ${path === '/audit' ? 'active' : ''}`} href="/audit" onClick={onClose}><Terminal size={14} /> <span>Audit log</span></a>}
           <a className={`nav ${path === '/backups' ? 'active' : ''}`} href="/backups" onClick={onClose}><Download size={14} /> <span>Backups</span></a>
-          <a className={`nav ${path === '/migration' ? 'active' : ''}`} href="/migration" onClick={onClose}><Send size={14} /> <span>Migration</span></a>
+          {!IS_EASY && <a className={`nav ${path === '/migration' ? 'active' : ''}`} href="/migration" onClick={onClose}><Send size={14} /> <span>Migration</span></a>}
         </div>
       )}
-      {isAdmin && (
+      {isAdmin && !IS_EASY && (
         <button className={`nav-title nav-title-toggle ${toolsOpen ? 'open' : ''}`} type="button" aria-expanded={toolsOpen} onClick={toggleTools}>
           <span>ИНСТРУМЕНТЫ</span><ChevronRight size={12} />
         </button>
       )}
-      {isAdmin && toolsOpen && (
+      {isAdmin && !IS_EASY && toolsOpen && (
         <div className="nav-group">
           <a className={`nav ${path === '/tools/system' ? 'active' : ''}`} href="/tools/system" onClick={onClose}><Activity size={14} /> <span>System Status</span></a>
           <a className={`nav ${path === '/tools/health' ? 'active' : ''}`} href="/tools/health" onClick={onClose}><ShieldCheck size={14} /> <span>Diagnostics</span></a>
@@ -4203,19 +4190,6 @@ function NetworkToolPage({ kind, onLogout, user }) {
 }
 
 
-function EasyOverview({ onLogout, user, settings = false }) {
-  const links = settings ? [
-    ['/apikeys', 'API-ключи', Key], ['/monitoring', 'Интеграции', Activity],
-    ['/abuse', 'P2P Guard', ShieldCheck], ['/updates', 'Обновления', RefreshCw],
-  ] : [
-    ['/status/wireguard', 'WireGuard', Network],
-    ['/status/amneziawg', 'AmneziaWG', ShieldCheck],
-  ];
-  return <Shell title={settings ? 'Настройки' : 'Состояние'} subtitle={PRODUCT_NAME} onLogout={onLogout} user={user}>
-    <nav className="easy-settings-list">{links.map(([href, label, Icon]) => <a href={href} key={href}><Icon size={20} /><span>{label}</span><ChevronRight size={18} /></a>)}</nav>
-  </Shell>;
-}
-
 function App() {
   const [auth, setAuth] = useState({ loading: true, ok: false, user: null });
   const check = async () => {
@@ -4229,7 +4203,8 @@ function App() {
   const isAdmin = Boolean(auth.user?.is_admin);
   if (IS_EASY) {
     const path = window.location.pathname;
-    if (path === '/settings' || path === '/status') return <EasyOverview onLogout={logout} user={auth.user} settings={path === '/settings'} />;
+    if (path === '/settings') return <MonitoringPage onLogout={logout} user={auth.user} />;
+    if (path === '/status') return <StatusPage protocol="amneziawg" onLogout={logout} user={auth.user} />;
     if (!['/', '/ui', '/login', '/apikeys', '/monitoring', '/abuse', '/updates', '/backups'].includes(path) && !/^\/(client\/\d+|status\/(wireguard|amneziawg))$/.test(path)) {
       return <Shell title="Страница недоступна" subtitle={PRODUCT_NAME} onLogout={logout} user={auth.user}><a className="back-link" href="/"><ChevronLeft size={16} />Пиры</a></Shell>;
     }

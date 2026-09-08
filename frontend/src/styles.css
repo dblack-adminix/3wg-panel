@@ -13,13 +13,8 @@
   --corner-glow: rgba(200, 255, 0, .075);
 }
 
-.easy-brand { display: block; padding: 8px 0; font-size: 18px; color: var(--text); }
 .status-item[href] { color: var(--text); text-decoration: none; }
 .status-item[href]:hover, .status-item[href]:focus-visible { border-color: var(--green); }
-.easy-settings-list { display: grid; max-width: 760px; }
-.easy-settings-list a { display: flex; align-items: center; gap: 14px; min-height: 64px; padding: 16px 8px; border-bottom: 1px solid var(--line); color: var(--text); text-decoration: none; }
-.easy-settings-list a span { flex: 1; }
-.easy-settings-list a:hover, .easy-settings-list a:focus-visible { color: var(--green); background: var(--card); }
 
 * { box-sizing: border-box; }
 html, body, #root { min-height: 100%; margin: 0; }
