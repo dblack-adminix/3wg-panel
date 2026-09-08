@@ -5,5 +5,10 @@ backups/
 clients/
 data/
 frontend/node_modules/
+frontend/dist-easy/
+easy-core/.env
+easy-core/data/
+easy-core/clients/
+easy-core/backups/
 __pycache__/
 *.pyc

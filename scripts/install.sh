@@ -6,6 +6,17 @@ BRANCH_DEFAULT="dev"
 INSTALL_DIR_DEFAULT="/opt/3wg-panel"
 IMAGE_DEFAULT="3wg-panel:local"
 CONTAINER_DEFAULT="3wg-panel"
+PANEL_EDITION="${PANEL_EDITION:-core}"
+case "$PANEL_EDITION" in
+  core) ;;
+  easy)
+    INSTALL_DIR_DEFAULT="/opt/3wg-easy-core"
+    IMAGE_DEFAULT="3wg-easy-core:local"
+    CONTAINER_DEFAULT="3wg-easy-core"
+    ;;
+  *) printf 'Unknown PANEL_EDITION\n' >&2; exit 1 ;;
+esac
+export VITE_PANEL_EDITION="$PANEL_EDITION"
 BIND_HOST_DEFAULT="127.0.0.1"
 BIND_PORT_DEFAULT="18080"
 
@@ -355,7 +366,7 @@ need_cmd curl
 need_cmd python3
 ensure_node_runtime
 
-say "3WG Core installer"
+say "3WG installer ($PANEL_EDITION)"
 REPO_URL="$(ask 'Git repository' "$REPO_URL_DEFAULT")"
 BRANCH="$(ask 'Git branch/tag' "$BRANCH_DEFAULT")"
 INSTALL_DIR="$(ask 'Install directory' "$INSTALL_DIR_DEFAULT")"
@@ -449,6 +460,7 @@ if [ -f .env ]; then
 fi
 
 cat > .env <<ENV
+PANEL_EDITION=$PANEL_EDITION
 PANEL_USER=$PANEL_USER
 PANEL_PASSWORD=$PANEL_PASSWORD
 PANEL_CONTAINER=$CONTAINER

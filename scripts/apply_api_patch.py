@@ -497,6 +497,8 @@ def api_prune_auto_backups(keep_last: int) -> list[str]:
 
 
 def api_maybe_run_auto_backup(force: bool = False) -> dict | None:
+    if IS_EASY:
+        return None
     settings = api_auto_backup_settings()
     if not settings['enabled']:
         return None
@@ -532,6 +534,8 @@ def auto_backup_worker() -> None:
 
 def start_auto_backup_worker() -> None:
     global AUTO_BACKUP_THREAD_STARTED
+    if IS_EASY:
+        return
     if AUTO_BACKUP_THREAD_STARTED:
         return
     AUTO_BACKUP_THREAD_STARTED = True

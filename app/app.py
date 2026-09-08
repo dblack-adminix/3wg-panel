@@ -126,7 +126,14 @@ AWG_MASK = {
 # Важно: для мобильного AmneziaWG убираем <r 2>, оставляем чистый <b ...>
 AWG_I1_NATIVE = "<b 0x858000010001000000000669636c6f756403636f6d0000010001c00c000100010000105a00044d583737>"
 
-app = FastAPI(title="3WG Core")
+from edition import IS_EASY, PRODUCT_NAME, easy_page_allowed, easy_route_allowed
+
+if IS_EASY and (PANEL_PASSWORD in ('', 'admin') or not os.getenv('SESSION_SECRET')):
+    raise RuntimeError('Easy Core requires PANEL_PASSWORD and SESSION_SECRET')
+if IS_EASY:
+    SESSION_COOKIE = '3wg_easy_session'
+
+app = FastAPI(title=PRODUCT_NAME)
 security = HTTPBasic(auto_error=False)
 
 
@@ -170,6 +177,8 @@ def verify_user_session(token: str) -> dict | None:
     username, role = parts[1], parts[2]
     if username == PANEL_USER and role == "admin":
         return admin_user()
+    if IS_EASY:
+        return None
     with db() as conn:
         row = conn.execute(
             "SELECT * FROM panel_users WHERE username = ? AND enabled = 1",
@@ -216,6 +225,8 @@ def user_payload(row) -> dict:
 def authenticate_user(username: str, password: str) -> dict | None:
     if secrets.compare_digest(username, PANEL_USER) and secrets.compare_digest(password, PANEL_PASSWORD):
         return admin_user()
+    if IS_EASY:
+        return None
     with db() as conn:
         row = conn.execute(
             "SELECT * FROM panel_users WHERE username = ? AND enabled = 1",
@@ -6096,8 +6107,15 @@ from fastapi.responses import FileResponse as ReactFileResponse
 @app.middleware('http')
 async def react_frontend_middleware(request: Request, call_next):
     path = request.url.path
+    if IS_EASY and path.startswith('/api/') and not easy_route_allowed(path):
+        return JSONResponse({'detail': 'Not found'}, status_code=404)
+    if IS_EASY and not path.startswith(('/api/', '/assets/', '/client/')) and path not in ('/health', '/metrics', '/protocol-health', '/logout', '/logogrin.png') and not easy_page_allowed(path):
+        return JSONResponse({'detail': 'Not found'}, status_code=404)
     dist = APP_DIR / 'frontend' / 'dist'
     index_file = dist / 'index.html'
+
+    if IS_EASY and easy_page_allowed(path) and index_file.exists():
+        return ReactFileResponse(index_file, media_type='text/html', headers={'Cache-Control': 'no-store'})
 
     if path == '/logogrin.png':
         logo_file = APP_DIR / 'static' / 'logogrin.png'
@@ -6116,7 +6134,7 @@ async def react_frontend_middleware(request: Request, call_next):
                 headers={'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0'},
             )
 
-    if (path in ('/', '/login', '/ui', '/users', '/apikeys', '/monitoring', '/abuse', '/updates', '/audit', '/backups', '/migration', '/tools/system', '/tools/health', '/tools/ping', '/tools/traceroute') or re.match(r'^/client/\d+$', path) or re.match(r'^/status/(wireguard|amneziawg)$', path) or re.match(r'^/traffic/(wireguard|amneziawg)$', path)) and index_file.exists():
+    if (path in ('/', '/login', '/ui', '/settings', '/users', '/apikeys', '/monitoring', '/abuse', '/updates', '/audit', '/backups', '/migration', '/tools/system', '/tools/health', '/tools/ping', '/tools/traceroute') or re.match(r'^/client/\d+$', path) or re.match(r'^/status/(wireguard|amneziawg)$', path) or re.match(r'^/traffic/(wireguard|amneziawg)$', path)) and index_file.exists():
         return ReactFileResponse(
             index_file,
             media_type='text/html; charset=utf-8',
@@ -6332,6 +6350,8 @@ def api_prune_auto_backups(keep_last: int) -> list[str]:
 
 
 def api_maybe_run_auto_backup(force: bool = False) -> dict | None:
+    if IS_EASY:
+        return None
     settings = api_auto_backup_settings()
     if not settings['enabled']:
         return None
@@ -6367,6 +6387,8 @@ def auto_backup_worker() -> None:
 
 def start_auto_backup_worker() -> None:
     global AUTO_BACKUP_THREAD_STARTED
+    if IS_EASY:
+        return
     if AUTO_BACKUP_THREAD_STARTED:
         return
     AUTO_BACKUP_THREAD_STARTED = True
@@ -9462,6 +9484,11 @@ def prometheus_metrics(request: Request):
         raise HTTPException(status_code=401, detail="Unauthorized")
     return PlainTextResponse(prometheus_metrics_payload(), media_type="text/plain; version=0.0.4; charset=utf-8")
 # === 3WG PROMETHEUS METRICS END ===
+
+
+# Restrict the actual route table, including legacy mutation endpoints.
+if IS_EASY:
+    app.router.routes[:] = [route for route in app.router.routes if easy_route_allowed(getattr(route, 'path', ''))]
 
 # === 3WG DASHBOARD MODEL API START ===
 # API-модель экрана для будущего React: React должен повторять текущий красивый /.

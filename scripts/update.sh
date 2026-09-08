@@ -136,6 +136,18 @@ BIND_PORT="${BIND_PORT:-$BIND_PORT_DEFAULT}"
 [ -f "$INSTALL_DIR/.env" ] || fail "Не найден $INSTALL_DIR/.env. Сначала выполните install.sh"
 
 cd "$INSTALL_DIR"
+PANEL_EDITION="$(awk -F= '$1 == "PANEL_EDITION" {gsub(/\r/, "", $2); print $2; exit}' .env)"
+PANEL_EDITION="${PANEL_EDITION:-core}"
+case "$PANEL_EDITION" in
+  core) ;;
+  easy)
+    IMAGE="${IMAGE_EASY:-3wg-easy-core:local}"
+    CONTAINER="$(awk -F= '$1 == "PANEL_CONTAINER" {print $2; exit}' .env)"
+    CONTAINER="${CONTAINER:-3wg-easy-core}"
+    ;;
+  *) fail "Unknown PANEL_EDITION" ;;
+esac
+export VITE_PANEL_EDITION="$PANEL_EDITION"
 mkdir -p backups/update
 BACKUP="backups/update/3wg-panel.update.$(date +%F_%H-%M-%S).tgz"
 

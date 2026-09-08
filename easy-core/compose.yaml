@@ -1,0 +1,19 @@
+name: 3wg-easy-core
+services:
+  panel:
+    build:
+      context: ..
+      dockerfile: easy-core/Dockerfile
+    image: 3wg-easy-core:local
+    container_name: 3wg-easy-core
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PANEL_EDITION: easy
+    ports:
+      - "127.0.0.1:${EASY_HTTP_PORT:-18081}:18080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./data:/app/data
+      - ./clients:/app/clients
+      - ./backups:/app/backups

@@ -32,8 +32,13 @@ import {
   Users,
   Wifi,
   WifiOff,
+  Settings,
 } from 'lucide-react';
 import './styles.css';
+
+const IS_EASY = import.meta.env.VITE_PANEL_EDITION === 'easy';
+const PRODUCT_NAME = IS_EASY ? '3WG Easy Core' : '3WG Core';
+document.title = PRODUCT_NAME;
 
 const getInitialTheme = () => {
   try {
@@ -163,8 +168,8 @@ function Login({ onLogin }) {
   return (
     <main className="login-page">
       <form className="login-card" onSubmit={submit}>
-        <div className="badge">3WG CORE</div>
-        <img className="login-logo" src="/logogrin.png" alt="3WG Core" />
+        <div className="badge">{PRODUCT_NAME}</div>
+        <img className="login-logo" src="/logogrin.png" alt={PRODUCT_NAME} />
         <p className="login-subtitle">Централизованная платформа управления WireGuard и AmneziaWG</p>
         {error && <div className="login-error">{error}</div>}
         <label>Логин</label>
@@ -200,6 +205,18 @@ function Sidebar({ onLogout, protocols: initialProtocols = null, user, mobileOpe
 
   const showWireGuardStatus = Boolean(protocols?.wireguard?.available);
   const showAmneziaStatus = protocols?.amneziawg?.available !== false;
+  if (IS_EASY) {
+    const links = [
+      ['/', 'Пиры', Users], ['/status', 'Состояние', Activity],
+      ['/backups', 'Резервные копии', Download], ['/settings', 'Настройки', Settings],
+    ];
+    const settingsPaths = ['/settings', '/apikeys', '/monitoring', '/abuse', '/updates'];
+    return <aside className={`sidebar ${mobileOpen ? 'open' : ''}`}>
+      <div className="brand-block"><img src="/logogrin.png" alt={PRODUCT_NAME} /><strong className="easy-brand">Easy Core</strong></div>
+      {links.map(([href, label, Icon]) => <a key={href} className={`nav ${(path === href || (href === '/settings' && settingsPaths.includes(path)) || (href === '/status' && path.startsWith('/status/'))) ? 'active' : ''}`} href={href} onClick={onClose}><Icon size={16} /><span>{label}</span></a>)}
+      <button className="nav logout" onClick={onLogout}><LogOut size={14} /><span>Выход</span></button>
+    </aside>;
+  }
   const toggleManagement = () => {
     setManagementOpen((open) => {
       const next = !open;
@@ -288,7 +305,7 @@ function Shell({ title, subtitle, onLogout, protocols, user, children }) {
         </header>
         {children}
         <footer className="app-footer">
-          <div>© 2026 3WG Core. Все права защищены. Связь: <a href="https://t.me/vorchiks" target="_blank" rel="noreferrer">@vorchiks</a>, <a href="mailto:vitaly@goreev.ru">vitaly@goreev.ru</a>, <a href="https://3wg.ru" target="_blank" rel="noreferrer">3wg.ru</a>, <a href="https://github.com/dblack-adminix/3wg-panel" target="_blank" rel="noreferrer">GitHub</a>.</div>
+          <div>© 2026 {PRODUCT_NAME}. Все права защищены. Связь: <a href="https://t.me/vorchiks" target="_blank" rel="noreferrer">@vorchiks</a>, <a href="mailto:vitaly@goreev.ru">vitaly@goreev.ru</a>, <a href="https://3wg.ru" target="_blank" rel="noreferrer">3wg.ru</a>, <a href="https://github.com/dblack-adminix/3wg-panel" target="_blank" rel="noreferrer">GitHub</a>.</div>
           <VersionLine />
         </footer>
       </main>
@@ -2083,7 +2100,7 @@ function Dashboard({ onLogout, user }) {
   const available = Object.values(state.protocols || {}).filter((p) => p.available).length;
 
   return (
-    <Shell title="3WG Core" subtitle={user?.is_admin ? 'WireGuard & AmneziaWG Management Platform' : 'Личный кабинет peer-ов'} onLogout={onLogout} protocols={state.protocols} user={user}>
+    <Shell title={PRODUCT_NAME} subtitle={user?.is_admin ? 'WireGuard & AmneziaWG Management Platform' : 'Личный кабинет peer-ов'} onLogout={onLogout} protocols={state.protocols} user={user}>
       {state.error && <div className="warning">{state.error}</div>}
       {!user?.is_admin ? (
         <UserHome state={state} online={online} available={available} onRefresh={load} user={user} />
@@ -2097,7 +2114,7 @@ function Dashboard({ onLogout, user }) {
       </div>
       <div className="dashboard-row">
         <CreateClient protocols={state.protocols} categories={state.categories} quota={state.quota} isAdmin={Boolean(user?.is_admin)} onCreated={load} />
-        {user?.is_admin && <TrafficWidget peers={state.peers} protocols={state.protocols} history={trafficHistory} />}
+        {user?.is_admin && (IS_EASY ? <section className="card"><h2>Подключения</h2><div className="status-grid">{Object.values(state.protocols).map(p => <a className="status-item" href={`/status/${p.protocol}`} key={p.protocol}><b>{p.title}</b><span>{p.available ? 'Доступен' : 'Недоступен'}</span><small>{p.endpoint}</small></a>)}</div></section> : <TrafficWidget peers={state.peers} protocols={state.protocols} history={trafficHistory} />)}
       </div>
       <ClientsTable peers={state.peers} categories={state.categories} isAdmin={Boolean(user?.is_admin)} onRefresh={load} />
       {user?.is_admin && <section className="card status-card" id="status"><h2>Статус</h2><div className="status-grid">{Object.values(state.protocols || {}).map((p) => <div className="status-item" key={p.protocol}><b>{p.title}</b><span className={p.available ? 'status-ok' : 'status-bad'}>{p.available ? <Wifi size={14} /> : <WifiOff size={14} />}{p.available ? 'ONLINE' : 'OFFLINE'}</span><small>{p.container} / {p.interface}</small></div>)}</div></section>}
@@ -2574,7 +2591,7 @@ function BackupsPage({ onLogout, user }) {
         {error && <div className="warning">{error}</div>}
       </section>
 
-      <section className="card backup-auto-card">
+      {!IS_EASY && <section className="card backup-auto-card">
         <div className="section-head">
           <div>
             <h2>Auto backup</h2>
@@ -2632,7 +2649,7 @@ function BackupsPage({ onLogout, user }) {
             <button className="orange-btn" type="button" disabled={busy === 'auto'} onClick={() => saveAutoBackup(true)}><Download size={14} /> Создать сейчас</button>
           </div>
         </div>
-      </section>
+      </section>}
 
       <section className="card">
         <div className="section-head">
@@ -4186,6 +4203,19 @@ function NetworkToolPage({ kind, onLogout, user }) {
 }
 
 
+function EasyOverview({ onLogout, user, settings = false }) {
+  const links = settings ? [
+    ['/apikeys', 'API-ключи', Key], ['/monitoring', 'Интеграции', Activity],
+    ['/abuse', 'P2P Guard', ShieldCheck], ['/updates', 'Обновления', RefreshCw],
+  ] : [
+    ['/status/wireguard', 'WireGuard', Network],
+    ['/status/amneziawg', 'AmneziaWG', ShieldCheck],
+  ];
+  return <Shell title={settings ? 'Настройки' : 'Состояние'} subtitle={PRODUCT_NAME} onLogout={onLogout} user={user}>
+    <nav className="easy-settings-list">{links.map(([href, label, Icon]) => <a href={href} key={href}><Icon size={20} /><span>{label}</span><ChevronRight size={18} /></a>)}</nav>
+  </Shell>;
+}
+
 function App() {
   const [auth, setAuth] = useState({ loading: true, ok: false, user: null });
   const check = async () => {
@@ -4197,6 +4227,13 @@ function App() {
   if (auth.loading) return <div className="boot">3WG</div>;
   if (!auth.ok) return <Login onLogin={check} />;
   const isAdmin = Boolean(auth.user?.is_admin);
+  if (IS_EASY) {
+    const path = window.location.pathname;
+    if (path === '/settings' || path === '/status') return <EasyOverview onLogout={logout} user={auth.user} settings={path === '/settings'} />;
+    if (!['/', '/ui', '/login', '/apikeys', '/monitoring', '/abuse', '/updates', '/backups'].includes(path) && !/^\/(client\/\d+|status\/(wireguard|amneziawg))$/.test(path)) {
+      return <Shell title="Страница недоступна" subtitle={PRODUCT_NAME} onLogout={logout} user={auth.user}><a className="back-link" href="/"><ChevronLeft size={16} />Пиры</a></Shell>;
+    }
+  }
   const clientMatch = window.location.pathname.match(/^\/client\/(\d+)$/);
   const statusMatch = window.location.pathname.match(/^\/status\/(wireguard|amneziawg)$/);
   const trafficMatch = window.location.pathname.match(/^\/traffic\/(wireguard|amneziawg)$/);
