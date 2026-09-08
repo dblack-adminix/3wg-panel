@@ -1859,7 +1859,7 @@ html[data-theme="light"] .migration-runner-status div {
 
 /* Keep the accent local to a corner, even on wide table panels. */
 html[data-theme="light"] {
-  --corner-glow: rgba(111, 149, 0, .045);
+  --corner-glow: rgba(139, 181, 0, .14);
 }
 
 html :is(
