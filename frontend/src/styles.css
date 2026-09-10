@@ -621,6 +621,7 @@ html[data-theme="light"] .tiny-action-btn { border-color: #a3c900; background: #
 .icon-button svg { display: block; flex: 0 0 auto; width: 14px; height: 14px; stroke-width: 2.25; }
 .icon-button.open { background: #ff8c00; color: #111; }
 .icon-button.download { background: #2a1d00; border-color: #7a4d00; color: #ff8c00; }
+.icon-button.download-vpn { background: #00272b; border-color: #007b86; color: #22d3c5; }
 .icon-button.qr { background: #1d2600; border-color: #5a7300; color: var(--green); }
 .icon-button.block { background: #2a1e0d; border-color: #8f5b13; color: #ffb44a; }
 .icon-button.enable { background: #161d00; border-color: #5a7300; color: var(--green); }
@@ -1280,6 +1281,11 @@ html[data-theme="light"] .icon-button.download {
   background: #fff7ed;
   border-color: #fed7aa;
   color: #c2410c;
+}
+html[data-theme="light"] .icon-button.download-vpn {
+  background: #ecfeff;
+  border-color: #67e8f9;
+  color: #0e7490;
 }
 html[data-theme="light"] .icon-button.open {
   background: var(--orange);
