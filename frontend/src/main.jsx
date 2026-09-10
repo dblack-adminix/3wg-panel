@@ -761,7 +761,10 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
                 </td>
                 <td className="actions-cell">
                   <div className="actions">
-                    <IconButton href={p.links?.download || '#'} title="Скачать config" tone="download"><Download size={14} /></IconButton>
+                    <IconButton href={p.links?.download || '#'} title="Скачать .conf" tone="download"><Download size={14} /></IconButton>
+                    {p.links?.download_vpn && (
+                      <IconButton href={p.links.download_vpn} title="Скачать .vpn для AmneziaVPN" tone="download"><Download size={14} /></IconButton>
+                    )}
                     <IconButton onClick={() => setQrPeer(p)} title="Показать QR" tone="qr"><QrCode size={14} /></IconButton>
                     {p.enabled ? (
                       <IconButton onClick={() => askPeerAction(p, 'disable')} title="Отключить peer" tone="block" disabled={busyId === p.id}><Power size={14} /></IconButton>
@@ -844,7 +847,10 @@ function ClientsTable({ peers, categories, isAdmin, onRefresh }) {
               </div>
             )}
             <div className="mobile-peer-actions">
-              <IconButton href={p.links?.download || '#'} title="Скачать config" tone="download"><Download size={14} /></IconButton>
+              <IconButton href={p.links?.download || '#'} title="Скачать .conf" tone="download"><Download size={14} /></IconButton>
+              {p.links?.download_vpn && (
+                <IconButton href={p.links.download_vpn} title="Скачать .vpn для AmneziaVPN" tone="download"><Download size={14} /></IconButton>
+              )}
               <IconButton onClick={() => setQrPeer(p)} title="Показать QR" tone="qr"><QrCode size={14} /></IconButton>
               {p.enabled ? (
                 <IconButton onClick={() => askPeerAction(p, 'disable')} title="Отключить peer" tone="block" disabled={busyId === p.id}><Power size={14} /></IconButton>
