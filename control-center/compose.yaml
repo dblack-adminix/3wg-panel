@@ -1,0 +1,13 @@
+services:
+  control-center:
+    build:
+      context: ..
+      dockerfile: control-center/Dockerfile
+    image: 3wg-control-center:local
+    container_name: 3wg-control-center
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "127.0.0.1:18082:18082"
+    volumes:
+      - ./data:/app/data

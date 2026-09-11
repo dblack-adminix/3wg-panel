@@ -96,6 +96,8 @@ Installer спросит:
 
 Установка и безопасная замена полной редакции на **3WG Easy Core**: [easy-core/README.md](easy-core/README.md)
 
+Центральное управление несколькими Core/Easy Core: [3WG Control Center](control-center/README.md)
+
 ## Конфигурация
 
 Для ручной установки скопируйте `.env.example` в `.env` и измените значения. Полное описание переменных: [docs/CONFIGURATION.md](docs/CONFIGURATION.md)
@@ -142,7 +144,7 @@ docs/                документация
 
 ## Версия
 
-Текущая версия продукта: `v1.4.5`
+Текущая версия продукта: `v1.5.0`
 
 Упрощённая редакция **3WG Easy Core**: [установка и состав](easy-core/README.md).
 Существующие установки по умолчанию остаются расширенной редакцией Core.
