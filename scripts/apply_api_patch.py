@@ -1700,7 +1700,8 @@ def api_auth_me(request: Request):
 
 @app.get('/api/version')
 def api_version(user=Depends(api_require_auth)):
-    return cached_version_status()
+    payload = cached_version_status()
+    return {**payload, 'edition': 'easy' if IS_EASY else 'core', 'product_name': PRODUCT_NAME}
 
 
 @app.get('/api/update/status')

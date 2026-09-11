@@ -27,7 +27,10 @@
 ## Установка
 
 ```bash
-git clone --branch v1.5.0 --depth 1 https://github.com/dblack-adminix/3wg-panel.git /opt/3wg-control-center
+sudo apt update
+sudo apt install -y git docker.io docker-compose openssl
+sudo systemctl enable --now docker
+git clone --branch v1.5.1 --depth 1 https://github.com/dblack-adminix/3wg-panel.git /opt/3wg-control-center
 cd /opt/3wg-control-center/control-center
 sudo bash install.sh
 ```
@@ -53,7 +56,7 @@ curl -fsS https://control.example.com/health
 ```bash
 cd /opt/3wg-control-center
 sudo git fetch --tags
-sudo git checkout v1.5.0
+sudo git checkout v1.5.1
 cd control-center
 sudo docker compose up -d --build
 ```

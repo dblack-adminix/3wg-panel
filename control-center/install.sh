@@ -4,7 +4,14 @@ set -euo pipefail
 BASE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$BASE"
 command -v docker >/dev/null || { echo "Docker не установлен" >&2; exit 1; }
-docker compose version >/dev/null || { echo "Docker Compose plugin не установлен" >&2; exit 1; }
+if docker compose version >/dev/null 2>&1; then
+  compose=(docker compose)
+elif command -v docker-compose >/dev/null 2>&1; then
+  compose=(docker-compose)
+else
+  echo "Docker Compose не установлен" >&2
+  exit 1
+fi
 
 read -r -p "Control Center username [admin]: " user
 user="${user:-admin}"
@@ -21,7 +28,7 @@ umask 077
 printf 'CONTROL_USER=%s\nCONTROL_PASSWORD=%s\nSESSION_SECRET=%s\nNODE_ENCRYPTION_KEY=%s\nCONTROL_DB=/app/data/control.db\nSESSION_HTTPS_ONLY=1\n' \
   "$user" "$password" "$session_secret" "$fernet_key" > .env
 mkdir -p data
-docker compose up -d --build
+"${compose[@]}" up -d --build
 
 echo
 echo "3WG Control Center запущен на http://127.0.0.1:18082"

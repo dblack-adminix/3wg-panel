@@ -79,7 +79,7 @@ def api_dashboard_payload(user: dict) -> dict:
     return {
         'ok': True,
         'screen': 'dashboard',
-        'title': '3WG Core',
+        'title': PRODUCT_NAME,
         'subtitle': f"Node / {PANEL_HOST}",
         'panel_host': PANEL_HOST,
         'endpoint_host': VPN_ENDPOINT_HOST,
