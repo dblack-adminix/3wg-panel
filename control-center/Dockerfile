@@ -4,6 +4,7 @@ COPY control-center/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY control-center/app.py ./app.py
 COPY control-center/static ./static
+COPY app/static/logogrin.png ./static/logo.png
 COPY VERSION ./VERSION
 RUN mkdir -p /app/data
 EXPOSE 18082

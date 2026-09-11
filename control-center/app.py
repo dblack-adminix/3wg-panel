@@ -14,7 +14,7 @@ from urllib.parse import urlparse
 
 from cryptography.fernet import Fernet, InvalidToken
 from fastapi import Cookie, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 
 
 BASE = Path(__file__).resolve().parent
@@ -92,11 +92,13 @@ def clean_url(value):
     return url
 
 
-def node_request(url, key, path, timeout=12):
-    request = urllib.request.Request(url + path, headers={"X-API-Key": key, "Accept": "application/json", "User-Agent": "3WG-Control-Center/1"})
+def node_request(url, key, path, timeout=12, method="GET", payload=None, raw=False):
+    body = json.dumps(payload).encode() if payload is not None else None
+    request = urllib.request.Request(url + path, data=body, method=method, headers={"X-API-Key": key, "Accept": "*/*" if raw else "application/json", "Content-Type": "application/json", "User-Agent": "3WG-Control-Center/1"})
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            return json.loads(response.read().decode())
+            content = response.read()
+            return (content, response.headers.get("Content-Type", "application/octet-stream"), response.headers.get("Content-Disposition")) if raw else json.loads(content.decode())
     except urllib.error.HTTPError as exc:
         raise RuntimeError(f"HTTP {exc.code} для {path}") from exc
     except Exception as exc:
@@ -138,6 +140,31 @@ def public_node(row):
         "created_at": row["created_at"], "last_sync_at": row["last_sync_at"],
         "last_ok_at": row["last_ok_at"], "last_error": row["last_error"], "snapshot": snapshot,
     }
+
+
+def get_node(node_id):
+    with db() as conn:
+        row = conn.execute("SELECT * FROM nodes WHERE id=?", (node_id,)).fetchone()
+    if not row:
+        raise HTTPException(404, "Нода не найдена")
+    return row
+
+
+def node_key(row):
+    try:
+        return fernet.decrypt(row["api_key_enc"].encode()).decode()
+    except InvalidToken as exc:
+        raise HTTPException(500, "Не удалось расшифровать ключ ноды") from exc
+
+
+async def execute_node(node_id, path, method="POST", payload=None):
+    row = get_node(node_id)
+    try:
+        result = await asyncio.to_thread(node_request, row["url"], node_key(row), path, 30, method, payload)
+    except RuntimeError as exc:
+        raise HTTPException(502, f"Ошибка ноды: {exc}") from exc
+    await asyncio.to_thread(sync_node, row)
+    return result
 
 
 @app.get("/health")
@@ -229,6 +256,47 @@ def delete_node(node_id: int, threewg_control_session: str | None = Cookie(defau
     if not deleted:
         raise HTTPException(404, "Нода не найдена")
     return {"ok": True}
+
+
+@app.post("/api/nodes/{node_id}/peers")
+async def create_peer(node_id: int, request: Request, threewg_control_session: str | None = Cookie(default=None)):
+    require_auth(threewg_control_session)
+    data = await request.json()
+    return await execute_node(node_id, "/api/peers", payload={
+        "name": str(data.get("name", "")).strip()[:100],
+        "protocols": [p for p in data.get("protocols", []) if p in {"wireguard", "amneziawg"}],
+        "expires_at": data.get("expires_at"),
+        "traffic_limit_bytes": data.get("traffic_limit_bytes", 0),
+    })
+
+
+@app.post("/api/nodes/{node_id}/peers/{peer_id}/{action}")
+async def peer_action(node_id: int, peer_id: int, action: str, threewg_control_session: str | None = Cookie(default=None)):
+    require_auth(threewg_control_session)
+    if action not in {"enable", "disable", "traffic-reset"}:
+        raise HTTPException(400, "Недопустимое действие")
+    return await execute_node(node_id, f"/api/peers/{peer_id}/{action}")
+
+
+@app.delete("/api/nodes/{node_id}/peers/{peer_id}")
+async def delete_peer(node_id: int, peer_id: int, threewg_control_session: str | None = Cookie(default=None)):
+    require_auth(threewg_control_session)
+    return await execute_node(node_id, f"/api/peers/{peer_id}", method="DELETE")
+
+
+@app.get("/api/nodes/{node_id}/peers/{peer_id}/download/{kind}")
+async def download_peer(node_id: int, peer_id: int, kind: str, threewg_control_session: str | None = Cookie(default=None)):
+    require_auth(threewg_control_session)
+    paths = {"conf": f"/client/{peer_id}/download", "vpn": f"/client/{peer_id}/download-vpn", "qr": f"/client/{peer_id}/qr/native/download", "qr-vpn": f"/client/{peer_id}/qr/amnezia-vpn/download"}
+    if kind not in paths:
+        raise HTTPException(400, "Неизвестный формат")
+    row = get_node(node_id)
+    try:
+        body, content_type, disposition = await asyncio.to_thread(node_request, row["url"], node_key(row), paths[kind], 30, "GET", None, True)
+    except RuntimeError as exc:
+        raise HTTPException(502, f"Ошибка ноды: {exc}") from exc
+    headers = {"Content-Disposition": disposition} if disposition else {}
+    return Response(body, media_type=content_type, headers=headers)
 
 
 @app.get("/{path:path}")

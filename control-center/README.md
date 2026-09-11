@@ -12,8 +12,12 @@
 - статусы нод и протоколов;
 - версии, endpoint, пиры и ошибки связи;
 - ручная синхронизация одной или всех нод.
+- единая таблица пиров с поиском и фильтром по серверу;
+- создание WireGuard и AmneziaWG пиров на выбранной ноде;
+- включение, отключение, сброс трафика и удаление;
+- централизованное скачивание `.conf` и `.vpn` без передачи Node API Key браузеру.
 
-Управление пирами, очередь команд, массовые операции и миграция войдут в следующие этапы после стабилизации инвентаризации.
+Очередь команд, массовые операции и миграция войдут в следующие этапы.
 
 ## Подготовка управляемой ноды
 
@@ -30,7 +34,7 @@
 sudo apt update
 sudo apt install -y git docker.io docker-compose openssl
 sudo systemctl enable --now docker
-git clone --branch v1.5.2 --depth 1 https://github.com/dblack-adminix/3wg-panel.git /opt/3wg-control-center
+git clone --branch v1.6.0 --depth 1 https://github.com/dblack-adminix/3wg-panel.git /opt/3wg-control-center
 cd /opt/3wg-control-center/control-center
 sudo bash install.sh
 ```
@@ -56,7 +60,7 @@ curl -fsS https://control.example.com/health
 ```bash
 cd /opt/3wg-control-center
 sudo git fetch --tags
-sudo git checkout v1.5.2
+sudo git checkout v1.6.0
 cd control-center
 sudo docker compose up -d --build
 ```
