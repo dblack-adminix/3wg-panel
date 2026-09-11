@@ -172,6 +172,16 @@ def health():
     return {"status": "ok", "service": "3wg-control-center"}
 
 
+@app.get("/logo.png")
+def logo():
+    return FileResponse(BASE / "static" / "logo.png")
+
+
+@app.get("/core.css")
+def core_styles():
+    return FileResponse(BASE / "static" / "core.css", media_type="text/css", headers={"Cache-Control": "no-cache"})
+
+
 @app.post("/api/login")
 async def login(request: Request):
     data = await request.json()
