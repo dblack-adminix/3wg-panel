@@ -1263,9 +1263,9 @@ html[data-theme="light"] .owner-badge {
   color: #334155;
 }
 html[data-theme="light"] .proto {
-  background: #fff7ed;
-  border-color: #fed7aa;
-  color: #c2410c;
+  background: #ecfeff;
+  border-color: #67e8f9;
+  color: #0e7490;
 }
 html[data-theme="light"] .proto-wireguard {
   background: #fff1f2;
