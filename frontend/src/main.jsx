@@ -324,6 +324,15 @@ function CreateClient({ protocols, categories, quota, isAdmin, onCreated }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const allProtocolsAvailable = Boolean(available && wgAvailable);
+  const availableLabels = [wgAvailable && 'WireGuard', available && 'AmneziaWG'].filter(Boolean);
+  const unavailableLabels = [!wgAvailable && 'WireGuard', !available && 'AmneziaWG'].filter(Boolean);
+
+  useEffect(() => {
+    if (available !== undefined && wgAvailable !== undefined) {
+      setWireguard(Boolean(wgAvailable));
+      setAmnezia(Boolean(available));
+    }
+  }, [available, wgAvailable]);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -381,7 +390,7 @@ function CreateClient({ protocols, categories, quota, isAdmin, onCreated }) {
         )}
         <div className="protocol-row">
           <label className={!wgAvailable ? 'muted' : ''}><input type="checkbox" checked={wireguard} disabled={!wgAvailable} onChange={(e) => setWireguard(e.target.checked)} /> WireGuard {!wgAvailable && <span className="pill bad">не установлен</span>}</label>
-          <label><input type="checkbox" checked={amnezia} disabled={!available} onChange={(e) => setAmnezia(e.target.checked)} /> AmneziaWG</label>
+          <label className={!available ? 'muted' : ''}><input type="checkbox" checked={amnezia} disabled={!available} onChange={(e) => setAmnezia(e.target.checked)} /> AmneziaWG {!available && <span className="pill bad">не установлен</span>}</label>
         </div>
         <button className="orange-btn" disabled={loading || !name.trim() || (quota?.limited && quota.remaining <= 0)}><Plus size={15} /> Создать клиента</button>
         {error && <div className="warning">{error}</div>}
@@ -396,8 +405,8 @@ function CreateClient({ protocols, categories, quota, isAdmin, onCreated }) {
         ) : (
           <>
             <b>На этой ноде доступен не весь набор протоколов.</b>
-            Доступно: {available ? 'AmneziaWG' : '—'}<br />
-            Не установлено: {!wgAvailable ? 'WireGuard' : '—'}
+            Доступно: {availableLabels.join(' и ') || '—'}<br />
+            Не установлено: {unavailableLabels.join(' и ') || '—'}
           </>
         )}
       </div>
