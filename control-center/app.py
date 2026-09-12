@@ -25,6 +25,7 @@ SESSION_SECRET = os.getenv("SESSION_SECRET", "")
 FERNET_KEY = os.getenv("NODE_ENCRYPTION_KEY", "")
 COOKIE_SECURE = os.getenv("SESSION_HTTPS_ONLY", "1") == "1"
 COOKIE = "threewg_control_session"
+CONTROL_VERSION = (BASE / "VERSION").read_text(encoding="utf-8").strip() if (BASE / "VERSION").exists() else "v0.0.0"
 
 if not PASSWORD or not SESSION_SECRET or not FERNET_KEY:
     raise RuntimeError("CONTROL_PASSWORD, SESSION_SECRET and NODE_ENCRYPTION_KEY are required")
@@ -90,6 +91,14 @@ def clean_url(value):
     if parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password:
         raise HTTPException(400, "Укажите публичный HTTPS URL ноды")
     return url
+
+
+def version_tuple(value):
+    parts = str(value or "").lstrip("v").split(".")
+    try:
+        return tuple(int(part) for part in parts[:3]) if len(parts) >= 3 else (0, 0, 0)
+    except ValueError:
+        return (0, 0, 0)
 
 
 def node_request(url, key, path, timeout=12, method="GET", payload=None, raw=False):
@@ -308,7 +317,16 @@ async def management_section(node_id: int, section: str, threewg_control_session
         raise HTTPException(404, "Раздел управления не найден")
     row = get_node(node_id)
     try:
-        return await asyncio.to_thread(node_request, row["url"], node_key(row), path, 30)
+        result = await asyncio.to_thread(node_request, row["url"], node_key(row), path, 30)
+        if section == "updates" and isinstance(result, dict):
+            version = result.get("version") or {}
+            reported_latest = version.get("latest")
+            if version_tuple(CONTROL_VERSION) > version_tuple(reported_latest):
+                version["latest"] = CONTROL_VERSION
+                version["state"] = "outdated" if version_tuple(version.get("current")) < version_tuple(CONTROL_VERSION) else "latest"
+                version["source"] = "control-center"
+                result["version"] = version
+        return result
     except RuntimeError as exc:
         raise HTTPException(502, f"Ошибка ноды: {exc}") from exc
 

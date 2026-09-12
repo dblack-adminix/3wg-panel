@@ -17,3 +17,4 @@ services:
       - ./data:/app/data
       - ./clients:/app/clients
       - ./backups:/app/backups
+      - ./run:/app/run
