@@ -16,8 +16,11 @@
 - создание WireGuard и AmneziaWG пиров на выбранной ноде;
 - включение, отключение, сброс трафика и удаление;
 - централизованное скачивание `.conf` и `.vpn` без передачи Node API Key браузеру.
+- сводные разделы состояния, пользователей, мониторинга, P2P Guard, обновлений, аудита, backups, migration и диагностики;
+- создание backup, повторное применение P2P Guard и запуск обновления выбранной ноды;
+- переход в соответствующий раздел конкретной ноды для расширенных операций.
 
-Очередь команд, массовые операции и миграция войдут в следующие этапы.
+Очередь команд и массовые операции над выбранной группой нод войдут в следующие этапы.
 
 ## Подготовка управляемой ноды
 
@@ -34,7 +37,7 @@
 sudo apt update
 sudo apt install -y git docker.io docker-compose openssl
 sudo systemctl enable --now docker
-git clone --branch v1.6.5 --depth 1 https://github.com/dblack-adminix/3wg-panel.git /opt/3wg-control-center
+git clone --branch v1.7.0 --depth 1 https://github.com/dblack-adminix/3wg-panel.git /opt/3wg-control-center
 cd /opt/3wg-control-center/control-center
 sudo bash install.sh
 ```
@@ -60,7 +63,7 @@ curl -fsS https://control.example.com/health
 ```bash
 cd /opt/3wg-control-center
 sudo git fetch --tags
-sudo git checkout v1.6.5
+sudo git checkout v1.7.0
 cd control-center
 sudo docker compose up -d --build
 ```

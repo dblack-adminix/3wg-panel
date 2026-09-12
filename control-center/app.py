@@ -167,6 +167,25 @@ async def execute_node(node_id, path, method="POST", payload=None):
     return result
 
 
+MANAGEMENT_READ_PATHS = {
+    "status": "/api/node/status",
+    "diagnostics": "/api/node/diagnostics",
+    "users": "/api/users",
+    "monitoring": "/api/monitoring",
+    "p2p": "/api/p2p-guard",
+    "updates": "/api/update/status",
+    "audit": "/api/audit?limit=50",
+    "backups": "/api/backups",
+    "migration": "/api/migration",
+}
+
+MANAGEMENT_ACTIONS = {
+    "backup-create": ("/api/backups", "POST"),
+    "p2p-apply": ("/api/p2p-guard/apply", "POST"),
+    "update-run": ("/api/update/run", "POST"),
+}
+
+
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "3wg-control-center"}
@@ -266,6 +285,29 @@ def delete_node(node_id: int, threewg_control_session: str | None = Cookie(defau
     if not deleted:
         raise HTTPException(404, "Нода не найдена")
     return {"ok": True}
+
+
+@app.get("/api/nodes/{node_id}/manage/{section}")
+async def management_section(node_id: int, section: str, threewg_control_session: str | None = Cookie(default=None)):
+    require_auth(threewg_control_session)
+    path = MANAGEMENT_READ_PATHS.get(section)
+    if not path:
+        raise HTTPException(404, "Раздел управления не найден")
+    row = get_node(node_id)
+    try:
+        return await asyncio.to_thread(node_request, row["url"], node_key(row), path, 30)
+    except RuntimeError as exc:
+        raise HTTPException(502, f"Ошибка ноды: {exc}") from exc
+
+
+@app.post("/api/nodes/{node_id}/manage/action/{action}")
+async def management_action(node_id: int, action: str, request: Request, threewg_control_session: str | None = Cookie(default=None)):
+    require_auth(threewg_control_session)
+    target = MANAGEMENT_ACTIONS.get(action)
+    if not target:
+        raise HTTPException(404, "Операция управления не найдена")
+    data = await request.json()
+    return await execute_node(node_id, target[0], method=target[1], payload=data)
 
 
 @app.post("/api/nodes/{node_id}/peers")
