@@ -10,7 +10,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 from cryptography.fernet import Fernet, InvalidToken
 from fastapi import Cookie, FastAPI, HTTPException, Request
@@ -181,8 +181,21 @@ MANAGEMENT_READ_PATHS = {
 
 MANAGEMENT_ACTIONS = {
     "backup-create": ("/api/backups", "POST"),
+    "backup-delete": ("/api/backups/{item}", "DELETE"),
+    "backup-restore": ("/api/backups/{item}/restore", "POST"),
     "p2p-apply": ("/api/p2p-guard/apply", "POST"),
+    "p2p-update": ("/api/p2p-guard", "PATCH"),
     "update-run": ("/api/update/run", "POST"),
+    "user-create": ("/api/users", "POST"),
+    "user-update": ("/api/users/{item}", "PATCH"),
+    "user-delete": ("/api/users/{item}", "DELETE"),
+    "monitoring-update": ("/api/monitoring", "PATCH"),
+    "monitoring-token-create": ("/api/monitoring/token", "POST"),
+    "monitoring-token-delete": ("/api/monitoring/token", "DELETE"),
+    "protocol-port": ("/api/node/protocols/{item}/port", "PATCH"),
+    "migration-export": ("/api/migration/export", "POST"),
+    "migration-delete": ("/api/migration/{item}", "DELETE"),
+    "migration-push": ("/api/migration/push", "POST"),
 }
 
 
@@ -307,7 +320,28 @@ async def management_action(node_id: int, action: str, request: Request, threewg
     if not target:
         raise HTTPException(404, "Операция управления не найдена")
     data = await request.json()
-    return await execute_node(node_id, target[0], method=target[1], payload=data)
+    path = target[0]
+    if "{item}" in path:
+        item = str(data.pop("item", "")).strip()
+        if not item or "/" in item or "\\" in item or item in {".", ".."}:
+            raise HTTPException(400, "Некорректный идентификатор объекта")
+        path = path.format(item=quote(item, safe=""))
+    return await execute_node(node_id, path, method=target[1], payload=data)
+
+
+@app.get("/api/nodes/{node_id}/manage/download/{kind}/{name}")
+async def management_download(node_id: int, kind: str, name: str, threewg_control_session: str | None = Cookie(default=None)):
+    require_auth(threewg_control_session)
+    if kind not in {"backup", "migration"} or not name or "/" in name or "\\" in name:
+        raise HTTPException(400, "Некорректный файл")
+    path = f"/api/{'backups' if kind == 'backup' else 'migration'}/{quote(name, safe='')}/download"
+    row = get_node(node_id)
+    try:
+        body, content_type, disposition = await asyncio.to_thread(node_request, row["url"], node_key(row), path, 60, "GET", None, True)
+    except RuntimeError as exc:
+        raise HTTPException(502, f"Ошибка ноды: {exc}") from exc
+    headers = {"Content-Disposition": disposition} if disposition else {"Content-Disposition": f'attachment; filename="{name}"'}
+    return Response(body, media_type=content_type, headers=headers)
 
 
 @app.post("/api/nodes/{node_id}/peers")
