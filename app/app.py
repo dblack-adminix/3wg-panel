@@ -9228,20 +9228,64 @@ def monitoring_token_suffix() -> str:
 
 
 def monitoring_token_configured() -> bool:
-    return bool(monitoring_token_hash() or METRICS_TOKEN)
+    return bool(monitoring_tokens() or METRICS_TOKEN)
+
+
+def monitoring_tokens() -> list[dict]:
+    raw = panel_setting_get("metrics_tokens", "") or ""
+    if raw:
+        try:
+            tokens = json.loads(raw)
+            if isinstance(tokens, list):
+                return [item for item in tokens if isinstance(item, dict) and item.get("id") and item.get("hash")]
+        except (TypeError, ValueError):
+            pass
+    legacy_hash = monitoring_token_hash()
+    if not legacy_hash:
+        return []
+    return [{
+        "id": "legacy",
+        "hash": legacy_hash,
+        "suffix": monitoring_token_suffix(),
+        "created_at": 0,
+    }]
+
+
+def save_monitoring_tokens(tokens: list[dict]) -> None:
+    panel_setting_set("metrics_tokens", json.dumps(tokens, separators=(",", ":")))
+    panel_setting_set("metrics_token_hash", "")
+    panel_setting_set("metrics_token_suffix", "")
 
 
 def monitoring_status_payload() -> dict:
+    stored_tokens = monitoring_tokens()
+    public_tokens = [{
+        "id": item["id"],
+        "suffix": item.get("suffix", ""),
+        "created_at": int(item.get("created_at") or 0),
+        "source": "database",
+        "deletable": True,
+    } for item in stored_tokens]
+    if METRICS_TOKEN:
+        public_tokens.insert(0, {
+            "id": "env",
+            "suffix": METRICS_TOKEN[-6:],
+            "created_at": 0,
+            "source": "environment",
+            "deletable": False,
+        })
     return {
         "ok": True,
         "enabled": monitoring_enabled(),
         "require_token": METRICS_REQUIRE_TOKEN,
         "token_configured": monitoring_token_configured(),
-        "token_suffix": monitoring_token_suffix() or (METRICS_TOKEN[-6:] if METRICS_TOKEN else ""),
+        "token_suffix": public_tokens[0]["suffix"] if public_tokens else "",
+        "token_count": len(public_tokens),
+        "tokens": public_tokens,
         "metrics_path": "/metrics",
         "auth_header": "Authorization: Bearer <token>",
         "env_token_present": bool(METRICS_TOKEN),
-        "db_token_present": bool(monitoring_token_hash()),
+        "db_token_present": bool(stored_tokens),
     }
 
 
@@ -9265,20 +9309,38 @@ async def api_monitoring_update(request: Request, user=Depends(api_require_admin
 @app.post('/api/monitoring/token')
 def api_monitoring_token_create(request: Request, user=Depends(api_require_admin)):
     token = secrets.token_urlsafe(32)
-    panel_setting_set("metrics_token_hash", password_hash(token))
-    panel_setting_set("metrics_token_suffix", token[-6:])
+    token_id = secrets.token_hex(8)
+    stored_tokens = monitoring_tokens()
+    stored_tokens.append({
+        "id": token_id,
+        "hash": password_hash(token),
+        "suffix": token[-6:],
+        "created_at": int(time.time()),
+    })
+    save_monitoring_tokens(stored_tokens)
     panel_setting_set("metrics_enabled", "1")
     payload = monitoring_status_payload()
     payload["token"] = token
-    api_audit_log(request, user, 'monitoring.token.create', 'monitoring', 'token', 'metrics', {'suffix': token[-6:]})
+    payload["token_id"] = token_id
+    api_audit_log(request, user, 'monitoring.token.create', 'monitoring', token_id, 'metrics', {'suffix': token[-6:]})
     return payload
 
 
 @app.delete('/api/monitoring/token')
 def api_monitoring_token_delete(request: Request, user=Depends(api_require_admin)):
-    panel_setting_set("metrics_token_hash", "")
-    panel_setting_set("metrics_token_suffix", "")
-    api_audit_log(request, user, 'monitoring.token.delete', 'monitoring', 'token', 'metrics')
+    save_monitoring_tokens([])
+    api_audit_log(request, user, 'monitoring.token.delete_all', 'monitoring', 'tokens', 'metrics')
+    return monitoring_status_payload()
+
+
+@app.delete('/api/monitoring/token/{token_id}')
+def api_monitoring_token_delete_one(token_id: str, request: Request, user=Depends(api_require_admin)):
+    stored_tokens = monitoring_tokens()
+    remaining = [item for item in stored_tokens if item.get("id") != token_id]
+    if len(remaining) == len(stored_tokens):
+        return api_error('Токен не найден', status_code=404)
+    save_monitoring_tokens(remaining)
+    api_audit_log(request, user, 'monitoring.token.delete', 'monitoring', token_id, 'metrics')
     return monitoring_status_payload()
 # === 3WG MONITORING SETTINGS API END ===
 
@@ -9342,8 +9404,8 @@ def metrics_line(name: str, value, labels: dict | None = None) -> str:
 
 
 def metrics_authorized(request: Request) -> bool:
-    stored_hash = monitoring_token_hash()
-    if not METRICS_REQUIRE_TOKEN and not METRICS_TOKEN and not stored_hash:
+    stored_hashes = [item.get("hash", "") for item in monitoring_tokens()]
+    if not METRICS_REQUIRE_TOKEN and not METRICS_TOKEN and not stored_hashes:
         return True
     tokens = []
     auth = request.headers.get("authorization", "")
@@ -9358,7 +9420,7 @@ def metrics_authorized(request: Request) -> bool:
     for token in tokens:
         if METRICS_TOKEN and secrets.compare_digest(token, METRICS_TOKEN):
             return True
-        if stored_hash and password_verify(token, stored_hash):
+        if any(stored_hash and password_verify(token, stored_hash) for stored_hash in stored_hashes):
             return True
     return False
 

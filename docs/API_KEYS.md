@@ -241,6 +241,7 @@ GET    /api/monitoring
 PATCH  /api/monitoring
 POST   /api/monitoring/token
 DELETE /api/monitoring/token
+DELETE /api/monitoring/token/{token_id}
 GET    /api/telegram
 PATCH  /api/telegram
 POST   /api/telegram/test

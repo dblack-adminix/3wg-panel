@@ -3108,16 +3108,6 @@ function MonitoringPage({ onLogout, user }) {
   };
 
   const generateToken = async () => {
-    if (state.data?.token_configured) {
-      const ok = await confirm({
-        title: 'Перевыпустить token',
-        message: 'Создать новый token?',
-        details: 'Старый token перестанет работать сразу после выпуска нового.',
-        tone: 'block',
-        confirmLabel: 'Перевыпустить',
-      });
-      if (!ok) return;
-    }
     setBusy(true);
     try {
       const data = await api('/api/monitoring/token', { method: 'POST' });
@@ -3127,6 +3117,28 @@ function MonitoringPage({ onLogout, user }) {
     } catch (err) {
       setState((s) => ({ ...s, error: err.message || 'Ошибка генерации token' }));
       toast.error(err.message || 'Ошибка генерации token');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const deleteToken = async (token) => {
+    const ok = await confirm({
+      title: 'Удалить token',
+      message: `Удалить ключ ...${token.suffix || ''}?`,
+      details: 'Интеграция, использующая этот ключ, потеряет доступ к /metrics.',
+      tone: 'danger',
+      confirmLabel: 'Удалить',
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      const data = await api(`/api/monitoring/token/${token.id}`, { method: 'DELETE' });
+      setState({ loading: false, data, error: '' });
+      toast.success('Token удалён');
+    } catch (err) {
+      setState((s) => ({ ...s, error: err.message || 'Ошибка удаления token' }));
+      toast.error(err.message || 'Ошибка удаления token');
     } finally {
       setBusy(false);
     }
@@ -3183,7 +3195,7 @@ function MonitoringPage({ onLogout, user }) {
             <div className="monitoring-status">
               <div><span>Endpoint</span><code>{data.metrics_path || '/metrics'}</code></div>
               <div><span>Auth</span><code>{data.auth_header || 'Authorization: Bearer <token>'}</code></div>
-              <div><span>Token</span><b>{data.token_configured ? `настроен ...${data.token_suffix || ''}` : 'не создан'}</b></div>
+              <div><span>Ключей</span><b>{data.token_count || 0}</b></div>
               <div><span>Источник</span><b>{data.db_token_present ? 'web UI' : data.env_token_present ? '.env' : '-'}</b></div>
             </div>
             <div className="monitoring-actions">
@@ -3191,7 +3203,7 @@ function MonitoringPage({ onLogout, user }) {
                 <Power size={15} /> {data.enabled ? 'Выключить /metrics' : 'Включить /metrics'}
               </button>
               <button className="blue-btn" type="button" onClick={generateToken} disabled={busy}>
-                <Key size={15} /> {data.token_configured ? 'Перевыпустить token' : 'Создать token'}
+                <Key size={15} /> Создать token
               </button>
             </div>
           </section>
@@ -3210,6 +3222,15 @@ function MonitoringPage({ onLogout, user }) {
             <div className="monitoring-snippet">
               <span>Локальная проверка</span>
               <code>{curlExample}</code>
+            </div>
+            <div className="monitoring-status compact">
+              {(data.tokens || []).map((token) => (
+                <div key={token.id}>
+                  <span>{token.source === 'environment' ? 'Системный ключ' : 'Ключ'}</span>
+                  <b>••••••{token.suffix || ''}</b>
+                  {token.deletable && <button className="icon-button danger" type="button" title="Удалить token" onClick={() => deleteToken(token)} disabled={busy}><Trash2 size={14} /></button>}
+                </div>
+              ))}
             </div>
           </section>
 

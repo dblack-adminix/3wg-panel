@@ -200,7 +200,7 @@ MANAGEMENT_ACTIONS = {
     "user-delete": ("/api/users/{item}", "DELETE"),
     "monitoring-update": ("/api/monitoring", "PATCH"),
     "monitoring-token-create": ("/api/monitoring/token", "POST"),
-    "monitoring-token-delete": ("/api/monitoring/token", "DELETE"),
+    "monitoring-token-delete": ("/api/monitoring/token/{item}", "DELETE"),
     "protocol-port": ("/api/node/protocols/{item}/port", "PATCH"),
     "migration-export": ("/api/migration/export", "POST"),
     "migration-delete": ("/api/migration/{item}", "DELETE"),

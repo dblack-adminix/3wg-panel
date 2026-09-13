@@ -656,7 +656,7 @@ curl -fsS \
   "$BASE_URL/api/monitoring"
 ```
 
-Создать или перевыпустить Prometheus token:
+Создать дополнительный Prometheus token (существующие ключи продолжат работать):
 
 ```bash
 curl -fsS \
@@ -665,13 +665,13 @@ curl -fsS \
   "$BASE_URL/api/monitoring/token"
 ```
 
-Удалить token:
+Удалить один token по `token_id` из ответа API:
 
 ```bash
 curl -fsS \
   -X DELETE \
   -H "X-API-Key: $API_KEY" \
-  "$BASE_URL/api/monitoring/token"
+  "$BASE_URL/api/monitoring/token/$TOKEN_ID"
 ```
 
 Сам `/metrics` обычно защищается header:
