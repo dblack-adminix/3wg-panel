@@ -5,11 +5,13 @@ args="$*"
 case "$args" in
   *"--yesno"*) exit 0 ;;
   *"--msgbox"*) exit 0 ;;
+  *"--gauge"*) cat >/dev/null; exit 0 ;;
+  *"--textbox"*) exit 0 ;;
   *"--menu Выберите продукт"*) printf 'core' >&2 ;;
   *"--menu VPN-контейнеры"*) printf 'create' >&2 ;;
   *"Публичный домен панели"*) printf 'vpn.example.com' >&2 ;;
   *"VPN endpoint"*) printf 'vpn.example.com' >&2 ;;
-  *"Каталог установки"*) printf '/tmp/3wg-tui-test' >&2 ;;
+  *"Каталог установки"*) printf '%s' "${MOCK_INSTALL_DIR:-/tmp/3wg-tui-test}" >&2 ;;
   *"Локальный адрес панели"*) printf '127.0.0.1' >&2 ;;
   *"Локальный TCP-порт"*) printf '18080' >&2 ;;
   *"WireGuard UDP-порт"*) printf '51820' >&2 ;;

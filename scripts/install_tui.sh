@@ -2,8 +2,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-INSTALL_SCRIPT="$SCRIPT_DIR/install.sh"
+INSTALL_SCRIPT="${INSTALL_SCRIPT:-$SCRIPT_DIR/install.sh}"
 INSTALL_SCRIPT_URL="${INSTALL_SCRIPT_URL:-https://raw.githubusercontent.com/dblack-adminix/3wg-panel/dev/scripts/install.sh}"
+INSTALL_RESULT_ROOT="${INSTALL_RESULT_ROOT:-/root}"
 WHIPTAIL_BIN="${WHIPTAIL_BIN:-whiptail}"
 TITLE="3WG Installer"
 
@@ -54,10 +55,13 @@ msg() {
 }
 
 generate_password() {
+  local value
   if command -v openssl >/dev/null 2>&1; then
-    openssl rand -base64 24 | tr -d '/+=' | head -c 20
+    value="$(openssl rand -hex 16)"
+    printf 'A%s!' "${value:0:18}"
   else
-    python3 -c 'import secrets; print(secrets.token_urlsafe(18))'
+    command -v python3 >/dev/null 2>&1 || fail "Для генерации пароля нужен openssl или python3."
+    python3 -c 'import secrets; print("A" + secrets.token_hex(9) + "!")'
   fi
 }
 
@@ -82,6 +86,44 @@ backup_existing() {
   backup="$target/backups/install/3wg.pre-tui-install.$stamp.tgz"
   tar -C "$target" -czf "$backup" "${items[@]}"
   printf 'Pre-install backup: %s\n' "$backup"
+}
+
+progress_from_log() {
+  local log="$1" percent=5 label='Подготовка установщика'
+  grep -Fq 'Preparing source' "$log" 2>/dev/null && { percent=12; label='Подготовка исходников'; }
+  grep -Fq 'Provisioning protocol containers' "$log" 2>/dev/null && { percent=25; label='Создание VPN-контейнеров'; }
+  grep -Fq 'Detecting protocol settings' "$log" 2>/dev/null && { percent=38; label='Проверка WireGuard и AmneziaWG'; }
+  grep -Fq 'Applying backend API patches' "$log" 2>/dev/null && { percent=50; label='Настройка backend'; }
+  grep -Fq 'Building React frontend' "$log" 2>/dev/null && { percent=62; label='Сборка интерфейса'; }
+  grep -Fq 'Building Docker image' "$log" 2>/dev/null && { percent=74; label='Сборка Docker image'; }
+  grep -Fq 'Installing update runner' "$log" 2>/dev/null && { percent=82; label='Установка системных служб'; }
+  grep -Fq 'Recreating container' "$log" 2>/dev/null && { percent=88; label='Запуск панели'; }
+  grep -Fq 'Health check' "$log" 2>/dev/null && { percent=93; label='Проверка работоспособности'; }
+  grep -Fq 'Configuring Caddy reverse proxy' "$log" 2>/dev/null && { percent=97; label='Настройка HTTPS'; }
+  printf '%s\t%s' "$percent" "$label"
+}
+
+run_with_progress() {
+  local log="$1" status_file="$2" pid progress percent label
+  : >"$log"
+  chmod 600 "$log"
+  (
+    set +e
+    bash "$INSTALL_SCRIPT" >"$log" 2>&1
+    printf '%s' "$?" >"$status_file"
+  ) &
+  pid=$!
+  {
+    while kill -0 "$pid" 2>/dev/null; do
+      progress="$(progress_from_log "$log")"
+      percent="${progress%%$'\t'*}"
+      label="${progress#*$'\t'}"
+      printf 'XXX\n%s\n%s\nXXX\n' "$percent" "$label"
+      sleep 1
+    done
+    wait "$pid" 2>/dev/null || true
+    printf 'XXX\n100\nЗавершение установки\nXXX\n'
+  } | "$WHIPTAIL_BIN" --title "$TITLE" --gauge 'Установка 3WG' 10 76 0
 }
 
 [ "${EUID:-$(id -u)}" -eq 0 ] || fail "Запустите: sudo bash scripts/install_tui.sh"
@@ -143,6 +185,7 @@ dns_servers="$(input 'DNS для VPN-клиентов' '1.1.1.1, 1.0.0.1')"
 panel_user="$(input 'Логин администратора' 'admin')"
 panel_password="$(password 'Пароль администратора. Оставьте пустым для автоматической генерации.')"
 [ -n "$panel_password" ] || panel_password="$(generate_password)"
+[ -n "$panel_password" ] || { msg 'Не удалось создать пароль администратора.'; exit 1; }
 
 setup_caddy=0
 yesno "Настроить Caddy и HTTPS для $panel_host?" yes && setup_caddy=1
@@ -199,4 +242,45 @@ if [ "${INSTALL_TUI_EXECUTE:-1}" = "0" ]; then
   exit 0
 fi
 
-exec bash "$INSTALL_SCRIPT"
+stamp="$(date +%Y-%m-%d_%H-%M-%S)"
+log_file="/tmp/3wg-install.$stamp.log"
+status_file="/tmp/3wg-install.$stamp.status"
+run_with_progress "$log_file" "$status_file"
+status="$(cat "$status_file" 2>/dev/null || printf '1')"
+
+mkdir -p "$install_dir/backups/install"
+saved_log="$install_dir/backups/install/3wg-install.$stamp.log"
+cp "$log_file" "$saved_log"
+chmod 600 "$saved_log"
+
+if [ "$status" != "0" ]; then
+  msg "Установка завершилась с ошибкой.\n\nПолный журнал: $saved_log\n\nНажмите OK, чтобы открыть последние строки журнала."
+  tail -n 80 "$saved_log" >"/tmp/3wg-install.$stamp.tail.log"
+  "$WHIPTAIL_BIN" --title 'Ошибка установки 3WG' --textbox "/tmp/3wg-install.$stamp.tail.log" 24 90
+  exit "$status"
+fi
+
+if [ "$setup_caddy" = "1" ]; then
+  panel_url="https://$panel_host/"
+else
+  panel_url="http://$bind_host:$bind_port/"
+fi
+credentials_host="${panel_host//[^A-Za-z0-9_.-]/-}"
+mkdir -p "$INSTALL_RESULT_ROOT"
+credentials_file="$INSTALL_RESULT_ROOT/3wg-${credentials_host}-credentials.txt"
+cat >"$credentials_file" <<CREDENTIALS
+3WG installation result
+Product: $edition
+URL: $panel_url
+Local: http://$bind_host:$bind_port/
+Panel host: $panel_host
+VPN endpoint: $vpn_host
+User: $panel_user
+Password: $panel_password
+Path: $install_dir
+Log: $saved_log
+CREDENTIALS
+chmod 600 "$credentials_file"
+
+msg "3WG успешно установлен.\n\nURL: $panel_url\nЛокальный адрес: http://$bind_host:$bind_port/\nПользователь: $panel_user\nПароль: $panel_password\nКаталог: $install_dir\n\nДанные сохранены:\n$credentials_file\n\nЖурнал:\n$saved_log"
+printf '3WG installed successfully. Credentials: %s\n' "$credentials_file"
