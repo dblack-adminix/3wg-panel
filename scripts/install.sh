@@ -192,6 +192,24 @@ ask_secret() {
     printf '%s' "$value"
   fi
 }
+configured_or_ask() {
+  local variable="$1" prompt="$2" default="${3:-}" value
+  value="${!variable:-}"
+  if [ -n "$value" ] || [ "${INSTALL_PRESET_MODE:-0}" = "1" ]; then
+    printf '%s' "${value:-$default}"
+  else
+    ask "$prompt" "$default"
+  fi
+}
+configured_secret_or_ask() {
+  local variable="$1" prompt="$2" default="${3:-}" value
+  value="${!variable:-}"
+  if [ -n "$value" ] || [ "${INSTALL_PRESET_MODE:-0}" = "1" ]; then
+    printf '%s' "${value:-$default}"
+  else
+    ask_secret "$prompt" "$default"
+  fi
+}
 gen_secret() {
   if command -v openssl >/dev/null 2>&1; then
     openssl rand -hex 32
@@ -254,6 +272,9 @@ detect_or_ask() {
     printf 'Detected %s: %s\n' "$label" "$detected" >&2
     printf '%s' "$detected"
   else
+    if [ "${INSTALL_PRESET_MODE:-0}" = "1" ]; then
+      fail "Не удалось определить $label. Запустите обычный installer или проверьте VPN-контейнер."
+    fi
     ask "$label" "$fallback"
   fi
 }
@@ -367,51 +388,53 @@ need_cmd python3
 ensure_node_runtime
 
 say "3WG installer ($PANEL_EDITION)"
-REPO_URL="$(ask 'Git repository' "$REPO_URL_DEFAULT")"
-BRANCH="$(ask 'Git branch/tag' "$BRANCH_DEFAULT")"
-INSTALL_DIR="$(ask 'Install directory' "$INSTALL_DIR_DEFAULT")"
-IMAGE="$(ask 'Docker image name' "$IMAGE_DEFAULT")"
-CONTAINER="$(ask 'Docker container name' "$CONTAINER_DEFAULT")"
-BIND_HOST="$(ask 'Bind host' "$BIND_HOST_DEFAULT")"
-BIND_PORT="$(ask 'Bind port' "$BIND_PORT_DEFAULT")"
+REPO_URL="$(configured_or_ask INSTALL_REPO_URL 'Git repository' "$REPO_URL_DEFAULT")"
+BRANCH="$(configured_or_ask INSTALL_BRANCH 'Git branch/tag' "$BRANCH_DEFAULT")"
+INSTALL_DIR="$(configured_or_ask INSTALL_TARGET_DIR 'Install directory' "$INSTALL_DIR_DEFAULT")"
+IMAGE="$(configured_or_ask INSTALL_IMAGE 'Docker image name' "$IMAGE_DEFAULT")"
+CONTAINER="$(configured_or_ask INSTALL_CONTAINER 'Docker container name' "$CONTAINER_DEFAULT")"
+BIND_HOST="$(configured_or_ask INSTALL_BIND_HOST 'Bind host' "$BIND_HOST_DEFAULT")"
+BIND_PORT="$(configured_or_ask INSTALL_BIND_PORT 'Bind port' "$BIND_PORT_DEFAULT")"
 
 PUBLIC_HOST_DEFAULT="$(detect_public_host_default)"
-PANEL_HOST="$(ask_public_host 'Panel public host / domain' "$PUBLIC_HOST_DEFAULT")"
-VPN_ENDPOINT_HOST="$(ask_public_host 'VPN endpoint host / domain' "$PANEL_HOST")"
+PANEL_HOST="$(configured_or_ask INSTALL_PANEL_HOST 'Panel public host / domain' "$PUBLIC_HOST_DEFAULT")"
+VPN_ENDPOINT_HOST="$(configured_or_ask INSTALL_VPN_ENDPOINT_HOST 'VPN endpoint host / domain' "$PANEL_HOST")"
+is_bad_public_host "$PANEL_HOST" && fail "Некорректный Panel public host: $PANEL_HOST"
+is_bad_public_host "$VPN_ENDPOINT_HOST" && fail "Некорректный VPN endpoint host: $VPN_ENDPOINT_HOST"
 ENDPOINT_HOST="$VPN_ENDPOINT_HOST"
-VPN_EGRESS_IP="$(ask 'VPN egress/source IP, empty = system default' '')"
+VPN_EGRESS_IP="$(configured_or_ask INSTALL_VPN_EGRESS_IP 'VPN egress/source IP, empty = system default' '')"
 CADDY_DEFAULT="0"
 if [ "$BIND_HOST" = "127.0.0.1" ] && ! is_local_host "$PANEL_HOST"; then
   CADDY_DEFAULT="1"
 fi
-SETUP_CADDY="$(ask 'Configure Caddy reverse proxy for this domain? 1=yes, 0=no' "$CADDY_DEFAULT")"
-PANEL_USER="$(ask 'Panel admin username' 'admin')"
-PANEL_PASSWORD="$(ask_secret 'Panel admin password, empty = auto-generate' "$(gen_secret | head -c 18)")"
+SETUP_CADDY="$(configured_or_ask INSTALL_SETUP_CADDY 'Configure Caddy reverse proxy for this domain? 1=yes, 0=no' "$CADDY_DEFAULT")"
+PANEL_USER="$(configured_or_ask INSTALL_PANEL_USER 'Panel admin username' 'admin')"
+PANEL_PASSWORD="$(configured_secret_or_ask INSTALL_PANEL_PASSWORD 'Panel admin password, empty = auto-generate' "$(gen_secret | head -c 18)")"
 SESSION_SECRET="$(gen_secret)"
 
-PROVISION_PROTOCOLS="$(ask 'Protocol containers: 1=auto create, 0=already installed' '0')"
+PROVISION_PROTOCOLS="$(configured_or_ask INSTALL_PROVISION_PROTOCOLS 'Protocol containers: 1=auto create, 0=already installed' '0')"
 if [ "$PROVISION_PROTOCOLS" = "1" ]; then
-  WG_CONTAINER="$(ask 'WireGuard container name' 'wireguard-wg')"
-  WG_PORT="$(ask 'WireGuard UDP port' '51820')"
-  WG_NETWORK="$(ask 'WireGuard network CIDR' '10.49.0.0/24')"
-  AWG_CONTAINER="$(ask 'AmneziaWG container name' 'amnezia-awg2')"
-  AWG_PORT="$(ask 'AmneziaWG UDP port' '443')"
-  AWG_NETWORK="$(ask 'AmneziaWG network CIDR' '10.50.0.0/24')"
+  WG_CONTAINER="$(configured_or_ask INSTALL_WG_CONTAINER 'WireGuard container name' 'wireguard-wg')"
+  WG_PORT="$(configured_or_ask INSTALL_WG_PORT 'WireGuard UDP port' '51820')"
+  WG_NETWORK="$(configured_or_ask INSTALL_WG_NETWORK 'WireGuard network CIDR' '10.49.0.0/24')"
+  AWG_CONTAINER="$(configured_or_ask INSTALL_AWG_CONTAINER 'AmneziaWG container name' 'amnezia-awg2')"
+  AWG_PORT="$(configured_or_ask INSTALL_AWG_PORT 'AmneziaWG UDP port' '443')"
+  AWG_NETWORK="$(configured_or_ask INSTALL_AWG_NETWORK 'AmneziaWG network CIDR' '10.50.0.0/24')"
 else
-  WG_CONTAINER="$(ask 'WireGuard container name' 'amnezia-wireguard')"
+  WG_CONTAINER="$(configured_or_ask INSTALL_WG_CONTAINER 'WireGuard container name' 'amnezia-wireguard')"
   WG_PORT="51820"
   WG_NETWORK="10.8.1.0/24"
-  AWG_CONTAINER="$(ask 'AmneziaWG container name' 'amnezia-awg2')"
+  AWG_CONTAINER="$(configured_or_ask INSTALL_AWG_CONTAINER 'AmneziaWG container name' 'amnezia-awg2')"
   AWG_PORT="42300"
   AWG_NETWORK="10.8.1.0/24"
 fi
-DNS_SERVERS="$(ask 'Client DNS servers' '1.1.1.1, 1.0.0.1')"
-HIDE_EXISTING_PEERS="$(ask 'Hide peers not created by panel? 1=yes, 0=no' '1')"
-METRICS_ENABLED="$(ask 'Enable Prometheus /metrics? 1=yes, 0=no' '0')"
+DNS_SERVERS="$(configured_or_ask INSTALL_DNS_SERVERS 'Client DNS servers' '1.1.1.1, 1.0.0.1')"
+HIDE_EXISTING_PEERS="$(configured_or_ask INSTALL_HIDE_EXISTING_PEERS 'Hide peers not created by panel? 1=yes, 0=no' '1')"
+METRICS_ENABLED="$(configured_or_ask INSTALL_METRICS_ENABLED 'Enable Prometheus /metrics? 1=yes, 0=no' '0')"
 METRICS_REQUIRE_TOKEN="1"
 METRICS_TOKEN=""
 if [ "$METRICS_ENABLED" = "1" ]; then
-  METRICS_TOKEN="$(ask_secret 'Prometheus metrics token, empty = auto-generate' "$(gen_secret)")"
+  METRICS_TOKEN="$(configured_secret_or_ask INSTALL_METRICS_TOKEN 'Prometheus metrics token, empty = auto-generate' "$(gen_secret)")"
 fi
 
 say "Preparing source"

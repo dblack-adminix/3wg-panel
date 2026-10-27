@@ -31,7 +31,24 @@ docker ps
 - если контейнеры уже установлены: их имена из `docker ps`
 - если контейнеры создаёт installer: UDP-порты и сети, которые хотите использовать
 
-## 2. Запустите installer
+## 2. Запустите консольный TUI installer
+
+Рекомендуемый вариант открывает пошаговый интерфейс прямо в SSH-консоли:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/dblack-adminix/3wg-panel/dev/scripts/install_tui.sh -o /tmp/3wg-install-tui.sh
+sudo bash /tmp/3wg-install-tui.sh
+```
+
+Управление: стрелки выбирают пункт, `Tab` переключает кнопки, `Space` меняет флажок, `Enter` подтверждает. Перед запуском установки показывается сводка. При отмене исполнительный installer не запускается. Для существующей установки предварительно создаётся backup:
+
+```text
+/opt/3wg-panel/backups/install/3wg.pre-tui-install.<date>.tgz
+```
+
+TUI использует тот же проверенный `scripts/install.sh`; классический текстовый режим остаётся доступен.
+
+## 3. Классический текстовый installer
 
 Если репозиторий публичный, скачайте installer напрямую:
 
@@ -64,7 +81,7 @@ Git repository [https://github.com/dblack-adminix/3wg-panel.git]:
 Git branch/tag [dev]:
 ```
 
-## 3. Поля installer: что вводить
+## 4. Поля installer: что вводить
 
 Если в квадратных скобках уже стоит подходящее значение, просто нажимайте Enter. Вводить нужно только то, что отличается на вашем сервере.
 
@@ -174,7 +191,7 @@ Configure Caddy reverse proxy for this domain? 1=yes, 0=no [1]:
 - порты `80/tcp` и `443/tcp` открыты в firewall/provider security group
 - домен уже резолвится снаружи
 
-## 4. Что делает installer
+## 5. Что делает installer
 
 Installer выполняет:
 
@@ -205,7 +222,7 @@ METRICS_TOKEN=<token>
 
 Для последующих обновлений используйте `scripts/update.sh`, чтобы не перезаписывать `.env`.
 
-## 5. Ручная установка
+## 6. Ручная установка
 
 Ручной вариант полезен для отладки:
 
@@ -227,7 +244,7 @@ docker run -d   --name 3wg-panel   --restart unless-stopped   --env-file /opt/3w
 curl -fsS http://127.0.0.1:18080/health
 ```
 
-## 6. HTTPS через Caddy
+## 7. HTTPS через Caddy
 
 Если Caddy не включали в installer, его можно настроить вручную. Пример Caddyfile:
 
@@ -246,7 +263,7 @@ curl -I http://panel.example.com/
 curl -I https://panel.example.com/
 ```
 
-## 7. Первый вход
+## 8. Первый вход
 
 Откройте URL, который напечатал installer, и войдите в панель.
 
