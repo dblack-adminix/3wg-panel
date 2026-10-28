@@ -94,7 +94,7 @@ remove_existing_container() {
   fi
 }
 check_python_sources() {
-  python3 -m py_compile app/app.py app/api_keys_store.py scripts/apply_api_patch.py scripts/apply_dashboard_model_patch.py scripts/update_runner.py scripts/host_network.py
+  python3 -m py_compile app/app.py app/api_keys_store.py scripts/apply_api_patch.py scripts/apply_dashboard_model_patch.py scripts/update_runner.py scripts/host_network.py scripts/reload_update_runner.py
 }
 prepare_git_worktree() {
   local app_status tracked_status app_backup
@@ -222,10 +222,3 @@ Container:  $CONTAINER
 URL:        http://$BIND_HOST:$BIND_PORT/
 Backup:     $INSTALL_DIR/$BACKUP
 DONE
-
-# Reload host-side capabilities after a successful UI update has returned its result.
-if [ "${THREEWG_UPDATE_RUNNER_ACTIVE:-0}" = "1" ] && command -v systemd-run >/dev/null 2>&1; then
-  systemd-run --quiet --on-active=10 --unit="3wg-runner-refresh-$$" \
-    /bin/systemctl try-restart "${THREEWG_UPDATE_SERVICE:-${SERVICE:-3wg-panel-update-runner}}" \
-    || warn "Не удалось запланировать перезапуск host runner"
-fi

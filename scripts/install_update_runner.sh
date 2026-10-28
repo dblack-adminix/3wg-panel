@@ -52,7 +52,13 @@ UNIT
 systemctl daemon-reload
 systemctl enable "$SERVICE" >/dev/null
 if [ "${THREEWG_UPDATE_RUNNER_ACTIVE:-0}" = "1" ]; then
-  systemctl start "$SERVICE" >/dev/null 2>&1 || true
+  need_cmd systemd-run
+  [ -f "$BASE/scripts/reload_update_runner.py" ] || fail "Не найден reload_update_runner.py"
+  updater_identity="$("$PYTHON_BIN" -c 'import sys; from pathlib import Path; print(Path("/proc/" + sys.argv[1] + "/stat").read_text().rsplit(") ", 1)[1].split()[19])' "$PPID")"
+  systemd-run --quiet --collect --unit="${SERVICE%.service}-reload-$$" \
+    "$PYTHON_BIN" "$BASE/scripts/reload_update_runner.py" \
+    --pid "$PPID" --identity "$updater_identity" --service "$SERVICE"
+  printf 'Runner reload scheduled after updater PID %s exits.\n' "$PPID"
 else
   systemctl restart "$SERVICE"
 fi
