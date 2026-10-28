@@ -10,7 +10,7 @@ PRODUCT_NAME = "3WG Easy Core" if IS_EASY else "3WG Core"
 
 EASY_PAGES = {
     "/", "/ui", "/login", "/settings", "/status", "/apikeys", "/monitoring",
-    "/abuse", "/updates", "/backups",
+    "/abuse", "/updates", "/backups", "/network",
 }
 
 
@@ -29,7 +29,7 @@ def easy_route_allowed(path):
         return any(path == prefix or path.startswith(prefix + "/") for prefix in (
             "/api/auth", "/api/version", "/api/update", "/api/peers",
             "/api/categories", "/api/dashboard", "/api/ui/dashboard",
-            "/api/node/protocols", "/api/node/status", "/api/backups",
+            "/api/node/protocols", "/api/node/status", "/api/node/network", "/api/backups",
             "/api/apikeys", "/api/monitoring", "/api/telegram", "/api/p2p-guard",
         ))
     return path in {

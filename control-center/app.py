@@ -109,7 +109,15 @@ def node_request(url, key, path, timeout=12, method="GET", payload=None, raw=Fal
             content = response.read()
             return (content, response.headers.get("Content-Type", "application/octet-stream"), response.headers.get("Content-Disposition")) if raw else json.loads(content.decode())
     except urllib.error.HTTPError as exc:
-        raise RuntimeError(f"HTTP {exc.code} для {path}") from exc
+        detail = ''
+        try:
+            error = json.loads(exc.read(4096).decode())
+            value = error.get('error') or error.get('detail')
+            if isinstance(value, str):
+                detail = ': ' + value[:350]
+        except (ValueError, UnicodeError, AttributeError):
+            pass
+        raise RuntimeError(f"HTTP {exc.code} для {path}{detail}") from exc
     except Exception as exc:
         raise RuntimeError(str(exc)) from exc
 
@@ -177,6 +185,7 @@ async def execute_node(node_id, path, method="POST", payload=None):
 
 
 MANAGEMENT_READ_PATHS = {
+    "network": "/api/node/network",
     "status": "/api/node/status",
     "diagnostics": "/api/node/diagnostics",
     "users": "/api/users",
@@ -189,6 +198,10 @@ MANAGEMENT_READ_PATHS = {
 }
 
 MANAGEMENT_ACTIONS = {
+    "network-preview": ("/api/node/network/preview", "POST"),
+    "network-apply": ("/api/node/network/apply", "POST"),
+    "network-confirm": ("/api/node/network/confirm", "POST"),
+    "network-rollback": ("/api/node/network/rollback", "POST"),
     "backup-create": ("/api/backups", "POST"),
     "backup-delete": ("/api/backups/{item}", "DELETE"),
     "backup-restore": ("/api/backups/{item}/restore", "POST"),

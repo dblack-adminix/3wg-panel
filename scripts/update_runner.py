@@ -8,14 +8,17 @@ import sys
 import threading
 import time
 from pathlib import Path
+from host_network import NetworkManager
 
 
 BASE = Path(os.environ.get("THREEWG_BASE", "/srv/3wg-panel")).resolve()
 SOCKET_PATH = Path(os.environ.get("THREEWG_UPDATE_SOCKET", str(BASE / "run/update-runner.sock")))
 UPDATE_SCRIPT = Path(os.environ.get("THREEWG_UPDATE_SCRIPT", str(BASE / "scripts/update.sh")))
 LOG_PATH = Path(os.environ.get("THREEWG_UPDATE_LOG", str(BASE / "backups/update/ui-runner.log")))
+NETWORK = NetworkManager(BASE)
 
-STATE_LOCK = threading.Lock()
+STATE_LOCK = threading.RLock()
+COMMAND_LOCK = threading.Lock()
 STATE = {
     "running": False,
     "started_at": None,
@@ -82,10 +85,25 @@ def run_update(actor: str = "panel", backup: str = "") -> None:
 
 
 def handle_command(payload: dict) -> dict:
+    with COMMAND_LOCK:
+        return handle_command_locked(payload)
+
+
+def handle_command_locked(payload: dict) -> dict:
     command = str(payload.get("command", "status"))
+    if command.startswith('network-'):
+        with STATE_LOCK:
+            if STATE.get('running'):
+                return {'ok': False, 'error': 'Дождитесь завершения обновления'}
+        try:
+            return NETWORK.command(command, payload)
+        except Exception as exc:
+            return {'ok': False, 'error': str(exc)}
     if command == "status":
         return {"ok": True, "runner": runner_payload(), "job": state_payload()}
     if command == "run":
+        if NETWORK.state().get('pending'):
+            return {'ok': False, 'error': 'Сначала подтвердите смену IP или выполните откат'}
         with STATE_LOCK:
             if STATE.get("running"):
                 return {"ok": False, "error": "Update already running", "job": state_payload()}
@@ -137,6 +155,7 @@ def shutdown(signum, _frame):
 def main() -> int:
     signal.signal(signal.SIGTERM, shutdown)
     signal.signal(signal.SIGINT, shutdown)
+    threading.Thread(target=NETWORK.maintain, daemon=True).start()
     SOCKET_PATH.parent.mkdir(parents=True, exist_ok=True)
     if SOCKET_PATH.exists():
         SOCKET_PATH.unlink()

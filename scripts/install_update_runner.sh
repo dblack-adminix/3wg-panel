@@ -39,6 +39,7 @@ WorkingDirectory=$BASE
 Environment=THREEWG_BASE=$BASE
 Environment=THREEWG_UPDATE_SOCKET=$SOCKET_PATH
 Environment=THREEWG_UPDATE_SCRIPT=$UPDATE_SCRIPT
+Environment=THREEWG_UPDATE_SERVICE=$SERVICE
 Environment=THREEWG_UPDATE_LOG=$LOG_PATH
 ExecStart=$PYTHON_BIN $BASE/scripts/update_runner.py
 Restart=always

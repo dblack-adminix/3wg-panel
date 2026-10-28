@@ -240,6 +240,7 @@ function Sidebar({ onLogout, protocols: initialProtocols = null, user, mobileOpe
           <a className={`nav ${path === '/monitoring' ? 'active' : ''}`} href="/monitoring" onClick={onClose}><Activity size={14} /> <span>Мониторинг</span></a>
           <a className={`nav ${path === '/abuse' ? 'active' : ''}`} href="/abuse" onClick={onClose}><ShieldAlert size={14} /> <span>P2P Guard</span></a>
           <a className={`nav ${path === '/updates' ? 'active' : ''}`} href="/updates" onClick={onClose}><RefreshCw size={14} /> <span>Обновления</span></a>
+          <a className={`nav ${path === '/network' ? 'active' : ''}`} href="/network" onClick={onClose}><Network size={14} /> <span>IP сервера</span></a>
           {!IS_EASY && <a className={`nav ${path === '/audit' ? 'active' : ''}`} href="/audit" onClick={onClose}><Terminal size={14} /> <span>Audit log</span></a>}
           <a className={`nav ${path === '/backups' ? 'active' : ''}`} href="/backups" onClick={onClose}><Download size={14} /> <span>Backups</span></a>
           {!IS_EASY && <a className={`nav ${path === '/migration' ? 'active' : ''}`} href="/migration" onClick={onClose}><Send size={14} /> <span>Migration</span></a>}
@@ -3605,6 +3606,47 @@ function MiniLineChart({ points, keys = ['value'], colors = ['#c8ff00'], height 
   );
 }
 
+function ServerNetworkPage({ onLogout, user }) {
+  const [data, setData] = useState(null);
+  const [ip, setIp] = useState('');
+  const [plan, setPlan] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const load = async () => {
+    try { setData(await api('/api/node/network')); setError(''); }
+    catch (err) { setError(err.message); }
+  };
+  useEffect(() => { load(); const timer = setInterval(load, 5000); return () => clearInterval(timer); }, []);
+  const action = async (name) => {
+    if (name === 'apply' && !window.confirm(`Перевести VPN на ${ip}? Подтвердите результат в течение 3 минут после применения.`)) return;
+    setBusy(true); setError('');
+    try {
+      const result = await api(`/api/node/network/${name}`, { method: 'POST', body: JSON.stringify({ ip: name === 'confirm' ? data.active_ip : ip, confirm: 'NETWORK' }) });
+      if (name === 'preview') setPlan(result);
+      else { setData(result); setPlan(null); }
+    } catch (err) { setError(err.message); setPlan(null); }
+    finally { setBusy(false); }
+  };
+  return <Shell title="IP сервера" subtitle={data?.panel_host || ''} onLogout={onLogout} user={user}>
+    {error && <div className="warning">{error}</div>}
+    {data?.last_error && <div className="warning">{data.last_error}</div>}
+    <section className="card">
+      <div className="section-head"><h2>Публичный IPv4</h2><button type="button" className="copy-button" onClick={load}><RefreshCw size={14} /> Обновить</button></div>
+      <div className="network-ip-summary"><span>Домен панели <code>{data?.panel_host || '—'}</code></span><span>VPN endpoint <code>{data?.endpoint_host || '—'}</code></span><span>Исходящий IP <code>{data?.active_ip || 'Системный маршрут'}</code></span></div>
+      <form className="network-ip-form" onSubmit={(e) => { e.preventDefault(); action('preview'); }}>
+        <label htmlFor="server-ip">Дополнительный IP</label>
+        <select id="server-ip" value={ip} onChange={(e) => { setIp(e.target.value); setPlan(null); }} disabled={busy || Boolean(data?.pending)} required>
+          <option value="">Выберите IPv4</option>
+          {(data?.addresses || []).map(a => <option key={a.ip} value={a.ip}>{a.ip} · {a.interface}</option>)}
+        </select>
+        <button className="copy-button" disabled={busy || !ip || Boolean(data?.pending)}><ShieldCheck size={14} /> Проверить</button>
+      </form>
+      {plan && <div className="network-ip-plan"><h3>{plan.ip}</h3>{plan.dns.map(d => <p key={d.host}>{d.host}: <code>{d.addresses.join(', ')}</code></p>)}<p>{plan.containers.map(c => c.name).join(', ')} · {plan.device}</p><button type="button" className="orange-btn" disabled={busy} onClick={() => action('apply')}><Network size={14} /> Применить IP</button></div>}
+      {data?.pending && <div className="network-ip-plan"><h3>Ожидает подтверждения: {data.active_ip}</h3><p>Автоматический откат: {new Date(data.pending.deadline * 1000).toLocaleTimeString('ru-RU')}</p><div className="actions"><button type="button" className="orange-btn" disabled={busy} onClick={() => action('confirm')}><Check size={14} /> Подтвердить соединение</button><button type="button" className="copy-button" disabled={busy} onClick={() => action('rollback')}><RotateCcw size={14} /> Откатить</button></div></div>}
+    </section>
+  </Shell>;
+}
+
 function SystemStatusPage({ onLogout, user }) {
   const [state, setState] = useState({ loading: true, system: null, status: null, dashboard: null, error: '' });
   const [historyHours, setHistoryHours] = useState(24);
@@ -4237,6 +4279,7 @@ function App() {
   if (auth.loading) return <div className="boot">3WG</div>;
   if (!auth.ok) return <Login onLogin={check} />;
   const isAdmin = Boolean(auth.user?.is_admin);
+  if (isAdmin && window.location.pathname === '/network') return <ServerNetworkPage onLogout={logout} user={auth.user} />;
   if (IS_EASY) {
     const path = window.location.pathname;
     if (path === '/settings') return <MonitoringPage onLogout={logout} user={auth.user} />;

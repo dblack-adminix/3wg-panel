@@ -115,7 +115,7 @@ remove_existing_container() {
   fi
 }
 check_python_sources() {
-  python3 -m py_compile app/app.py app/api_keys_store.py scripts/apply_api_patch.py scripts/apply_dashboard_model_patch.py scripts/update_runner.py
+  python3 -m py_compile app/app.py app/api_keys_store.py scripts/apply_api_patch.py scripts/apply_dashboard_model_patch.py scripts/update_runner.py scripts/host_network.py
 }
 prepare_existing_worktree() {
   local app_status tracked_status app_backup

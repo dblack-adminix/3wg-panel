@@ -2968,6 +2968,31 @@ if 'def migration_runner_request(' not in text and 'def update_status_payload(' 
     text = text.replace('def update_status_payload() -> dict:\n', MIGRATION_HELPERS + '\n\ndef update_status_payload() -> dict:\n', 1)
 if 'def change_protocol_port(' not in text and 'def db():\n' in text:
     text = text.replace('def db():\n', PORT_CHANGE_HELPERS + '\n\ndef db():\n', 1)
+NETWORK_ROUTES = r'''
+@app.get('/api/node/network')
+def api_node_network(user=Depends(api_require_admin)):
+    try:
+        return update_runner_request('network-status', request_timeout=45)
+    except (OSError, RuntimeError, ValueError) as exc:
+        return api_error(str(exc), status_code=503)
+
+
+@app.post('/api/node/network/{action}')
+async def api_node_network_action(action: str, request: Request, user=Depends(api_require_admin)):
+    if action not in {'preview', 'apply', 'confirm', 'rollback'}:
+        return api_error('Неизвестная операция', status_code=404)
+    data = await api_read_payload(request)
+    if action != 'preview' and data.get('confirm') != 'NETWORK':
+        return api_error('Нужно подтверждение NETWORK', status_code=400)
+    try:
+        result = update_runner_request('network-' + action, request_timeout=45, ip=str(data.get('ip', '')))
+    except (OSError, RuntimeError, ValueError) as exc:
+        return api_error(str(exc), status_code=409)
+    if action != 'preview':
+        api_audit_log(request, user, 'network.' + action, 'network', 'ipv4', 'host', {'ip': data.get('ip')})
+    return result
+'''
+API_BLOCK = API_BLOCK.replace(END, NETWORK_ROUTES + '\n' + END)
 block_re = re.compile(re.escape(START) + r'.*?' + re.escape(END) + r'\n?', flags=re.S)
 cleaned = block_re.sub('', text).rstrip()
 if FRONTEND_END in cleaned:

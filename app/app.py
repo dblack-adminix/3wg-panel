@@ -317,7 +317,7 @@ def github_web_repository_url(repo: str | None = None) -> str:
     return f"https://github.com/{value.lstrip('/')}"
 
 
-def update_runner_request(command: str, **extra) -> dict:
+def update_runner_request(command: str, request_timeout: int = 5, **extra) -> dict:
     payload = {"command": command, **extra}
     sock_path = Path(UPDATE_RUNNER_SOCKET)
     if not UPDATE_RUNNER_ENABLED:
@@ -325,7 +325,7 @@ def update_runner_request(command: str, **extra) -> dict:
     if not sock_path.exists():
         raise RuntimeError(f"Update runner socket not found: {UPDATE_RUNNER_SOCKET}")
     client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    client.settimeout(5)
+    client.settimeout(request_timeout)
     try:
         client.connect(str(sock_path))
         client.sendall((json.dumps(payload, ensure_ascii=False) + "\n").encode("utf-8"))
@@ -6134,7 +6134,7 @@ async def react_frontend_middleware(request: Request, call_next):
                 headers={'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0'},
             )
 
-    if (path in ('/', '/login', '/ui', '/settings', '/users', '/apikeys', '/monitoring', '/abuse', '/updates', '/audit', '/backups', '/migration', '/tools/system', '/tools/health', '/tools/ping', '/tools/traceroute') or re.match(r'^/client/\d+$', path) or re.match(r'^/status/(wireguard|amneziawg)$', path) or re.match(r'^/traffic/(wireguard|amneziawg)$', path)) and index_file.exists():
+    if (path in ('/', '/login', '/ui', '/settings', '/users', '/apikeys', '/monitoring', '/abuse', '/updates', '/audit', '/backups', '/migration', '/network', '/tools/system', '/tools/health', '/tools/ping', '/tools/traceroute') or re.match(r'^/client/\d+$', path) or re.match(r'^/status/(wireguard|amneziawg)$', path) or re.match(r'^/traffic/(wireguard|amneziawg)$', path)) and index_file.exists():
         return ReactFileResponse(
             index_file,
             media_type='text/html; charset=utf-8',
@@ -8707,6 +8707,30 @@ async def api_p2p_guard_apply(request: Request, user=Depends(api_require_admin))
     api_audit_log(request, user, 'p2p_guard.apply', 'security', 'p2p_guard', 'P2P Guard', {'settings': settings})
     return {'ok': True, 'settings': settings, 'protocols': protocols}
 # === 3WG P2P GUARD API END ===
+
+
+@app.get('/api/node/network')
+def api_node_network(user=Depends(api_require_admin)):
+    try:
+        return update_runner_request('network-status', request_timeout=45)
+    except (OSError, RuntimeError, ValueError) as exc:
+        return api_error(str(exc), status_code=503)
+
+
+@app.post('/api/node/network/{action}')
+async def api_node_network_action(action: str, request: Request, user=Depends(api_require_admin)):
+    if action not in {'preview', 'apply', 'confirm', 'rollback'}:
+        return api_error('Неизвестная операция', status_code=404)
+    data = await api_read_payload(request)
+    if action != 'preview' and data.get('confirm') != 'NETWORK':
+        return api_error('Нужно подтверждение NETWORK', status_code=400)
+    try:
+        result = update_runner_request('network-' + action, request_timeout=45, ip=str(data.get('ip', '')))
+    except (OSError, RuntimeError, ValueError) as exc:
+        return api_error(str(exc), status_code=409)
+    if action != 'preview':
+        api_audit_log(request, user, 'network.' + action, 'network', 'ipv4', 'host', {'ip': data.get('ip')})
+    return result
 
 # === 3WG REACT API END ===
 

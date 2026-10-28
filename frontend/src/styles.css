@@ -1887,3 +1887,8 @@ html :is(
   background-image: radial-gradient(ellipse 220px 140px at top right, var(--corner-glow), transparent 100%);
   background-repeat: no-repeat;
 }
+.network-ip-summary { display:flex; flex-wrap:wrap; gap:16px; margin-bottom:20px; }
+.network-ip-summary span { display:grid; gap:6px; overflow-wrap:anywhere; }
+.network-ip-form { display:flex; flex-wrap:wrap; align-items:center; gap:12px; }
+.network-ip-form select { max-width:100%; min-width:220px; padding:8px; border:1px solid var(--line); border-radius:6px; background:var(--card); color:var(--text); }
+.network-ip-plan { margin-top:20px; border-top:1px solid var(--line); padding-top:16px; overflow-wrap:anywhere; }
