@@ -322,6 +322,32 @@ def delete_node(node_id: int, threewg_control_session: str | None = Cookie(defau
     return {"ok": True}
 
 
+@app.patch("/api/nodes/{node_id}")
+async def edit_node(node_id: int, request: Request, threewg_control_session: str | None = Cookie(default=None)):
+    require_auth(threewg_control_session)
+    row = get_node(node_id)
+    data = await request.json()
+    name = str(data.get('name', row['name'])).strip()[:80]
+    if not name:
+        raise HTTPException(400, 'Название обязательно')
+    url = clean_url(data.get('url', row['url']))
+    key = str(data.get('api_key') or '').strip()
+    if url != row['url'] or key:
+        try:
+            await asyncio.to_thread(node_request, url, key or node_key(row), '/api/dashboard')
+        except RuntimeError as exc:
+            raise HTTPException(400, f'Подключение не прошло проверку: {exc}') from exc
+    encrypted = fernet.encrypt(key.encode()).decode() if key else row['api_key_enc']
+    try:
+        with db() as conn:
+            conn.execute('UPDATE nodes SET name=?,url=?,api_key_enc=?,region=?,tags=? WHERE id=?',
+                         (name, url, encrypted, str(data.get('region', row['region'])).strip()[:80],
+                          str(data.get('tags', row['tags'])).strip()[:200], node_id))
+    except sqlite3.IntegrityError as exc:
+        raise HTTPException(409, 'Этот адрес уже используется другой нодой') from exc
+    return {'ok': True}
+
+
 @app.get("/api/nodes/{node_id}/manage/{section}")
 async def management_section(node_id: int, section: str, threewg_control_session: str | None = Cookie(default=None)):
     require_auth(threewg_control_session)
