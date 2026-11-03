@@ -41,7 +41,7 @@ class BypassSourcesTest(unittest.TestCase):
     def test_cached_catalog_and_failed_refresh_preserve_snapshot(self):
         with tempfile.TemporaryDirectory() as directory:
             path=Path(directory)/'sources.json'
-            previous={'updated_at':int(time.time()),'sources':[{'id':'ipv4','items':['8.8.8.8/32']}],'stale':False}
+            previous={'updated_at':int(time.time()),'sources':[{'id':'ipv4','items':['8.8.8.8/32']}],'stale':False,'grouping_version':1}
             path.write_text(json.dumps(previous))
             before=path.read_bytes()
             with patch.object(sources.urllib.request,'urlopen',side_effect=OSError('offline')) as fetch:
@@ -54,6 +54,29 @@ class BypassSourcesTest(unittest.TestCase):
         groups,networks,routes=sources.resolve_policy([{'name':'Manual','targets':['8.8.8.8']}],{}, {'sources':[]})
         self.assertEqual(groups[0]['targets'],['8.8.8.8/32']);self.assertEqual(networks,[])
         self.assertNotIn('0.0.0.0/0',routes)
+
+    def test_groups_cover_every_item_and_keep_shared_networks(self):
+        catalog=[{'id':'domains','items':['bank.example.ru','other.example.ru']},{'id':'ipv4','items':['8.8.8.0/24','9.9.9.9/32']},{'id':'ipv6','items':['2001:4860::/32']}]
+        metadata={'categories':[{'id':'banks','title':'Банки','services':[{'name':'Банк','tier':'lite','ipv4':['8.8.8.8/32'],'ipv6':['2001:4860::1/128']}]},{'id':'payments','title':'Платежи','services':[{'name':'Платёж','tier':'standard','ipv4':['8.8.8.9/32'],'ipv6':[]}]}]}
+        configs={'banks':{'services':[{'name':'Банк','domains':['bank.example.ru']}]},'payments':{'services':[]}}
+        original={source['id']:list(source['items']) for source in catalog}
+        sources.group_sources(catalog,metadata,configs)
+        for source in catalog:
+            self.assertEqual(source['items'],original[source['id']])
+            self.assertEqual(set(source['items']),{value for group in source['groups'] for value in group['items']})
+        ipv4=next(source for source in catalog if source['id']=='ipv4')
+        self.assertEqual([g['id'] for g in ipv4['groups'] if '8.8.8.0/24' in g['items']],['banks','payments'])
+        self.assertEqual(ipv4['groups'][-1]['id'],'other')
+
+    def test_old_cache_gets_group_metadata_without_changing_policy_ids(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'sources.json'
+            path.write_text(json.dumps({'updated_at':int(time.time()),'sources':[]}))
+            with patch.object(sources,'download',side_effect=[b'example.ru',b'8.8.8.8/32',b'2001:4860::/32']),patch.object(sources,'fetch_groups') as group:
+                result=sources.load_catalog(path)
+            group.assert_called_once()
+            self.assertEqual(result['grouping_version'],1)
+            self.assertEqual(result['sources'][1]['items'],['8.8.8.8/32'])
 
 
 if __name__=='__main__':unittest.main()

@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   Activity,
@@ -3614,14 +3614,42 @@ function AdminPasswordPage({onLogout,user}) {
   return <Shell title="Пароль администратора" subtitle={user.username} onLogout={onLogout} user={user}><section className="card account-settings"><h2>Смена пароля</h2>{error&&<div className="warning">{error}</div>}<form onSubmit={save}><label>Текущий пароль<input name="current_password" type="password" autoComplete="current-password" required/></label><label>Новый пароль<input name="new_password" type="password" autoComplete="new-password" minLength={12} maxLength={1024} required/></label><label>Повторите новый пароль<input name="confirm_password" type="password" autoComplete="new-password" minLength={12} maxLength={1024} required/></label><p className="muted">После сохранения потребуется войти заново на всех устройствах.</p><button className="orange-btn" disabled={busy}><Key size={14}/> Сменить пароль</button></form></section></Shell>;
 }
 
+function sourceGroups(source, query) {
+  const needle=query.trim().toLowerCase();
+  const groups=source?.groups||[{id:'other',title:'Прочее',services:[{id:'other',title:'Без категории',items:source?.items||[]}]}];
+  return groups.map(group=>{
+    const services=group.services.map(service=>({...service,items:!needle||`${group.title} ${service.title}`.toLowerCase().includes(needle)?service.items:service.items.filter(item=>item.toLowerCase().includes(needle))})).filter(service=>service.items.length);
+    return {...group,services,items:[...new Set(services.flatMap(service=>service.items))]};
+  }).filter(group=>group.items.length);
+}
+
+function SourceGroupCheckbox({items,chosen,disabled,limit,onChange,label}) {
+  const input=useRef(null),count=items.filter(item=>chosen.has(item)).length,all=count===items.length;
+  useEffect(()=>{if(input.current)input.current.indeterminate=count>0&&!all},[count,all]);
+  return <input ref={input} type="checkbox" aria-label={label} checked={all} disabled={disabled||(!all&&new Set([...chosen,...items]).size>limit)} onClick={e=>e.stopPropagation()} onChange={e=>onChange(e.target.checked)}/>;
+}
+
 function BypassSourcePicker({selected={},onChange,disabled}) {
   const [catalog,setCatalog]=useState(null),[error,setError]=useState(''),[loading,setLoading]=useState(false),[tab,setTab]=useState('ipv4'),[query,setQuery]=useState('');
   const load=async(refresh=false)=>{setLoading(true);setError('');try{setCatalog(await api('/api/routing/bypass/sources'+(refresh?'?refresh=true':'')))}catch(e){setError(e.message)}finally{setLoading(false)}};
   useEffect(()=>{load()},[]);
-  const source=catalog?.sources?.find(s=>s.id===tab),chosen=new Set(selected[tab]||[]),items=(source?.items||[]).filter(item=>item.toLowerCase().includes(query.toLowerCase()));
+  const source=catalog?.sources?.find(s=>s.id===tab),chosen=new Set(selected[tab]||[]),groups=sourceGroups(source,query),items=[...new Set(groups.flatMap(group=>group.items))];
   const choose=values=>onChange({...selected,[tab]:values});
   const union=[...new Set([...chosen,...items])],limit=tab==='domains'?128:20000;
-  return <section className="bypass-sources"><div className="section-head"><h2>Готовые списки ru-direct</h2><button className="copy-button" type="button" disabled={loading||disabled} onClick={()=>load(true)}><RefreshCw size={14}/> Обновить списки</button></div>{(error||catalog?.error)&&<div className="warning">{error||catalog.error}</div>}<div className="source-tabs" role="group" aria-label="Тип списка">{['ipv4','ipv6','domains'].map(id=><button type="button" key={id} aria-pressed={tab===id} onClick={()=>{setTab(id);setQuery('')}}>{id==='domains'?'Домены':id.toUpperCase()} · {(selected[id]||[]).length} выбрано</button>)}</div>{loading&&!catalog?<p className="muted">Загрузка списков…</p>:source&&<><div className="source-tools"><input aria-label="Поиск в готовом списке" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Поиск домена или сети"/><button className="copy-button" type="button" disabled={disabled||!items.length||union.length>limit} onClick={()=>choose(union)}>{query?'Выбрать найденные':'Выбрать все'}</button><button className="copy-button" type="button" disabled={disabled||!chosen.size} onClick={()=>choose([])}>Снять выбор</button></div><div className="source-meta"><span>{source.title} · {source.count} записей</span><a href={source.url} target="_blank" rel="noopener noreferrer">Источник</a><span>{new Date(catalog.updated_at*1000).toLocaleString('ru-RU')}</span></div>{tab==='domains'&&<p className="muted">До 128 доменов и ручных адресов суммарно. Сети из готовых IP-списков в этот лимит не входят.</p>}<div className="source-items">{items.map(item=><label key={item}><input type="checkbox" checked={chosen.has(item)} disabled={disabled||(!chosen.has(item)&&chosen.size>=limit)} onChange={e=>choose(e.target.checked?[...chosen,item]:[...chosen].filter(v=>v!==item))}/><span>{item}</span></label>)}{!items.length&&<span className="muted">Нет совпадений</span>}</div></>}<p className="muted">Большие наборы создают тысячи маршрутов. Импортируйте конфигурацию файлом и проверьте поддержку в вашем клиенте.</p></section>;
+  const toggle=(values,enabled)=>choose(enabled?[...new Set([...chosen,...values])]:[...chosen].filter(value=>!values.includes(value)));
+  const summary=(entry,prefix)=>{const count=entry.items.filter(item=>chosen.has(item)).length;return <><SourceGroupCheckbox items={entry.items} chosen={chosen} disabled={disabled} limit={limit} label={`${prefix} ${entry.title}`} onChange={enabled=>toggle(entry.items,enabled)}/><span className="source-group-title">{entry.title}</span><small>{count} / {entry.items.length}</small>{count>0&&<button className="source-group-clear" type="button" disabled={disabled} onClick={e=>{e.preventDefault();e.stopPropagation();toggle(entry.items,false)}}>Снять</button>}</>};
+  return <section className="bypass-sources">
+    <div className="section-head"><h2>Готовые списки ru-direct</h2><button className="copy-button" type="button" disabled={loading||disabled} onClick={()=>load(true)}><RefreshCw size={14}/> Обновить списки</button></div>
+    {(error||catalog?.error)&&<div className="warning">{error||catalog.error}</div>}
+    <div className="source-tabs" role="group" aria-label="Тип списка">{['ipv4','ipv6','domains'].map(id=><button type="button" key={id} aria-pressed={tab===id} onClick={()=>{setTab(id);setQuery('')}}>{id==='domains'?'Домены':id.toUpperCase()} · {(selected[id]||[]).length} выбрано</button>)}</div>
+    {loading&&!catalog?<p className="muted">Загрузка списков…</p>:source&&<>
+      <div className="source-tools"><input aria-label="Поиск в готовом списке" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Поиск группы, сервиса, домена или сети"/><button className="copy-button" type="button" disabled={disabled||!items.length||union.length>limit} onClick={()=>choose(union)}>{query?'Выбрать найденные':'Выбрать все'}</button><button className="copy-button" type="button" disabled={disabled||!chosen.size} onClick={()=>choose([])}>Снять выбор</button></div>
+      <div className="source-meta"><span>{source.title} · {source.count} записей</span><a href={source.url} target="_blank" rel="noopener noreferrer">Источник</a><span>{new Date(catalog.updated_at*1000).toLocaleString('ru-RU')}</span></div>
+      {tab==='domains'&&<p className="muted">До 128 доменов и ручных адресов суммарно. Сети из готовых IP-списков в этот лимит не входят.</p>}
+      <div className="source-category-list" key={tab}>{groups.map(group=><details className="source-category" key={group.id} open={Boolean(query)||undefined}><summary>{summary(group,'Выбрать группу')}</summary><div className="source-services">{group.services.map(service=><details className="source-service" key={service.id} open={Boolean(query)||undefined}><summary>{summary(service,'Выбрать сервис')}</summary><div className="source-items">{service.items.map(item=><label key={item}><input type="checkbox" checked={chosen.has(item)} disabled={disabled||(!chosen.has(item)&&chosen.size>=limit)} onChange={e=>toggle([item],e.target.checked)}/><span>{item}</span></label>)}</div></details>)}</div></details>)}{!groups.length&&<span className="muted">Нет совпадений</span>}</div>
+    </>}
+    <p className="muted">Общие сети могут повторяться у нескольких сервисов; выбор и снятие такой сети действуют сразу во всех группах. Большие наборы импортируйте файлом.</p>
+  </section>;
 }
 
 function BypassRoutesPage({onLogout,user}) {
