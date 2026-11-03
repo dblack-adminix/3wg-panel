@@ -2,9 +2,15 @@
 import ipaddress
 import re
 import socket
+from functools import lru_cache
 
 
 def allowed_routes(networks):
+    return list(_allowed_routes(tuple(sorted(set(networks)))))
+
+
+@lru_cache(maxsize=16)
+def _allowed_routes(networks):
     routes = []
     for version, root in [(4, '0.0.0.0/0'), (6, '::/0')]:
         exclusions = list(ipaddress.collapse_addresses([ipaddress.ip_network(n) for n in networks if ipaddress.ip_network(n).version == version]))
@@ -17,9 +23,9 @@ def allowed_routes(networks):
                 updated.extend(network.address_exclude(excluded) if excluded.subnet_of(network) else [network])
             remaining = updated
         routes.extend(str(n) for n in ipaddress.collapse_addresses(remaining))
-    if len(routes) > 4096 or not routes:
+    if len(routes) > 16384 or not routes:
         raise ValueError('Слишком много маршрутов или список исключает весь интернет')
-    return routes
+    return tuple(routes)
 
 
 def resolve_groups(groups):

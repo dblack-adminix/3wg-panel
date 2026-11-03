@@ -201,7 +201,7 @@ def node_key(row):
 async def execute_node(node_id, path, method="POST", payload=None):
     row = get_node(node_id)
     try:
-        result = await asyncio.to_thread(node_request, row["url"], node_key(row), path, 30, method, payload)
+        result = await asyncio.to_thread(node_request, row["url"], node_key(row), path, 60 if path.startswith('/api/routing/bypass') else 30, method, payload)
     except RuntimeError as exc:
         raise HTTPException(502, f"Ошибка ноды: {exc}") from exc
     await asyncio.to_thread(sync_node, row)
@@ -209,6 +209,7 @@ async def execute_node(node_id, path, method="POST", payload=None):
 
 
 MANAGEMENT_READ_PATHS = {
+    "bypass-sources": "/api/routing/bypass/sources",
     "bypass": "/api/routing/bypass",
     "network": "/api/node/network",
     "status": "/api/node/status",
@@ -223,6 +224,7 @@ MANAGEMENT_READ_PATHS = {
 }
 
 MANAGEMENT_ACTIONS = {
+    "bypass-sources-refresh": ("/api/routing/bypass/sources?refresh=true", "GET"),
     "bypass-update": ("/api/routing/bypass", "PATCH"),
     "network-preview": ("/api/node/network/preview", "POST"),
     "network-apply": ("/api/node/network/apply", "POST"),
@@ -403,7 +405,7 @@ async def management_section(node_id: int, section: str, threewg_control_session
         raise HTTPException(404, "Раздел управления не найден")
     row = get_node(node_id)
     try:
-        result = await asyncio.to_thread(node_request, row["url"], node_key(row), path, 30)
+        result = await asyncio.to_thread(node_request, row["url"], node_key(row), path, 60 if section == 'bypass-sources' else 30)
         if section == "updates" and isinstance(result, dict):
             version = result.get("version") or {}
             reported_latest = version.get("latest")

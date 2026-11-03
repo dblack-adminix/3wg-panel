@@ -1679,7 +1679,7 @@ def read_conf(c) -> str:
             text = re.sub(r"^Endpoint\s*=.*$", f"Endpoint = {endpoint}", text, flags=re.M)
     policy = json.loads(panel_setting_get('client_bypass_routes') or '{}')
     if policy.get('enabled'):
-        routes = allowed_routes([n for group in policy.get('groups', []) for n in group.get('networks', [])])
+        routes = allowed_routes(policy.get('source_networks', []) + [n for group in policy.get('groups', []) for n in group.get('networks', [])])
         text = re.sub(r'^AllowedIPs\s*=.*$', 'AllowedIPs = ' + ', '.join(routes), text, flags=re.M)
     return text
 
@@ -8725,6 +8725,15 @@ async def api_p2p_guard_apply(request: Request, user=Depends(api_require_admin))
 # === 3WG P2P GUARD API END ===
 
 
+@app.get('/api/routing/bypass/sources')
+def api_client_bypass_sources(refresh: bool = False, user=Depends(api_require_admin)):
+    from bypass_sources import load_catalog
+    try:
+        return {'ok': True, **load_catalog(DATA_DIR / 'bypass-sources.json', refresh=refresh)}
+    except ValueError as exc:
+        return api_error(str(exc), status_code=502)
+
+
 @app.get('/api/routing/bypass')
 def api_client_bypass_get(user=Depends(api_require_admin)):
     return {'ok': True, **json.loads(panel_setting_get('client_bypass_routes') or '{"enabled":false,"groups":[]}')}
@@ -8733,25 +8742,30 @@ def api_client_bypass_get(user=Depends(api_require_admin)):
 @app.patch('/api/routing/bypass')
 async def api_client_bypass_update(request: Request, user=Depends(api_require_admin)):
     import asyncio
-    from client_routes import resolve_groups
+    from bypass_sources import resolve_policy, load_catalog
     data = await api_read_payload(request)
     if not isinstance(data.get('enabled'), bool):
         return api_error('Укажите состояние списка', status_code=400)
     previous = json.loads(panel_setting_get('client_bypass_routes') or '{}')
     previous_targets = [{'name':g['name'], 'targets':g['targets']} for g in previous.get('groups', [])]
+    selected = data.get('sources', previous.get('sources', {}))
     try:
-        if not data['enabled'] and data.get('groups') == previous_targets:
+        if not data['enabled'] and data.get('groups') == previous_targets and selected == previous.get('sources', {}):
             groups = previous.get('groups', [])
-            routes = allowed_routes([n for g in groups for n in g.get('networks', [])])
+            source_networks = previous.get('source_networks', [])
+            routes = allowed_routes(source_networks + [n for g in groups for n in g.get('networks', [])])
         else:
-            groups, routes = await asyncio.wait_for(asyncio.to_thread(resolve_groups, data.get('groups', [])), timeout=30)
+            def resolve():
+                catalog = load_catalog(DATA_DIR / 'bypass-sources.json') if isinstance(selected, dict) and any(selected.values()) else {'sources':[]}
+                return resolve_policy(data.get('groups', []), selected, catalog)
+            groups, source_networks, routes = await asyncio.wait_for(asyncio.to_thread(resolve), timeout=45)
     except (ValueError, UnicodeError) as exc:
         return api_error(str(exc), status_code=400)
     except asyncio.TimeoutError:
         return api_error('DNS-проверка не завершилась. Прежние настройки сохранены.', status_code=504)
-    policy = {'enabled': data['enabled'], 'groups': groups, 'updated_at': int(time.time()), 'route_count': len(routes)}
+    policy = {'enabled': data['enabled'], 'groups': groups, 'sources':selected, 'source_networks':source_networks, 'updated_at': int(time.time()), 'route_count': len(routes)}
     panel_setting_set('client_bypass_routes', json.dumps(policy))
-    api_audit_log(request, user, 'routing.bypass.update', 'routing', 'client', 'split routes', {'enabled': data['enabled'], 'resources': len(groups)})
+    api_audit_log(request, user, 'routing.bypass.update', 'routing', 'client', 'split routes', {'enabled': data['enabled'], 'resources': len(groups), 'selected_sources': {kind:len(values) for kind,values in selected.items()}, 'route_count':len(routes)})
     return {'ok': True, **policy}
 
 
