@@ -5,6 +5,17 @@ import socket
 from functools import lru_cache
 
 
+def resolve_domain(host):
+    try:
+        addresses = socket.getaddrinfo(host, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+    except socket.gaierror as exc:
+        raise ValueError(f'Не удалось разрешить домен {host}; прежние настройки сохранены') from exc
+    networks = {str(ipaddress.ip_network(address[4][0])) for address in addresses}
+    if not networks:
+        raise ValueError(f'Не найдены адреса домена {host}; прежние настройки сохранены')
+    return networks
+
+
 def allowed_routes(networks):
     return list(_allowed_routes(tuple(sorted(set(networks)))))
 
@@ -59,12 +70,7 @@ def resolve_groups(groups):
             host = target.rstrip('.').encode('idna').decode('ascii').lower()
             if len(host) > 253 or not re.fullmatch(r'(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9-]{2,63}', host):
                 raise ValueError(f'Укажите точный домен без URL и звёздочки: {target}')
-            try:
-                addresses = socket.getaddrinfo(host, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
-            except socket.gaierror as exc:
-                raise ValueError(f'Не удалось разрешить домен {host}; прежние настройки сохранены') from exc
-            for address in addresses:
-                networks.add(str(ipaddress.ip_network(address[4][0])))
+            networks.update(resolve_domain(host))
             normalized.append(host)
         result.append({'name': name, 'targets': normalized, 'networks': sorted(networks)})
     routes = allowed_routes([n for g in result for n in g['networks']])

@@ -3002,7 +3002,7 @@ async def api_client_bypass_update(request: Request, user=Depends(api_require_ad
             def resolve():
                 catalog = load_catalog(DATA_DIR / 'bypass-sources.json') if isinstance(selected, dict) and any(selected.values()) else {'sources':[]}
                 return resolve_policy(data.get('groups', []), selected, catalog)
-            groups, source_networks, routes = await asyncio.wait_for(asyncio.to_thread(resolve), timeout=45)
+            groups, source_networks, routes = await asyncio.wait_for(asyncio.to_thread(resolve), timeout=180)
     except (ValueError, UnicodeError) as exc:
         return api_error(str(exc), status_code=400)
     except asyncio.TimeoutError:

@@ -201,7 +201,7 @@ def node_key(row):
 async def execute_node(node_id, path, method="POST", payload=None):
     row = get_node(node_id)
     try:
-        result = await asyncio.to_thread(node_request, row["url"], node_key(row), path, 60 if path.startswith('/api/routing/bypass') else 30, method, payload)
+        result = await asyncio.to_thread(node_request, row["url"], node_key(row), path, 200 if path.startswith('/api/routing/bypass') else 30, method, payload)
     except RuntimeError as exc:
         raise HTTPException(502, f"Ошибка ноды: {exc}") from exc
     await asyncio.to_thread(sync_node, row)

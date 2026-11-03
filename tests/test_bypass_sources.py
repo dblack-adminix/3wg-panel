@@ -32,11 +32,22 @@ class BypassSourcesTest(unittest.TestCase):
         for selected in [{'url':['https://evil.example']},{'ipv4':['0.0.0.0/0']},{'ipv4':'8.8.8.8/32'}]:
             with self.assertRaises(ValueError):sources.resolve_policy([],selected,{'sources':[]})
 
-    def test_domain_limit_checked_before_dns(self):
+    def test_preset_domains_can_exceed_old_manual_limit(self):
         domains=[f's{i}.example.ru' for i in range(129)]
-        with patch.object(sources,'resolve_groups') as resolver:
-            with self.assertRaises(ValueError):sources.resolve_policy([],{'domains':domains},{'sources':[{'id':'domains','items':domains}]})
-            resolver.assert_not_called()
+        with patch.object(sources,'resolve_domain',return_value={'8.8.8.8/32'}) as resolver:
+            groups,networks,_=sources.resolve_policy([],{'domains':domains},{'sources':[{'id':'domains','items':domains}]})
+        self.assertEqual(resolver.call_count,129)
+        self.assertEqual(networks,['8.8.8.8/32'])
+        self.assertEqual(groups,[])
+
+    def test_manual_limit_still_applies(self):
+        with self.assertRaises(ValueError):sources.resolve_policy([{'name':'Manual','targets':['8.8.8.8']*129}],{}, {'sources':[]})
+
+    def test_dns_failure_does_not_mutate_selected_values(self):
+        selected={'domains':['example.ru']}
+        with patch.object(sources,'resolve_domain',side_effect=ValueError('DNS failed')):
+            with self.assertRaises(ValueError):sources.resolve_policy([],selected,{'sources':[{'id':'domains','items':['example.ru']}]})
+        self.assertEqual(selected,{'domains':['example.ru']})
 
     def test_cached_catalog_and_failed_refresh_preserve_snapshot(self):
         with tempfile.TemporaryDirectory() as directory:

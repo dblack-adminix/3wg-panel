@@ -8,9 +8,10 @@ import threading
 import time
 import urllib.request
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from client_routes import allowed_routes, resolve_groups
+from client_routes import allowed_routes, resolve_groups, resolve_domain
 
 SOURCES = {
     'domains': 'Домены',
@@ -18,6 +19,7 @@ SOURCES = {
     'ipv6': 'IPv6',
 }
 LOCK = threading.Lock()
+DNS_POOL = ThreadPoolExecutor(max_workers=16, thread_name_prefix='bypass-dns')
 
 
 def download(url):
@@ -159,13 +161,11 @@ def resolve_policy(groups, selected, catalog):
     domains = selections.get('domains', [])
     if not isinstance(groups,list) or any(not isinstance(g,dict) or not isinstance(g.get('targets'),list) for g in groups):
         raise ValueError('Некорректные ручные ресурсы')
-    if len(domains) + sum(len(g['targets']) for g in groups) > 128:
-        raise ValueError('Выберите до 128 доменов и ручных адресов суммарно. Готовые IPv4/IPv6-сети не входят в этот лимит.')
     resolved, _ = resolve_groups(groups)
     source_networks = selections.get('ipv4', []) + selections.get('ipv6', [])
     if domains:
-        domain_groups, _ = resolve_groups([{'name':'ru-standard domains','targets':domains}])
-        source_networks += domain_groups[0]['networks']
+        for networks in DNS_POOL.map(resolve_domain, domains):
+            source_networks.extend(networks)
     source_networks = sorted(set(source_networks))
     routes = allowed_routes(source_networks + [n for g in resolved for n in g['networks']])
     return resolved, source_networks, routes
