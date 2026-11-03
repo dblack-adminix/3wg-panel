@@ -1092,10 +1092,9 @@ function QrModal({ peer, onClose }) {
             <div className="modal-qr-panel" key={item.key}>
               <h3>{item.title}</h3>
               <p>{item.hint}</p>
-              {item.qr && <img className="modal-qr-image" src={item.qr} alt={`${item.title} QR ${peer.name}`} />}
+              {item.qr && <QrImage src={item.qr} title={`${item.title} QR ${peer.name}`} className="modal-qr-image" />}
               <div className="modal-actions">
                 <a className="orange-btn small" href={item.file}><Download size={14} /> {item.fileLabel}</a>
-                <a className="blue-btn small" href={item.qr}><QrCode size={14} /> Скачать код</a>
               </div>
             </div>
           ))}
@@ -1317,15 +1316,36 @@ function ClientPage({ clientId, onLogout, user }) {
   );
 }
 
+function QrImage({src,title,className}) {
+  const [state,setState]=useState({});
+  useEffect(()=>{
+    const controller=new AbortController();let objectUrl;
+    setState({});
+    (async()=>{try{
+      const response=await fetch(src,{credentials:'same-origin',signal:controller.signal});
+      if(!response.ok){
+        if(response.status===413)throw new Error('Конфигурация с маршрутами слишком велика для QR-кода. Скачайте полный .conf или .vpn и импортируйте файлом. Исключения «Мимо VPN» сохранятся.');
+        throw new Error(response.status===401?'Сессия истекла. Войдите заново.':'Не удалось загрузить QR-код. Попробуйте обновить страницу.');
+      }
+      const blob=await response.blob();if(!blob.type.startsWith('image/'))throw new Error('Сервер вернул некорректный QR-код.');
+      if(controller.signal.aborted)return;
+      objectUrl=URL.createObjectURL(blob);setState({url:objectUrl});
+    }catch(error){if(!controller.signal.aborted)setState({error:error.message})}})();
+    return()=>{controller.abort();if(objectUrl)URL.revokeObjectURL(objectUrl)};
+  },[src]);
+  if(state.error)return <div className="warning" role="status">{state.error}</div>;
+  if(!state.url)return <div className="muted" role="status">Загрузка QR…</div>;
+  return <><img className={className} src={state.url} alt={title}/><a className="blue-btn small" href={src}><QrCode size={14}/> Скачать QR</a></>;
+}
+
 function QrPanel({ title, hint, img, config, qr, configLabel }) {
   return (
     <section className="card qr-card">
       <h2>{title}</h2>
       <p>{hint}</p>
-      {img && <img className="qr-image" src={img} alt={title} />}
+      {img && <QrImage src={img} title={title} className="qr-image" />}
       <div className="qr-actions">
         <a className="orange-btn small" href={config}><Download size={14} /> {configLabel}</a>
-        <a className="blue-btn small" href={qr}><QrCode size={14} /> Скачать QR</a>
       </div>
     </section>
   );
