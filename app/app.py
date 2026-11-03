@@ -26,6 +26,7 @@ from pathlib import Path
 import docker
 import qrcode
 from api_keys_store import create_api_key, delete_api_key, init_api_keys, list_api_keys, valid_api_key
+from client_routes import allowed_routes
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
@@ -139,7 +140,7 @@ security = HTTPBasic(auto_error=False)
 
 
 def make_session_token() -> str:
-    msg = f"{PANEL_USER}:{PANEL_PASSWORD}".encode("utf-8")
+    msg = f"{PANEL_USER}:{panel_setting_get('admin_password_hash') or PANEL_PASSWORD}".encode("utf-8")
     key = SESSION_SECRET.encode("utf-8")
     return hmac.new(key, msg, hashlib.sha256).hexdigest()
 
@@ -162,7 +163,8 @@ def password_verify(password: str, stored: str) -> bool:
 
 def make_user_session(username: str, role: str) -> str:
     payload = f"{SESSION_VERSION}:{username}:{role}"
-    sig = hmac.new(SESSION_SECRET.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+    key = SESSION_SECRET + (panel_setting_get('admin_password_hash') or '') if username == PANEL_USER else SESSION_SECRET
+    sig = hmac.new(key.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
     return f"{payload}:{sig}"
 
 
@@ -171,7 +173,8 @@ def verify_user_session(token: str) -> dict | None:
     if len(parts) != 4 or parts[0] != SESSION_VERSION:
         return None
     payload = ":".join(parts[:3])
-    sig = hmac.new(SESSION_SECRET.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+    key = SESSION_SECRET + (panel_setting_get('admin_password_hash') or '') if parts[1] == PANEL_USER else SESSION_SECRET
+    sig = hmac.new(key.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
     if not secrets.compare_digest(sig, parts[3]):
         return None
     username, role = parts[1], parts[2]
@@ -223,8 +226,10 @@ def user_payload(row) -> dict:
 
 
 def authenticate_user(username: str, password: str) -> dict | None:
-    if secrets.compare_digest(username, PANEL_USER) and secrets.compare_digest(password, PANEL_PASSWORD):
-        return admin_user()
+    if secrets.compare_digest(username.encode('utf-8'), PANEL_USER.encode('utf-8')):
+        stored = panel_setting_get('admin_password_hash')
+        valid = password_verify(password, stored) if stored else secrets.compare_digest(password.encode('utf-8'), PANEL_PASSWORD.encode('utf-8'))
+        return admin_user() if valid else None
     if IS_EASY:
         return None
     with db() as conn:
@@ -1672,6 +1677,10 @@ def read_conf(c) -> str:
         endpoint = client_endpoint(protocol)
         if re.search(r"^Endpoint\s*=", text, flags=re.M):
             text = re.sub(r"^Endpoint\s*=.*$", f"Endpoint = {endpoint}", text, flags=re.M)
+    policy = json.loads(panel_setting_get('client_bypass_routes') or '{}')
+    if policy.get('enabled'):
+        routes = allowed_routes([n for group in policy.get('groups', []) for n in group.get('networks', [])])
+        text = re.sub(r'^AllowedIPs\s*=.*$', 'AllowedIPs = ' + ', '.join(routes), text, flags=re.M)
     return text
 
 
@@ -1733,7 +1742,10 @@ def build_amnezia_vpn_payload(c) -> str:
 
 
 def png_qr(payload: str):
-    img = qrcode.make(payload)
+    try:
+        img = qrcode.make(payload)
+    except (qrcode.exceptions.DataOverflowError, ValueError):
+        raise HTTPException(413, 'Конфигурация слишком велика для QR. Скачайте и импортируйте .conf файлом.')
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return Response(content=buf.getvalue(), media_type="image/png")
@@ -2111,7 +2123,8 @@ async def delete_existing_peer_route(request: Request, user=Depends(auth)):
 def download(client_id: int, user=Depends(auth)):
     c = load_client(client_id)
     filename = f"{slugify(c['name'])}_{c['protocol']}.conf"
-    return FileResponse(c["config_path"], filename=filename, media_type="application/octet-stream")
+    disposition = FileResponse(c["config_path"], filename=filename, media_type="application/octet-stream").headers['content-disposition']
+    return Response(read_conf(c), media_type="application/octet-stream", headers={"Content-Disposition": disposition})
 
 
 @app.get("/client/{client_id}/download-vpn")
@@ -2152,7 +2165,10 @@ def raw(protocol: str, user=Depends(auth)):
 # 3WG V7 QR PNG DOWNLOAD ROUTES
 
 def png_qr_download(payload: str, filename: str):
-    img = qrcode.make(payload)
+    try:
+        img = qrcode.make(payload)
+    except (qrcode.exceptions.DataOverflowError, ValueError):
+        raise HTTPException(413, 'Конфигурация слишком велика для QR. Скачайте и импортируйте .conf файлом.')
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return Response(
@@ -6134,7 +6150,7 @@ async def react_frontend_middleware(request: Request, call_next):
                 headers={'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0'},
             )
 
-    if (path in ('/', '/login', '/ui', '/settings', '/users', '/apikeys', '/monitoring', '/abuse', '/updates', '/audit', '/backups', '/migration', '/network', '/tools/system', '/tools/health', '/tools/ping', '/tools/traceroute') or re.match(r'^/client/\d+$', path) or re.match(r'^/status/(wireguard|amneziawg)$', path) or re.match(r'^/traffic/(wireguard|amneziawg)$', path)) and index_file.exists():
+    if (path in ('/', '/login', '/ui', '/settings', '/users', '/apikeys', '/monitoring', '/abuse', '/updates', '/audit', '/backups', '/migration', '/network', '/account', '/bypass', '/tools/system', '/tools/health', '/tools/ping', '/tools/traceroute') or re.match(r'^/client/\d+$', path) or re.match(r'^/status/(wireguard|amneziawg)$', path) or re.match(r'^/traffic/(wireguard|amneziawg)$', path)) and index_file.exists():
         return ReactFileResponse(
             index_file,
             media_type='text/html; charset=utf-8',
@@ -8707,6 +8723,64 @@ async def api_p2p_guard_apply(request: Request, user=Depends(api_require_admin))
     api_audit_log(request, user, 'p2p_guard.apply', 'security', 'p2p_guard', 'P2P Guard', {'settings': settings})
     return {'ok': True, 'settings': settings, 'protocols': protocols}
 # === 3WG P2P GUARD API END ===
+
+
+@app.get('/api/routing/bypass')
+def api_client_bypass_get(user=Depends(api_require_admin)):
+    return {'ok': True, **json.loads(panel_setting_get('client_bypass_routes') or '{"enabled":false,"groups":[]}')}
+
+
+@app.patch('/api/routing/bypass')
+async def api_client_bypass_update(request: Request, user=Depends(api_require_admin)):
+    import asyncio
+    from client_routes import resolve_groups
+    data = await api_read_payload(request)
+    if not isinstance(data.get('enabled'), bool):
+        return api_error('Укажите состояние списка', status_code=400)
+    previous = json.loads(panel_setting_get('client_bypass_routes') or '{}')
+    previous_targets = [{'name':g['name'], 'targets':g['targets']} for g in previous.get('groups', [])]
+    try:
+        if not data['enabled'] and data.get('groups') == previous_targets:
+            groups = previous.get('groups', [])
+            routes = allowed_routes([n for g in groups for n in g.get('networks', [])])
+        else:
+            groups, routes = await asyncio.wait_for(asyncio.to_thread(resolve_groups, data.get('groups', [])), timeout=30)
+    except (ValueError, UnicodeError) as exc:
+        return api_error(str(exc), status_code=400)
+    except asyncio.TimeoutError:
+        return api_error('DNS-проверка не завершилась. Прежние настройки сохранены.', status_code=504)
+    policy = {'enabled': data['enabled'], 'groups': groups, 'updated_at': int(time.time()), 'route_count': len(routes)}
+    panel_setting_set('client_bypass_routes', json.dumps(policy))
+    api_audit_log(request, user, 'routing.bypass.update', 'routing', 'client', 'split routes', {'enabled': data['enabled'], 'resources': len(groups)})
+    return {'ok': True, **policy}
+
+
+@app.post('/api/auth/password')
+async def api_admin_password_change(request: Request):
+    current = verify_user_session(request.cookies.get(SESSION_COOKIE) or '')
+    if not current or not current.get('is_env_admin'):
+        raise HTTPException(status_code=403, detail='Требуется вход основного администратора')
+    data = await api_read_payload(request)
+    old = str(data.get('current_password', ''))
+    new = str(data.get('new_password', ''))
+    if not authenticate_user(PANEL_USER, old):
+        return api_error('Текущий пароль неверен', status_code=400)
+    if len(new) < 12 or len(new) > 1024:
+        return api_error('Пароль должен содержать от 12 до 1024 символов', status_code=400)
+    if new != str(data.get('confirm_password', '')) or new == old:
+        return api_error('Подтвердите новый пароль, отличающийся от текущего', status_code=400)
+    hashed = password_hash(new)
+    with db() as conn:
+        conn.execute('BEGIN IMMEDIATE')
+        row = conn.execute("SELECT value FROM panel_settings WHERE key='admin_password_hash'").fetchone()
+        valid = password_verify(old, row['value']) if row else secrets.compare_digest(old.encode('utf-8'), PANEL_PASSWORD.encode('utf-8'))
+        if not valid:
+            return api_error('Пароль уже изменён. Войдите заново.', status_code=409)
+        conn.execute("INSERT INTO panel_settings(key,value,updated_at) VALUES('admin_password_hash',?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at", (hashed, int(time.time())))
+    api_audit_log(request, current, 'admin.password.change', 'user', PANEL_USER, 'admin')
+    response = JSONResponse({'ok': True})
+    response.delete_cookie(SESSION_COOKIE)
+    return response
 
 
 @app.get('/api/node/network')

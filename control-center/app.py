@@ -43,6 +43,7 @@ def db():
 
 def init_db():
     with db() as conn:
+        conn.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
         conn.execute("""
             CREATE TABLE IF NOT EXISTS nodes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -63,9 +64,32 @@ def init_db():
 init_db()
 
 
+def control_password_hash():
+    with db() as conn:
+        row = conn.execute("SELECT value FROM settings WHERE key='admin_password_hash'").fetchone()
+    return row['value'] if row else ''
+
+
+def hash_password(password, salt=None):
+    salt = salt or secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 200_000).hex()
+    return salt + '$' + digest
+
+
+def valid_password(password, stored=None):
+    stored = control_password_hash() if stored is None else stored
+    if not stored:
+        return secrets.compare_digest(password.encode(), PASSWORD.encode())
+    try:
+        salt, _ = stored.split('$', 1)
+        return secrets.compare_digest(hash_password(password, salt), stored)
+    except ValueError:
+        return False
+
+
 def sign_session(expires):
     body = f"{USER}:{expires}"
-    sig = hmac.new(SESSION_SECRET.encode(), body.encode(), hashlib.sha256).hexdigest()
+    sig = hmac.new((SESSION_SECRET + control_password_hash()).encode(), body.encode(), hashlib.sha256).hexdigest()
     return base64.urlsafe_b64encode(f"{body}:{sig}".encode()).decode()
 
 
@@ -74,7 +98,7 @@ def authenticated(token):
         raw = base64.urlsafe_b64decode(token.encode()).decode()
         username, expires, signature = raw.split(":", 2)
         body = f"{username}:{expires}"
-        expected = hmac.new(SESSION_SECRET.encode(), body.encode(), hashlib.sha256).hexdigest()
+        expected = hmac.new((SESSION_SECRET + control_password_hash()).encode(), body.encode(), hashlib.sha256).hexdigest()
         return username == USER and int(expires) > int(time.time()) and hmac.compare_digest(signature, expected)
     except Exception:
         return False
@@ -185,6 +209,7 @@ async def execute_node(node_id, path, method="POST", payload=None):
 
 
 MANAGEMENT_READ_PATHS = {
+    "bypass": "/api/routing/bypass",
     "network": "/api/node/network",
     "status": "/api/node/status",
     "diagnostics": "/api/node/diagnostics",
@@ -198,6 +223,7 @@ MANAGEMENT_READ_PATHS = {
 }
 
 MANAGEMENT_ACTIONS = {
+    "bypass-update": ("/api/routing/bypass", "PATCH"),
     "network-preview": ("/api/node/network/preview", "POST"),
     "network-apply": ("/api/node/network/apply", "POST"),
     "network-confirm": ("/api/node/network/confirm", "POST"),
@@ -239,7 +265,7 @@ def core_styles():
 @app.post("/api/login")
 async def login(request: Request):
     data = await request.json()
-    if not secrets.compare_digest(str(data.get("username", "")), USER) or not secrets.compare_digest(str(data.get("password", "")), PASSWORD):
+    if not secrets.compare_digest(str(data.get("username", "")).encode(), USER.encode()) or not valid_password(str(data.get("password", ""))):
         raise HTTPException(401, "Неверный логин или пароль")
     expires = int(time.time()) + 12 * 3600
     response = JSONResponse({"ok": True})
@@ -250,6 +276,27 @@ async def login(request: Request):
 @app.post("/api/logout")
 def logout():
     response = JSONResponse({"ok": True})
+    response.delete_cookie(COOKIE)
+    return response
+
+
+@app.post('/api/account/password')
+async def change_control_password(request: Request, threewg_control_session: str | None = Cookie(default=None)):
+    require_auth(threewg_control_session)
+    data = await request.json()
+    old, new = str(data.get('current_password', '')), str(data.get('new_password', ''))
+    if not valid_password(old):
+        raise HTTPException(400, 'Текущий пароль неверен')
+    if len(new) < 12 or len(new) > 1024 or new == old or new != data.get('confirm_password'):
+        raise HTTPException(400, 'Подтвердите новый пароль длиной от 12 до 1024 символов')
+    hashed = hash_password(new)
+    with db() as conn:
+        conn.execute('BEGIN IMMEDIATE')
+        row = conn.execute("SELECT value FROM settings WHERE key='admin_password_hash'").fetchone()
+        if not valid_password(old, row['value'] if row else ''):
+            raise HTTPException(409, 'Пароль уже изменён. Войдите заново.')
+        conn.execute("INSERT INTO settings(key,value) VALUES('admin_password_hash',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (hashed,))
+    response = JSONResponse({'ok': True})
     response.delete_cookie(COOKIE)
     return response
 

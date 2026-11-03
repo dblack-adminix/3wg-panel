@@ -2969,6 +2969,64 @@ if 'def migration_runner_request(' not in text and 'def update_status_payload(' 
 if 'def change_protocol_port(' not in text and 'def db():\n' in text:
     text = text.replace('def db():\n', PORT_CHANGE_HELPERS + '\n\ndef db():\n', 1)
 NETWORK_ROUTES = r'''
+@app.get('/api/routing/bypass')
+def api_client_bypass_get(user=Depends(api_require_admin)):
+    return {'ok': True, **json.loads(panel_setting_get('client_bypass_routes') or '{"enabled":false,"groups":[]}')}
+
+
+@app.patch('/api/routing/bypass')
+async def api_client_bypass_update(request: Request, user=Depends(api_require_admin)):
+    import asyncio
+    from client_routes import resolve_groups
+    data = await api_read_payload(request)
+    if not isinstance(data.get('enabled'), bool):
+        return api_error('Укажите состояние списка', status_code=400)
+    previous = json.loads(panel_setting_get('client_bypass_routes') or '{}')
+    previous_targets = [{'name':g['name'], 'targets':g['targets']} for g in previous.get('groups', [])]
+    try:
+        if not data['enabled'] and data.get('groups') == previous_targets:
+            groups = previous.get('groups', [])
+            routes = allowed_routes([n for g in groups for n in g.get('networks', [])])
+        else:
+            groups, routes = await asyncio.wait_for(asyncio.to_thread(resolve_groups, data.get('groups', [])), timeout=30)
+    except (ValueError, UnicodeError) as exc:
+        return api_error(str(exc), status_code=400)
+    except asyncio.TimeoutError:
+        return api_error('DNS-проверка не завершилась. Прежние настройки сохранены.', status_code=504)
+    policy = {'enabled': data['enabled'], 'groups': groups, 'updated_at': int(time.time()), 'route_count': len(routes)}
+    panel_setting_set('client_bypass_routes', json.dumps(policy))
+    api_audit_log(request, user, 'routing.bypass.update', 'routing', 'client', 'split routes', {'enabled': data['enabled'], 'resources': len(groups)})
+    return {'ok': True, **policy}
+
+
+@app.post('/api/auth/password')
+async def api_admin_password_change(request: Request):
+    current = verify_user_session(request.cookies.get(SESSION_COOKIE) or '')
+    if not current or not current.get('is_env_admin'):
+        raise HTTPException(status_code=403, detail='Требуется вход основного администратора')
+    data = await api_read_payload(request)
+    old = str(data.get('current_password', ''))
+    new = str(data.get('new_password', ''))
+    if not authenticate_user(PANEL_USER, old):
+        return api_error('Текущий пароль неверен', status_code=400)
+    if len(new) < 12 or len(new) > 1024:
+        return api_error('Пароль должен содержать от 12 до 1024 символов', status_code=400)
+    if new != str(data.get('confirm_password', '')) or new == old:
+        return api_error('Подтвердите новый пароль, отличающийся от текущего', status_code=400)
+    hashed = password_hash(new)
+    with db() as conn:
+        conn.execute('BEGIN IMMEDIATE')
+        row = conn.execute("SELECT value FROM panel_settings WHERE key='admin_password_hash'").fetchone()
+        valid = password_verify(old, row['value']) if row else secrets.compare_digest(old.encode('utf-8'), PANEL_PASSWORD.encode('utf-8'))
+        if not valid:
+            return api_error('Пароль уже изменён. Войдите заново.', status_code=409)
+        conn.execute("INSERT INTO panel_settings(key,value,updated_at) VALUES('admin_password_hash',?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at", (hashed, int(time.time())))
+    api_audit_log(request, current, 'admin.password.change', 'user', PANEL_USER, 'admin')
+    response = JSONResponse({'ok': True})
+    response.delete_cookie(SESSION_COOKIE)
+    return response
+
+
 @app.get('/api/node/network')
 def api_node_network(user=Depends(api_require_admin)):
     try:

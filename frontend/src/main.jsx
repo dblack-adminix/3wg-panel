@@ -241,6 +241,8 @@ function Sidebar({ onLogout, protocols: initialProtocols = null, user, mobileOpe
           <a className={`nav ${path === '/abuse' ? 'active' : ''}`} href="/abuse" onClick={onClose}><ShieldAlert size={14} /> <span>P2P Guard</span></a>
           <a className={`nav ${path === '/updates' ? 'active' : ''}`} href="/updates" onClick={onClose}><RefreshCw size={14} /> <span>Обновления</span></a>
           <a className={`nav ${path === '/network' ? 'active' : ''}`} href="/network" onClick={onClose}><Network size={14} /> <span>IP сервера</span></a>
+          <a className={`nav ${path === '/bypass' ? 'active' : ''}`} href="/bypass" onClick={onClose}><ArrowUpRight size={14} /> <span>Мимо VPN</span></a>
+          {user?.is_env_admin && <a className={`nav ${path === '/account' ? 'active' : ''}`} href="/account" onClick={onClose}><Key size={14} /> <span>Пароль администратора</span></a>}
           {!IS_EASY && <a className={`nav ${path === '/audit' ? 'active' : ''}`} href="/audit" onClick={onClose}><Terminal size={14} /> <span>Audit log</span></a>}
           <a className={`nav ${path === '/backups' ? 'active' : ''}`} href="/backups" onClick={onClose}><Download size={14} /> <span>Backups</span></a>
           {!IS_EASY && <a className={`nav ${path === '/migration' ? 'active' : ''}`} href="/migration" onClick={onClose}><Send size={14} /> <span>Migration</span></a>}
@@ -3606,6 +3608,20 @@ function MiniLineChart({ points, keys = ['value'], colors = ['#c8ff00'], height 
   );
 }
 
+function AdminPasswordPage({onLogout,user}) {
+  const [error,setError]=useState(''),[busy,setBusy]=useState(false);
+  const save=async e=>{e.preventDefault();const form=e.currentTarget;setError('');setBusy(true);try{await api('/api/auth/password',{method:'POST',body:JSON.stringify(Object.fromEntries(new FormData(form)))});form.reset();await onLogout()}catch(err){setError(err.message)}finally{setBusy(false)}};
+  return <Shell title="Пароль администратора" subtitle={user.username} onLogout={onLogout} user={user}><section className="card account-settings"><h2>Смена пароля</h2>{error&&<div className="warning">{error}</div>}<form onSubmit={save}><label>Текущий пароль<input name="current_password" type="password" autoComplete="current-password" required/></label><label>Новый пароль<input name="new_password" type="password" autoComplete="new-password" minLength={12} maxLength={1024} required/></label><label>Повторите новый пароль<input name="confirm_password" type="password" autoComplete="new-password" minLength={12} maxLength={1024} required/></label><p className="muted">После сохранения потребуется войти заново на всех устройствах.</p><button className="orange-btn" disabled={busy}><Key size={14}/> Сменить пароль</button></form></section></Shell>;
+}
+
+function BypassRoutesPage({onLogout,user}) {
+  const [policy,setPolicy]=useState({enabled:false,groups:[]}),[error,setError]=useState(''),[busy,setBusy]=useState(false),[saved,setSaved]=useState(false),[loaded,setLoaded]=useState(false);
+  useEffect(()=>{api('/api/routing/bypass').then(data=>{setPolicy(data);setLoaded(true)}).catch(e=>setError(e.message))},[]);
+  const edit=(index,key,value)=>{setSaved(false);setPolicy(p=>({...p,groups:p.groups.map((g,i)=>i===index?{...g,[key]:value}:g)}))};
+  const save=async e=>{e.preventDefault();setBusy(true);setError('');setSaved(false);try{const groups=policy.groups.map(g=>({name:g.name,targets:(g.text??g.targets.join('\n')).split(/[\n,]+/).map(v=>v.trim()).filter(Boolean)}));setPolicy(await api('/api/routing/bypass',{method:'PATCH',body:JSON.stringify({enabled:policy.enabled,groups})}));setSaved(true)}catch(err){setError(err.message)}finally{setBusy(false)}};
+  return <Shell title="Мимо VPN" subtitle="Исключения для клиентских конфигураций" onLogout={onLogout} user={user}>{error&&<div className="warning">{error}</div>}<div className="warning">После изменения скачайте и заново импортируйте конфигурацию на устройства. Исключения относятся к IP-адресам; другие ресурсы на тех же IP тоже пойдут напрямую. Уже импортированные профили автоматически не меняются.</div><form onSubmit={save}><section className="bypass-toolbar"><label><input type="checkbox" disabled={!loaded || busy} checked={policy.enabled} onChange={e=>{setSaved(false);setPolicy({...policy,enabled:e.target.checked})}}/> Включить исключения</label><div className="actions"><button type="button" className="copy-button" disabled={!loaded || busy} onClick={()=>setPolicy({...policy,groups:[...policy.groups,{name:'',targets:[],text:''}]})}><Plus size={14}/> Добавить ресурс</button><button className="orange-btn" disabled={busy || !loaded}><Check size={14}/> Сохранить и обновить IP</button></div></section>{saved&&<div className="warning">Сохранено. Обновите клиентские конфигурации. Маршрутов: {policy.route_count}.</div>}<div className="bypass-grid">{policy.groups.map((g,i)=><section className="card bypass-entry" key={i}><div className="section-head"><h2>Ресурс {i+1}</h2><button type="button" className="icon-button danger" title="Удалить ресурс" onClick={()=>{setSaved(false);setPolicy({...policy,groups:policy.groups.filter((_,n)=>n!==i)})}}><Trash2 size={14}/></button></div><label>Название приложения или сайта<input value={g.name} maxLength={100} onChange={e=>edit(i,'name',e.target.value)} required/></label><label>Домены, IP или сети<textarea rows={5} value={g.text??g.targets.join('\n')} onChange={e=>edit(i,'text',e.target.value)} placeholder={'example.ru\n203.0.113.0/24'} required/></label>{g.networks?.length>0&&<details><summary>IP и сети: {g.networks.length}</summary><pre>{g.networks.join('\n')}</pre></details>}</section>)}</div></form></Shell>;
+}
+
 function ServerNetworkPage({ onLogout, user }) {
   const [data, setData] = useState(null);
   const [ip, setIp] = useState('');
@@ -4279,6 +4295,8 @@ function App() {
   if (auth.loading) return <div className="boot">3WG</div>;
   if (!auth.ok) return <Login onLogin={check} />;
   const isAdmin = Boolean(auth.user?.is_admin);
+  if (isAdmin && auth.user?.is_env_admin && window.location.pathname === '/account') return <AdminPasswordPage onLogout={logout} user={auth.user} />;
+  if (isAdmin && window.location.pathname === '/bypass') return <BypassRoutesPage onLogout={logout} user={auth.user} />;
   if (isAdmin && window.location.pathname === '/network') return <ServerNetworkPage onLogout={logout} user={auth.user} />;
   if (IS_EASY) {
     const path = window.location.pathname;

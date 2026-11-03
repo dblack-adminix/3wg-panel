@@ -11,7 +11,7 @@
 - API-ключи, интеграции, Telegram и P2P Guard.
 - Обновление панели из веб-интерфейса.
 
-В Easy Core нет пользовательских кабинетов и ролей, страницы аудита, мастера миграции, сетевых инструментов и расписания backup. Вход разрешён только владельцу из `PANEL_USER` и `PANEL_PASSWORD`.
+В Easy Core нет пользовательских кабинетов и ролей, страницы аудита, мастера миграции, сетевых инструментов и расписания backup. Вход разрешён только владельцу `PANEL_USER`. Начальный пароль задаётся в `PANEL_PASSWORD`; после смены через веб используется хеш из базы.
 
 > Не подключайте Core и Easy Core к одним VPN-контейнерам одновременно: обе панели могут изменять общие конфигурации.
 
@@ -31,7 +31,7 @@
 ```bash
 sudo apt update
 sudo apt install -y git
-git clone --branch v1.10.0 --depth 1 https://github.com/dblack-adminix/3wg-panel.git /tmp/3wg-panel
+git clone --branch v1.11.0 --depth 1 https://github.com/dblack-adminix/3wg-panel.git /tmp/3wg-panel
 cd /tmp/3wg-panel
 sudo bash easy-core/install.sh
 ```
@@ -40,7 +40,7 @@ sudo bash easy-core/install.sh
 
 ```text
 Git repository: https://github.com/dblack-adminix/3wg-panel.git
-Git branch/tag: v1.10.0
+Git branch/tag: v1.11.0
 Install directory: /opt/3wg-easy-core
 Docker image name: 3wg-easy-core:local
 Docker container name: 3wg-easy-core
@@ -123,7 +123,7 @@ VPN-контейнеры не останавливайте: действующи
 ### 3. Установите Easy Core
 
 ```bash
-git clone --branch v1.10.0 --depth 1 https://github.com/dblack-adminix/3wg-panel.git /tmp/3wg-panel-easy
+git clone --branch v1.11.0 --depth 1 https://github.com/dblack-adminix/3wg-panel.git /tmp/3wg-panel-easy
 cd /tmp/3wg-panel-easy
 sudo bash easy-core/install.sh
 ```

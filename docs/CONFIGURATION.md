@@ -7,7 +7,7 @@
 | Переменная | Пример | Описание |
 | --- | --- | --- |
 | `PANEL_USER` | `admin` | Логин для входа в панель |
-| `PANEL_PASSWORD` | `change-me` | Пароль для входа в панель |
+| `PANEL_PASSWORD` | `change-me` | Начальный пароль администратора. После смены через веб используется хеш из базы, а не это значение |
 | `PANEL_CONTAINER` | `3wg-panel` | Имя Docker-контейнера панели для self-monitoring метрик |
 | `SESSION_SECRET` | random hex | Секрет для подписи session cookie |
 | `PANEL_HOST` | `panel.example.com` | Публичный web-хост панели |
