@@ -1,0 +1,3 @@
+FROM 3wg-amneziawg-runtime:local
+COPY cascade-pilot/start.sh /opt/3wg/pilot.sh
+ENTRYPOINT ["dumb-init", "bash", "/opt/3wg/pilot.sh"]
