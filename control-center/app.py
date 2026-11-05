@@ -617,6 +617,10 @@ def workspace_frontend():
     return FileResponse(BASE / 'static' / 'workspaces.html', headers={'Cache-Control':'no-store'})
 
 
+from exit_nodes import register as register_exit_nodes
+register_exit_nodes(app, db, require_auth, fernet, SESSION_SECRET)
+
+
 @app.get("/{path:path}")
 def frontend(path: str):
     return FileResponse(BASE / "static" / "index.html", headers={"Cache-Control": "no-store"})

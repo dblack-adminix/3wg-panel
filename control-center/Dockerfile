@@ -3,6 +3,8 @@ WORKDIR /app
 COPY control-center/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY control-center/app.py ./app.py
+COPY control-center/exit_nodes.py ./exit_nodes.py
+COPY control-center/provision ./provision
 COPY control-center/static ./static
 COPY app/static/logogrin.png ./static/logo.png
 COPY frontend/src/styles.css ./static/core.css
