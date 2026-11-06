@@ -31,6 +31,8 @@ class TenantTest(unittest.TestCase):
                    'save_tenant','state','list_tenants'},self.ns)
         self.ns['init_db']()
         with db() as conn:
+            conn.execute('CREATE TABLE exit_nodes(id INTEGER PRIMARY KEY,name TEXT,status TEXT,secrets_enc TEXT)')
+            conn.executemany('INSERT INTO exit_nodes VALUES(?,?,?,?)',[(1,'Exit A','waiting_gateway','secret-a'),(2,'Exit B','connected','secret-b'),(3,'Failed exit','failed','secret-c')])
             for n in range(1,4):
                 conn.execute('INSERT INTO nodes(id,name,url,api_key_enc,created_at) VALUES(?,?,?,?,?)',(n,f'Node {n}',f'https://node{n}.example','secret',0))
         self.admin=self.ns['sign_session'](int(time.time())+3600)
@@ -39,10 +41,10 @@ class TenantTest(unittest.TestCase):
         for conn in self.connections:conn.close()
         self.temp.cleanup()
 
-    def save(self,name='Client',username='client',nodes=None,tenant_id=None,password='Test-tenant-password',token=None,enabled=True):
+    def save(self,name='Client',username='client',nodes=None,tenant_id=None,password='Test-tenant-password',token=None,enabled=True,exit_ids=None):
         class Request:
             async def json(self_):
-                return dict(name=name,username=username,password=password,node_ids=nodes or [],enabled=enabled)
+                return dict(name=name,username=username,password=password,node_ids=nodes or [],enabled=enabled,exit_ids=exit_ids)
         return asyncio.run(self.ns['save_tenant'](Request(),token or self.admin,tenant_id))
 
     def tenant(self,id):
@@ -100,6 +102,29 @@ class TenantTest(unittest.TestCase):
             self.assertIsNone(self.ns['session_tenant'](value))
         with self.ns['db']() as conn:row=conn.execute('SELECT * FROM tenants WHERE id=?',(id,)).fetchone()
         self.assertIsNone(self.ns['session_tenant'](self.ns['tenant_session'](row,0)))
+
+    def test_exit_assignment_is_exclusive_and_filtered(self):
+        a=self.save(exit_ids=[1])['id'];b=self.save(username='other',exit_ids=[2])['id']
+        self.ns['public_node']=lambda r:dict(r)
+        data=asyncio.run(self.ns['state'](self.tenant(a)))
+        self.assertEqual(data['exits'],[{'id':1,'name':'Exit A','status':'waiting_gateway'}])
+        self.assertFalse(data['gateway_ready'])
+        self.assertNotIn('secret-',str(data))
+        with self.assertRaises(HttpError) as error:self.save(username='other',tenant_id=b,exit_ids=[1])
+        self.assertEqual(error.exception.status_code,409)
+        self.assertEqual(asyncio.run(self.ns['state'](self.tenant(b)))['exits'][0]['id'],2)
+
+    def test_unknown_uninstalled_and_invalid_exits_rejected(self):
+        for exits in [[999],[3],['1'],[True],'1']:
+            with self.assertRaises(HttpError):self.save(exit_ids=exits)
+        self.assertEqual(asyncio.run(self.ns['list_tenants'](self.admin))['tenants'],[])
+
+    def test_omitted_exits_preserved_and_empty_list_unassigns(self):
+        id=self.save(exit_ids=[1])['id']
+        self.save(tenant_id=id,password='')
+        self.assertEqual(asyncio.run(self.ns['list_tenants'](self.admin))['tenants'][0]['exit_ids'],[1])
+        self.save(tenant_id=id,password='',exit_ids=[])
+        self.assertEqual(asyncio.run(self.ns['list_tenants'](self.admin))['tenants'][0]['exit_ids'],[])
 
 
 if __name__=='__main__':unittest.main()

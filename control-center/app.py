@@ -52,6 +52,8 @@ def init_db():
             created_at INTEGER NOT NULL)''')
         conn.execute('''CREATE TABLE IF NOT EXISTS tenant_nodes (
             node_id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL)''')
+        conn.execute('''CREATE TABLE IF NOT EXISTS tenant_exits (
+            exit_id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL)''')
         conn.execute("""
             CREATE TABLE IF NOT EXISTS nodes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -361,8 +363,10 @@ async def state(threewg_control_session: str | None = Cookie(default=None)):
     if not tenant:
         require_auth(threewg_control_session)
     with db() as conn:
+        exits = []
         if tenant:
             rows = conn.execute('SELECT n.* FROM nodes n JOIN tenant_nodes t ON t.node_id=n.id WHERE t.tenant_id=? ORDER BY n.name', (tenant['id'],)).fetchall()
+            exits = [dict(r) for r in conn.execute('SELECT e.id,e.name,e.status FROM exit_nodes e JOIN tenant_exits t ON t.exit_id=e.id WHERE t.tenant_id=? ORDER BY e.name', (tenant['id'],))]
         else:
             rows = conn.execute("SELECT * FROM nodes ORDER BY name COLLATE NOCASE").fetchall()
     nodes = [public_node(row) for row in rows]
@@ -371,7 +375,7 @@ async def state(threewg_control_session: str | None = Cookie(default=None)):
         nodes = [{'id': n['id'], 'name': n['name'], 'last_sync_at': n['last_sync_at'],
                   'last_ok_at': n['last_ok_at'], 'last_error': 'Нет связи с нодой' if n['last_error'] else '',
                   'snapshot': {'peers': [{k:v for k,v in p.items() if k in safe_peer_fields} for p in n['snapshot'].get('peers', [])]}} for n in nodes]
-    return {"ok": True, 'role': 'tenant' if tenant else 'admin', 'name': tenant['name'] if tenant else USER, "nodes": nodes, "summary": {
+    return {"ok": True, 'role': 'tenant' if tenant else 'admin', 'name': tenant['name'] if tenant else USER, "nodes": nodes, 'exits': exits, 'gateway_ready': False, "summary": {
         "nodes": len(nodes),
         "online": sum(1 for n in nodes if n["last_ok_at"] and not n["last_error"]),
         "peers": sum(len(n["snapshot"].get("peers", [])) for n in nodes),
@@ -559,8 +563,10 @@ async def list_tenants(threewg_control_session: str | None = Cookie(default=None
     with db() as conn:
         tenants = [dict(row) for row in conn.execute('SELECT id,name,username,enabled,created_at FROM tenants ORDER BY name')]
         assignments = conn.execute('SELECT tenant_id,node_id FROM tenant_nodes').fetchall()
+        exit_assignments = conn.execute('SELECT tenant_id,exit_id FROM tenant_exits').fetchall()
     for tenant in tenants:
         tenant['node_ids'] = [r['node_id'] for r in assignments if r['tenant_id'] == tenant['id']]
+        tenant['exit_ids'] = [r['exit_id'] for r in exit_assignments if r['tenant_id'] == tenant['id']]
     return {'tenants': tenants}
 
 
@@ -569,6 +575,7 @@ async def save_tenant(request, token, tenant_id=None):
     data = await request.json()
     name, username, password = str(data.get('name', '')).strip(), str(data.get('username', '')).strip(), str(data.get('password', ''))
     node_ids = data.get('node_ids', [])
+    exit_ids = data.get('exit_ids')
     if not name or len(name) > 100 or not re.fullmatch(r'[A-Za-z0-9_.-]{3,64}', username) or username.casefold() == USER.casefold():
         raise HTTPException(400, 'Укажите имя и уникальный логин из 3–64 латинских букв, цифр, точек, дефисов или подчёркиваний')
     if (not tenant_id or password) and not 12 <= len(password) <= 1024:
@@ -577,10 +584,19 @@ async def save_tenant(request, token, tenant_id=None):
         raise HTTPException(400, 'Некорректные ноды')
     if type(data.get('enabled', True)) is not bool:
         raise HTTPException(400, 'Некорректное состояние клиента')
+    if exit_ids is not None and (not isinstance(exit_ids, list) or len(exit_ids)>1000 or any(type(n) is not int or n<1 for n in exit_ids)):
+        raise HTTPException(400, 'Некорректные выходы каскада')
     hashed = hash_password(password) if password else None
     try:
         with db() as conn:
             conn.execute('BEGIN IMMEDIATE')
+            for exit_id in set(exit_ids or []):
+                exit_row=conn.execute('SELECT status FROM exit_nodes WHERE id=?',(exit_id,)).fetchone()
+                if not exit_row or exit_row['status'] not in ('waiting_gateway','connected','stopped'):
+                    raise HTTPException(400,'Выход ещё не установлен или недоступен для назначения')
+                owner=conn.execute('SELECT tenant_id FROM tenant_exits WHERE exit_id=?',(exit_id,)).fetchone()
+                if owner and owner['tenant_id']!=tenant_id:
+                    raise HTTPException(409,'Выход уже назначен другому клиенту')
             for node_id in set(node_ids):
                 if not conn.execute('SELECT 1 FROM nodes WHERE id=?', (node_id,)).fetchone():
                     raise HTTPException(400, 'Нода не найдена')
@@ -596,6 +612,9 @@ async def save_tenant(request, token, tenant_id=None):
                 tenant_id = conn.execute('INSERT INTO tenants(name,username,password_hash,enabled,created_at) VALUES(?,?,?,?,?)', (name, username, hashed, int(data.get('enabled', True)), int(time.time()))).lastrowid
             conn.execute('DELETE FROM tenant_nodes WHERE tenant_id=?', (tenant_id,))
             conn.executemany('INSERT INTO tenant_nodes(node_id,tenant_id) VALUES(?,?)', [(n,tenant_id) for n in set(node_ids)])
+            if exit_ids is not None:
+                conn.execute('DELETE FROM tenant_exits WHERE tenant_id=?',(tenant_id,))
+                conn.executemany('INSERT INTO tenant_exits(exit_id,tenant_id) VALUES(?,?)',[(n,tenant_id) for n in set(exit_ids)])
     except sqlite3.IntegrityError as exc:
         raise HTTPException(409, 'Этот логин уже занят') from exc
     return {'ok': True, 'id': tenant_id}
